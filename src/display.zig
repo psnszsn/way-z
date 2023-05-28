@@ -4,10 +4,12 @@ const Proxy = @import("proxy.zig").Proxy;
 const IO = @import("io_async.zig").IO;
 const Registry = @import("main.zig").Registry;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
+const Argument = @import("argument.zig").Argument;
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
     in: RingBuffer(512),
+    out: RingBuffer(512),
     io: *IO,
     pub fn recv(self: *Connection) !usize {
 
@@ -16,7 +18,7 @@ pub const Connection = struct {
             .name = null,
             .namelen = 0,
             .iov = &iovecs,
-            .iovlen = 1,
+            .iovlen = 2,
             .control = null,
             .controllen = 0,
             .flags = 0,
@@ -24,6 +26,24 @@ pub const Connection = struct {
 
         const ret = try self.io.recvmsg(self.socket_fd, &msg);
         self.in.count += ret;
+
+        return ret;
+    }
+
+    pub fn send(self: *Connection) !usize {
+        var iovecs = self.out.get_read_iovecs();
+        var msg = std.os.msghdr_const{
+            .name = null,
+            .namelen = 0,
+            .iov = &iovecs,
+            .iovlen = 2,
+            .control = null,
+            .controllen = 0,
+            .flags = 0,
+        };
+
+        const ret = try self.io.sendmsg(self.socket_fd, &msg);
+        self.out.count -= ret;
 
         return ret;
     }
@@ -60,6 +80,7 @@ pub const Display = struct {
             .socket_fd = fd,
             .io = io,
             .in = .{},
+            .out = .{},
         };
 
         self.connection = connection;
@@ -117,27 +138,19 @@ pub const Display = struct {
         try self.objects.append(&registry.proxy);
         registry.proxy.id = @intCast(u32, self.objects.items.len - 1);
 
-        // const signature: []const ArgumentType = .{.new_id};
-        // const types: []?type = .{Registry};
         std.debug.print("asd {any}\n", .{Registry.event_signatures});
 
-        var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
-
-        var iovecs = [_]std.os.iovec_const{
-            .{ .iov_base = get_registry, .iov_len = get_registry.len },
+        
+        var _args = [_]Argument{
+            .{ .new_id = registry.proxy.id },
         };
+        try self.proxy.marshal_request(1, &_args);
+        // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
 
-        var msg = std.os.msghdr_const{
-            .name = null,
-            .namelen = 0,
-            .iov = &iovecs,
-            .iovlen = 1,
-            .control = null,
-            .controllen = 0,
-            .flags = 0,
-        };
+        // try self.connection.out.pushSlice(get_registry);
 
-        const ret = try self.connection.io.sendmsg(self.connection.socket_fd, &msg);
+
+        const ret = try self.connection.send();
         std.debug.print("sent {}\n", .{ret});
 
         return registry;

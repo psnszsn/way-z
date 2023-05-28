@@ -48,26 +48,23 @@ pub const Argument = union(enum) {
     array: ?*Array,
     fd: i32,
     pub const ArgumentType = std.meta.Tag(Argument);
-    pub fn len(self: Argument) usize {
-        switch (self) {
-            .string => |s| {
+    pub fn len(self: Argument) u16 {
+        const l = switch (self) {
+            .string => |s| blk: {
                 const str = s.?;
-                return 4 + str.len + 4 - (str.len % 4);
+                break: blk 4 + str.len + 4 - (str.len % 4);
             },
-            .uint => |u| {
-                // return @sizeOf(@TypeOf(u));
-                _ = u;
-                return 4;
-            },
+            .new_id => |n| @sizeOf(@TypeOf(n)),
+            .uint => |_| 4,
             else => unreachable,
-        }
+        };
+        return @intCast(u16, l);
     }
-    pub fn marshal(self: *const Argument, writer: anytype) void {
-        _ = writer;
+    pub fn marshal(self: *const Argument, writer: anytype) !void {
 
-        switch (self) {
+        switch (self.*) {
             .new_id => |new_id| {
-                _ = new_id;
+                try writer.writeIntNative(u32, new_id);
             },
             else => unreachable,
         }
@@ -91,7 +88,7 @@ pub const Argument = union(enum) {
                 std.debug.assert(l > 0);
                 const s = data[4 .. 4 + l - 1];
                 // const s = allocator.alloc(u8, l - 1) catch unreachable;
-                // std.debug.print("s: {s}\n", .{s});
+                std.debug.print("s: {s}\n", .{s});
                 // Skip sentinel + padding
                 // l = l-1
                 // s = argdata.read(l).decode('utf-8')

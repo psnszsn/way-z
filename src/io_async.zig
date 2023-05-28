@@ -505,6 +505,26 @@ pub const IO = struct {
             }
         }
     }
+
+    pub fn poll_add(self: *IO, fd: os.fd_t, poll_mask: u32) !usize {
+        var completion = Completion{ .frame = @frame() };
+        const sqe = self.get_sqe();
+        linux.io_uring_prep_poll_add(sqe, fd, poll_mask);
+        sqe.user_data = @ptrToInt(&completion);
+        suspend {}
+        if (completion.result < 0) {
+            switch (@intToEnum(os.E, -completion.result)) {
+                .FAULT => unreachable,
+                .INTR => unreachable,
+                .INVAL => return error.Alignment,
+                .NOMEM => return error.SystemResources,
+                else => |errno| return os.unexpectedErrno(errno),
+            }
+        } else {
+            return @intCast(usize, completion.result);
+        }
+    }
+
 };
 
 pub fn buffer_limit(buffer_len: usize) usize {

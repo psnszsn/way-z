@@ -19,7 +19,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
 
         pub fn preWrapSlice(self: *Self) []u8 {
             const pre_wrap_count = std.math.min(self.count, self.bfr.len - self.index);
-            return self.bfr[self.index..self.index+pre_wrap_count];
+            return self.bfr[self.index .. self.index + pre_wrap_count];
         }
 
         // tail = MASK(b->tail);
@@ -33,7 +33,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
 
         pub fn copy(self: *Self, dest: []u8) void {
             const pre_wrap_count = std.math.min3(self.count, self.bfr.len - self.index, dest.len);
-            const post_wrap_count = std.math.min(dest.len-pre_wrap_count, self.count - pre_wrap_count);
+            const post_wrap_count = std.math.min(dest.len - pre_wrap_count, self.count - pre_wrap_count);
             std.mem.copy(
                 u8,
                 dest[0..pre_wrap_count],
@@ -46,6 +46,28 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
                     self.bfr[0..post_wrap_count],
                 );
             }
+        }
+
+        pub fn pushSlice(self: *Self, items: []const u8) error{NoSpaceLeft}!void {
+            if (self.count + items.len > self.bfr.len) return error.NoSpaceLeft;
+
+            const pre_wrap_start = (self.index + self.count) % self.bfr.len;
+            const pre_wrap_count = std.math.min(items.len, self.bfr.len - pre_wrap_start);
+            const post_wrap_count = items.len - pre_wrap_count;
+
+            std.mem.copy(u8, self.bfr[pre_wrap_start..], items[0..pre_wrap_count]);
+            std.mem.copy(u8, self.bfr[0..post_wrap_count], items[pre_wrap_count..]);
+
+            self.count += items.len;
+        }
+
+        pub fn write(self: *Self, items: []const u8) error{NoSpaceLeft}!usize {
+            try pushSlice(self, items);
+            return items.len;
+        }
+        pub const Writer = std.io.Writer(*Self, error{NoSpaceLeft}, write);
+        pub fn writer(self: *Self) Writer {
+            return .{ .context = self };
         }
 
         pub fn consume(self: *Self, size: usize) void {
