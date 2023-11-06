@@ -18,7 +18,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
         }
 
         pub fn preWrapSlice(self: *Self) []u8 {
-            const pre_wrap_count = std.math.min(self.count, self.bfr.len - self.index);
+            const pre_wrap_count = @min(self.count, self.bfr.len - self.index);
             return self.bfr[self.index .. self.index + pre_wrap_count];
         }
 
@@ -32,8 +32,8 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
         // }
 
         pub fn copy(self: *Self, dest: []u8) void {
-            const pre_wrap_count = std.math.min3(self.count, self.bfr.len - self.index, dest.len);
-            const post_wrap_count = std.math.min(dest.len - pre_wrap_count, self.count - pre_wrap_count);
+            const pre_wrap_count = @min(self.count, self.bfr.len - self.index, dest.len);
+            const post_wrap_count = @min(dest.len - pre_wrap_count, self.count - pre_wrap_count);
             std.mem.copy(
                 u8,
                 dest[0..pre_wrap_count],
@@ -52,7 +52,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             if (self.count + items.len > self.bfr.len) return error.NoSpaceLeft;
 
             const pre_wrap_start = (self.index + self.count) % self.bfr.len;
-            const pre_wrap_count = std.math.min(items.len, self.bfr.len - pre_wrap_start);
+            const pre_wrap_count = @min(items.len, self.bfr.len - pre_wrap_start);
             const post_wrap_count = items.len - pre_wrap_count;
 
             std.mem.copy(u8, self.bfr[pre_wrap_start..], items[0..pre_wrap_count]);
@@ -78,7 +78,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
         }
 
         pub fn get_read_iovecs(self: *Self) [2]std.os.iovec_const {
-            const pre_wrap_count = std.math.min(self.count, self.bfr.len - self.index);
+            const pre_wrap_count = @min(self.count, self.bfr.len - self.index);
             const post_wrap_count = self.count - pre_wrap_count;
 
             return .{
@@ -91,7 +91,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
 
             // if (self.count + max_bytes > self.bfr.len) return error.NoSpaceLeft;
             const pre_wrap_start = (self.index + self.count) % self.bfr.len;
-            const pre_wrap_count = std.math.min(max_bytes, self.bfr.len - pre_wrap_start);
+            const pre_wrap_count = @min(max_bytes, self.bfr.len - pre_wrap_start);
             const post_wrap_count = max_bytes - pre_wrap_count;
 
             return .{

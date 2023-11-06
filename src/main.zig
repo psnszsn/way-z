@@ -7,16 +7,30 @@ const Argument = @import("argument.zig").Argument;
 const Proxy = @import("proxy.zig").Proxy;
 const Display = @import("display.zig").Display;
 
+const libcoro = @import("libcoro");
+
+pub const xasync = libcoro.xasync;
+pub const xawait = libcoro.xawait;
+
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+// defer std.debug.assert(!gpa.deinit());
+
+const allocator = gpa.allocator();
+
 pub fn main() !void {
     std.debug.print("aaa\n", .{});
     std.debug.print("bbb {}\n", .{(B{}).asd()});
 
+    const stack = try libcoro.stackAlloc(
+        allocator,
+        1024 * 32,
+    );
+
     var io = IO.init(32, 0) catch unreachable;
     defer io.deinit();
-    var f1 = async signals(&io);
-    var frame = async way(&io);
-    std.debug.print("f {}\n", .{@sizeOf(@TypeOf(frame))});
-    std.debug.print("f {}\n", .{@sizeOf(@TypeOf(f1))});
+    // var f1 = async signals(&io);
+    var frame = try xasync(way,.{&io}, stack);
+    _ = frame;
     io.run() catch unreachable;
     // nosuspend await frame catch unreachable;
 
@@ -58,9 +72,6 @@ pub const Registry = struct {
 };
 
 pub fn way(io: *IO) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
 
     var display = try Display.connect(allocator, io);
     defer display.deinit();
@@ -96,8 +107,6 @@ pub fn signals(io: *IO) !void {
         const bytes_read = try io.read(sigfd, std.mem.asBytes(&si), 0);
         std.debug.assert(bytes_read == @sizeOf(@TypeOf(si)));
         std.debug.print("si: {}\n", .{si});
-
-  
 
         std.debug.print("PID: {}\n", .{os.linux.getpid()});
         os.exit(1);

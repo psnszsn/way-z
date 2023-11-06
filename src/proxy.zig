@@ -48,11 +48,11 @@ pub const Proxy = struct {
         const fields = std.meta.fields(Event);
         comptime var r: [fields.len][]const Argument.ArgumentType = undefined;
 
-        for (fields) |f, i| {
-            const ev_f = std.meta.fields(f.field_type);
+        for (fields, 0..) |f, i| {
+            const ev_f = std.meta.fields(f.type);
             comptime var argts: [ev_f.len]Argument.ArgumentType = undefined;
-            for (ev_f) |sf, ii| {
-                argts[ii] = switch (sf.field_type) {
+            for (ev_f, 0..) |sf, ii| {
+                argts[ii] = switch (sf.type) {
                     u32 => .uint,
                     [*:0]const u8 => .string,
                     else => unreachable,

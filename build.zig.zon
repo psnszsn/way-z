@@ -1,0 +1,12 @@
+// vi: ft=zig
+.{
+    .name = "zoinx",
+    .version = "0.0.0",
+    .paths = .{""},
+    .dependencies = .{
+        .zigcoro = .{
+            .url = "https://github.com/rsepassi/zigcoro/archive/master.tar.gz",
+            .hash = "12209b86e7e9ab0a77c657ba05e42ce1778ab30b1001ed26cbbe1ae0ecb0ad33fb4a",
+        },
+    },
+}

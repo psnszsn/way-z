@@ -12,7 +12,6 @@ pub const Connection = struct {
     out: RingBuffer(512),
     io: *IO,
     pub fn recv(self: *Connection) !usize {
-
         var iovecs = self.in.get_write_iovecs();
         var msg = std.os.msghdr{
             .name = null,
@@ -49,7 +48,6 @@ pub const Connection = struct {
     }
 };
 
-
 pub const Display = struct {
     proxy: Proxy,
     objects: std.ArrayList(?*Proxy),
@@ -68,10 +66,10 @@ pub const Display = struct {
         };
         try self.objects.append(null);
         try self.objects.append(&self.proxy);
-        self.proxy.id = @intCast(u32, self.objects.items.len - 1);
+        self.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
 
         const fd = try std.os.socket(linux.AF.UNIX, linux.SOCK.STREAM, 0);
-        const a = "/run/user/1000/wayland-1";
+        const a = "/tmp/1000-runtime-dir/wayland-1";
         var addr = try std.net.Address.initUnix(a);
         try io.connect(fd, &addr.any, addr.getOsSockLen());
 
@@ -102,9 +100,9 @@ pub const Display = struct {
                 self.connection.in.copy(header_data);
                 defer self.allocator.free(header_data);
             }
-            const id = std.mem.readIntNative(u32, header_data[0..4]);
-            const opcode = std.mem.readIntNative(u16, header_data[4..6]);
-            const size = std.mem.readIntNative(u16, header_data[6..8]);
+            const id: u32 = @bitCast(header_data[0..4].*);
+            const opcode: u16 = @bitCast(header_data[4..6].*);
+            const size: u16 = @bitCast(header_data[6..8].*);
 
             if (self.connection.in.count < size) break;
             const proxy = self.objects.items[id].?;
@@ -136,11 +134,10 @@ pub const Display = struct {
         var registry = try self.allocator.create(Registry);
         registry.* = .{ .proxy = .{ .display = self, .event_args = &Registry.event_signatures } };
         try self.objects.append(&registry.proxy);
-        registry.proxy.id = @intCast(u32, self.objects.items.len - 1);
+        registry.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
 
         std.debug.print("asd {any}\n", .{Registry.event_signatures});
 
-        
         var _args = [_]Argument{
             .{ .new_id = registry.proxy.id },
         };
@@ -148,7 +145,6 @@ pub const Display = struct {
         // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
 
         // try self.connection.out.pushSlice(get_registry);
-
 
         const ret = try self.connection.send();
         std.debug.print("sent {}\n", .{ret});

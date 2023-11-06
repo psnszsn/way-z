@@ -1,18 +1,20 @@
 const std = @import("std");
 
+const native_endian = @import("builtin").cpu.arch.endian();
+
 pub const Fixed = enum(i32) {
     _,
     pub fn toInt(f: Fixed) i24 {
-        return @truncate(i24, @enumToInt(f) >> 8);
+        return @as(i24, @truncate(@intFromEnum(f) >> 8));
     }
     pub fn fromInt(i: i24) Fixed {
-        return @intToEnum(Fixed, @as(i32, i) << 8);
+        return @as(Fixed, @enumFromInt(@as(i32, i) << 8));
     }
     pub fn toDouble(f: Fixed) f64 {
-        return @intToFloat(f64, @enumToInt(f)) / 256;
+        return @as(f64, @floatFromInt(@intFromEnum(f))) / 256;
     }
     pub fn fromDouble(d: f64) Fixed {
-        return @intToEnum(Fixed, @floatToInt(i32, d * 256));
+        return @as(Fixed, @enumFromInt(@as(i32, @intFromFloat(d * 256))));
     }
 };
 
@@ -33,7 +35,7 @@ pub const Array = extern struct {
     pub fn slice(array: Array, comptime T: type) []T {
         const data = array.data orelse return &[0]T{};
         // The wire protocol/libwayland only guarantee 32-bit word alignment.
-        const ptr = @ptrCast([*]T, @alignCast(4, data));
+        const ptr: [*]T = @ptrCast(@alignCast(data));
         return ptr[0..@divExact(array.size, @sizeOf(T))];
     }
 };
@@ -52,19 +54,18 @@ pub const Argument = union(enum) {
         const l = switch (self) {
             .string => |s| blk: {
                 const str = s.?;
-                break: blk 4 + str.len + 4 - (str.len % 4);
+                break :blk 4 + str.len + 4 - (str.len % 4);
             },
             .new_id => |n| @sizeOf(@TypeOf(n)),
             .uint => |_| 4,
             else => unreachable,
         };
-        return @intCast(u16, l);
+        return @as(u16, @intCast(l));
     }
     pub fn marshal(self: *const Argument, writer: anytype) !void {
-
         switch (self.*) {
             .new_id => |new_id| {
-                try writer.writeIntNative(u32, new_id);
+                try writer.writeInt(u32, new_id, .little);
             },
             else => unreachable,
         }
@@ -73,16 +74,16 @@ pub const Argument = union(enum) {
         _ = allocator;
         switch (typ) {
             .new_id => {
-                const v = std.mem.readIntNative(u32, data[0..4]);
+                const v = std.mem.readInt(u32, data[0..4], native_endian);
                 return Argument{ .new_id = v };
             },
             .uint => {
-                const v = std.mem.readIntNative(u32, data[0..4]);
+                const v = std.mem.readInt(u32, data[0..4], native_endian);
                 // std.debug.print("v: {}\n", .{v});
                 return Argument{ .uint = v };
             },
             .string => {
-                const l = std.mem.readIntNative(u32, data[0..4]);
+                const l = std.mem.readInt(u32, data[0..4], native_endian);
 
                 // std.debug.print("s len: {}\n", .{l});
                 std.debug.assert(l > 0);
@@ -99,4 +100,3 @@ pub const Argument = union(enum) {
         }
     }
 };
-

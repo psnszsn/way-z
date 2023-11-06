@@ -6,6 +6,16 @@ const IO_Uring = linux.IO_Uring;
 const io_uring_cqe = linux.io_uring_cqe;
 const io_uring_sqe = linux.io_uring_sqe;
 
+const libcoro = @import("libcoro");
+
+// pub const xasync = libcoro.xasync;
+// pub const xawait = libcoro.xawait;
+pub const xframe = libcoro.xframe;
+pub const xresume = libcoro.xresume;
+pub const xsuspend = libcoro.xsuspend;
+
+const Frame = libcoro.Frame;
+
 pub const IO = struct {
     ring: IO_Uring,
 
@@ -20,7 +30,7 @@ pub const IO = struct {
     completed_tail: ?*Completion = null,
 
     const Completion = struct {
-        frame: anyframe,
+        frame: Frame,
         result: i32 = undefined,
         next: ?*Completion = null,
     };
@@ -49,7 +59,7 @@ pub const IO = struct {
             self.completed_tail = null;
             while (head) |completion| {
                 head = completion.next;
-                resume completion.frame;
+                xresume(completion.frame);
             }
         }
         assert(self.completed_head == null);
@@ -74,14 +84,14 @@ pub const IO = struct {
         while (true) {
             // Guard against waiting indefinitely (if there are too few requests inflight),
             // especially if this is not the first time round the loop:
-            wait_nr = std.math.min(self.submitted, wait_nr);
+            wait_nr = @min(self.submitted, wait_nr);
             const completed = self.ring.copy_cqes(&cqes, wait_nr) catch |err| switch (err) {
                 error.SignalInterrupt => continue,
                 else => return err,
             };
             self.submitted -= completed;
             for (cqes[0..completed]) |cqe| {
-                const completion = @intToPtr(*Completion, @intCast(usize, cqe.user_data));
+                const completion = @as(*Completion, @ptrFromInt(@as(usize, @intCast(cqe.user_data))));
                 completion.result = cqe.res;
                 completion.next = null;
                 // We do not resume the completion frame here (instead appending to a linked list):
@@ -97,7 +107,7 @@ pub const IO = struct {
     fn flush_submissions(self: *IO, wait: bool) !void {
         var wait_nr: u32 = if (wait) 1 else 0;
         while (true) {
-            wait_nr = std.math.min(self.queued + self.submitted, wait_nr);
+            wait_nr = @min(self.queued + self.submitted, wait_nr);
             _ = self.ring.submit_and_wait(wait_nr) catch |err| switch (err) {
                 error.SignalInterrupt => continue,
                 // Wait for some completions and then try again:
@@ -120,9 +130,9 @@ pub const IO = struct {
         while (true) {
             const sqe = self.ring.get_sqe() catch |err| switch (err) {
                 error.SubmissionQueueFull => {
-                    var completion = Completion{ .frame = @frame(), .result = 0 };
+                    var completion = Completion{ .frame = xframe(), .result = 0 };
                     self.append_completion(&completion);
-                    suspend {}
+                    xsuspend();
                     continue;
                 },
             };
@@ -141,10 +151,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_accept(sqe, socket, address, address_size, os.SOCK.CLOEXEC);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .AGAIN => return error.WouldBlock,
                     .BADF => return error.FileDescriptorInvalid,
@@ -162,19 +172,19 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(os.socket_t, completion.result);
+                return @as(os.socket_t, @intCast(completion.result));
             }
         }
     }
 
     pub fn close(self: *IO, fd: os.fd_t) !void {
-        var completion = Completion{ .frame = @frame() };
+        var completion = Completion{ .frame = xframe() };
         const sqe = self.get_sqe();
         linux.io_uring_prep_close(sqe, fd);
-        sqe.user_data = @ptrToInt(&completion);
-        suspend {}
+        sqe.user_data = @intFromPtr(&completion);
+        xsuspend();
         if (completion.result < 0) {
-            switch (@intToEnum(os.E, -completion.result)) {
+            switch (@as(os.E, @enumFromInt(-completion.result))) {
                 .INTR => return, // A success, see https://github.com/ziglang/zig/issues/2425.
                 .BADF => return error.FileDescriptorInvalid,
                 .DQUOT => return error.DiskQuota,
@@ -194,13 +204,13 @@ pub const IO = struct {
         address_size: os.socklen_t,
     ) !void {
         while (true) {
-            var completion = Completion{ .frame = @frame() };
+            var completion = Completion{ .frame = xframe() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_connect(sqe, socket, address, address_size);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .ACCES => return error.AccessDenied,
                     .ADDRINUSE => return error.AddressInUse,
@@ -232,10 +242,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_fsync(sqe, fd, 0);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .BADF => return error.FileDescriptorInvalid,
                     .DQUOT => return error.DiskQuota,
@@ -264,10 +274,10 @@ pub const IO = struct {
             const pathname_c = try os.toPosixPath(pathname);
             const sqe = self.get_sqe();
             linux.io_uring_prep_openat(sqe, dir_fd, &pathname_c, flags, mode);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .ACCES => return error.AccessDenied,
                     .BADF => return error.FileDescriptorInvalid,
@@ -293,7 +303,7 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(os.fd_t, completion.result);
+                return @as(os.fd_t, @intCast(completion.result));
             }
         }
     }
@@ -303,10 +313,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_read(sqe, fd, buffer[0..buffer_limit(buffer.len)], offset);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .AGAIN => return error.WouldBlock,
                     .BADF => return error.NotOpenForReading,
@@ -323,7 +333,7 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
@@ -333,10 +343,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_recv(sqe, socket, buffer, os.MSG.NOSIGNAL);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .AGAIN => return error.WouldBlock,
                     .BADF => return error.FileDescriptorInvalid,
@@ -349,20 +359,20 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
 
     pub fn recvmsg(self: *IO, socket: os.socket_t, msg: *os.msghdr) !usize {
         while (true) {
-            var completion = Completion{ .frame = @frame() };
+            var completion = Completion{ .frame = xframe() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_recvmsg(sqe, socket, msg, os.MSG.NOSIGNAL);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .AGAIN => return error.WouldBlock,
                     .BADF => return error.FileDescriptorInvalid,
@@ -375,7 +385,7 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
@@ -385,10 +395,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_send(sqe, socket, buffer, os.MSG.NOSIGNAL);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .ACCES => return error.AccessDenied,
                     .AGAIN => return error.WouldBlock,
@@ -410,20 +420,20 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
 
     pub fn sendmsg(self: *IO, socket: os.socket_t, msg: *const os.msghdr_const) !usize {
         while (true) {
-            var completion = Completion{ .frame = @frame() };
+            var completion = Completion{ .frame = xframe() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_sendmsg(sqe, socket, msg, os.MSG.NOSIGNAL);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .ACCES => return error.AccessDenied,
                     .AGAIN => return error.WouldBlock,
@@ -445,7 +455,7 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
@@ -455,14 +465,14 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const ts: os.timespec = .{
                 .tv_sec = 0,
-                .tv_nsec = @intCast(i64, nanoseconds),
+                .tv_nsec = @as(i64, @intCast(nanoseconds)),
             };
             const sqe = self.get_sqe();
             linux.io_uring_prep_timeout(sqe, &ts, 0, 0);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .CANCELED => return error.Canceled,
                     .TIME => return, // A success.
@@ -479,10 +489,10 @@ pub const IO = struct {
             var completion = Completion{ .frame = @frame() };
             const sqe = self.get_sqe();
             linux.io_uring_prep_write(sqe, fd, buffer[0..buffer_limit(buffer.len)], offset);
-            sqe.user_data = @ptrToInt(&completion);
-            suspend {}
+            sqe.user_data = @intFromPtr(&completion);
+            xsuspend();
             if (completion.result < 0) {
-                switch (@intToEnum(os.E, -completion.result)) {
+                switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
                     .AGAIN => return error.WouldBlock,
                     .BADF => return error.NotOpenForWriting,
@@ -501,7 +511,7 @@ pub const IO = struct {
                     else => |errno| return os.unexpectedErrno(errno),
                 }
             } else {
-                return @intCast(usize, completion.result);
+                return @as(usize, @intCast(completion.result));
             }
         }
     }
@@ -510,10 +520,10 @@ pub const IO = struct {
         var completion = Completion{ .frame = @frame() };
         const sqe = self.get_sqe();
         linux.io_uring_prep_poll_add(sqe, fd, poll_mask);
-        sqe.user_data = @ptrToInt(&completion);
-        suspend {}
+        sqe.user_data = @intFromPtr(&completion);
+        xsuspend();
         if (completion.result < 0) {
-            switch (@intToEnum(os.E, -completion.result)) {
+            switch (@as(os.E, @enumFromInt(-completion.result))) {
                 .FAULT => unreachable,
                 .INTR => unreachable,
                 .INVAL => return error.Alignment,
@@ -521,10 +531,9 @@ pub const IO = struct {
                 else => |errno| return os.unexpectedErrno(errno),
             }
         } else {
-            return @intCast(usize, completion.result);
+            return @as(usize, @intCast(completion.result));
         }
     }
-
 };
 
 pub fn buffer_limit(buffer_len: usize) usize {
@@ -539,7 +548,7 @@ pub fn buffer_limit(buffer_len: usize) usize {
         .macos, .ios, .watchos, .tvos => std.math.maxInt(i32),
         else => std.math.maxInt(isize),
     };
-    return std.math.min(limit, buffer_len);
+    return @min(limit, buffer_len);
 }
 
 const testing = std.testing;
@@ -583,7 +592,7 @@ fn test_sleep(io: *IO) !void {
         try io.sleep(ms * std.time.ns_per_ms);
         const stopped = std.time.milliTimestamp();
 
-        try testing.expectApproxEqAbs(@as(f64, ms), @intToFloat(f64, stopped - started), margin);
+        try testing.expectApproxEqAbs(@as(f64, ms), @as(f64, @floatFromInt(stopped - started)), margin);
     }
     {
         const frames = try testing.allocator.alloc(@Frame(test_sleep_coroutine), 10);
@@ -603,7 +612,7 @@ fn test_sleep(io: *IO) !void {
         const stopped = std.time.milliTimestamp();
 
         try testing.expect(count == frames.len);
-        try testing.expectApproxEqAbs(@as(f64, ms), @intToFloat(f64, stopped - started), margin);
+        try testing.expectApproxEqAbs(@as(f64, ms), @as(f64, @floatFromInt(stopped - started)), margin);
     }
 }
 
