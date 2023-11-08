@@ -44,7 +44,7 @@ pub const Argument = union(enum) {
     int: i32,
     uint: u32,
     fixed: Fixed,
-    string: ?[]const u8,
+    string: [:0]const u8,
     object: ?*anyopaque,
     new_id: u32,
     array: ?*Array,
@@ -52,21 +52,21 @@ pub const Argument = union(enum) {
     pub const ArgumentType = std.meta.Tag(Argument);
     pub fn len(self: Argument) u16 {
         const l = switch (self) {
-            .string => |s| blk: {
-                const str = s.?;
-                break :blk 4 + str.len + 4 - (str.len % 4);
-            },
-            .new_id => |n| @sizeOf(@TypeOf(n)),
-            .uint => |_| 4,
-            else => unreachable,
+            .string => |str| (std.math.divCeil(usize, 4 + str.len + 1, 4) catch unreachable) * 4,
+            inline else => |n| @sizeOf(@TypeOf(n)),
+            // else => unreachable,
         };
-        return @as(u16, @intCast(l));
+        return @intCast(l);
     }
     pub fn marshal(self: *const Argument, writer: anytype) !void {
         switch (self.*) {
             .new_id => |new_id| {
                 try writer.writeInt(u32, new_id, .little);
             },
+            // .object => |o| {
+            //     _ = o;
+            //     try writer.writeInt(u32, 3, .little);
+            // },
             else => unreachable,
         }
     }
@@ -87,14 +87,9 @@ pub const Argument = union(enum) {
 
                 // std.debug.print("s len: {}\n", .{l});
                 std.debug.assert(l > 0);
-                const s = data[4 .. 4 + l - 1];
-                // const s = allocator.alloc(u8, l - 1) catch unreachable;
-                std.debug.print("s: {s}\n", .{s});
-                // Skip sentinel + padding
-                // l = l-1
-                // s = argdata.read(l).decode('utf-8')
-                // argdata.read(4 - (l % 4))
-                return Argument{ .string = s };
+                return Argument{
+                    .string = data[4..][0 .. l - 1 :0],
+                };
             },
             else => unreachable,
         }

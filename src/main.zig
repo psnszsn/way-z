@@ -6,6 +6,7 @@ const IO_Uring = linux.IO_Uring;
 const Argument = @import("argument.zig").Argument;
 const Proxy = @import("proxy.zig").Proxy;
 const Display = @import("display.zig").Display;
+const Callback = @import("display.zig").Callback;
 
 const libcoro = @import("libcoro");
 
@@ -29,7 +30,7 @@ pub fn main() !void {
     var io = IO.init(32, 0) catch unreachable;
     defer io.deinit();
     // var f1 = async signals(&io);
-    var frame = try xasync(way,.{&io}, stack);
+    var frame = try xasync(way, .{&io}, stack);
     _ = frame;
     io.run() catch unreachable;
     // nosuspend await frame catch unreachable;
@@ -66,17 +67,37 @@ pub const Registry = struct {
     pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub fn deinit(self: *Registry) void {
-        _ = event_signatures;
         self.proxy.deinit();
     }
 };
 
-pub fn way(io: *IO) !void {
+fn registryListener(event: Registry.Event) void {
+    std.log.info("event: {s}", .{event.global.interface});
+}
+fn cbListener(event: Callback.Event) void {
+    std.log.info("event: {}", .{event});
+}
+fn displayListener(event: Display.Event) void {
+    switch (event) {
+        .@"error" => |ev| {
+            std.log.info("display error {}", .{ev});
+        },
+        .delete_id => |ev| {
+            std.log.info("delete id {}", .{ev.id});
+        },
+    }
+}
 
+pub fn way(io: *IO) !void {
     var display = try Display.connect(allocator, io);
     defer display.deinit();
     var registry = try display.getRegistry();
     defer registry.deinit();
+    var cb = try display.sync();
+
+    registry.proxy.setListener(Registry.Event, registryListener);
+    cb.proxy.setListener(Callback.Event, cbListener);
+    display.proxy.setListener(Display.Event, displayListener);
     while (true) {
         try display.recvEvents();
         std.debug.print("count {}\n", .{display.connection.in.count});

@@ -55,10 +55,23 @@ pub const Display = struct {
     connection: *Connection,
     allocator: std.mem.Allocator,
     // reusable_oids: std.
+
+    pub const Event = union(enum) {
+        @"error": struct {
+            object_id: ?*anyopaque,
+            code: u32,
+            message: [*:0]const u8,
+        },
+        delete_id: struct {
+            id: u32,
+        },
+    };
+    pub const event_signatures = Proxy.genEventArgs(Event);
+
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
         self.* = .{
-            .proxy = .{ .display = self, .event_args = &.{} },
+            .proxy = .{ .display = self, .event_args = &Display.event_signatures },
             .objects = std.ArrayList(?*Proxy).init(allocator),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
@@ -68,8 +81,13 @@ pub const Display = struct {
         try self.objects.append(&self.proxy);
         self.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
 
+        const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
+        const wl_display = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
+
         const fd = try std.os.socket(linux.AF.UNIX, linux.SOCK.STREAM, 0);
-        const a = "/tmp/1000-runtime-dir/wayland-1";
+        var buf: [std.os.PATH_MAX]u8 = undefined;
+        const a = try std.fmt.bufPrint(&buf, "{s}/{s}", .{ xdg_runtime_dir, wl_display });
+
         var addr = try std.net.Address.initUnix(a);
         try io.connect(fd, &addr.any, addr.getOsSockLen());
 
@@ -86,6 +104,12 @@ pub const Display = struct {
         return self;
     }
 
+    const Header = packed struct {
+        id: u32,
+        opcode: u16,
+        size: u16,
+    };
+
     pub fn recvEvents(self: *Display) !void {
         var total = try self.connection.recv();
         // var rem = self.connection.in.count;
@@ -94,31 +118,23 @@ pub const Display = struct {
         }
         while (true) {
             var pre_wrap = self.connection.in.preWrapSlice();
-            var header_data = pre_wrap;
-            if (header_data.len < 8) {
-                header_data = try self.allocator.alloc(u8, 8);
-                self.connection.in.copy(header_data);
-                defer self.allocator.free(header_data);
-            }
-            const id: u32 = @bitCast(header_data[0..4].*);
-            const opcode: u16 = @bitCast(header_data[4..6].*);
-            const size: u16 = @bitCast(header_data[6..8].*);
+            var header: Header = undefined;
+            self.connection.in.copy(std.mem.asBytes(&header));
 
-            if (self.connection.in.count < size) break;
-            const proxy = self.objects.items[id].?;
+            if (self.connection.in.count < header.size) break;
+            const proxy = self.objects.items[header.id].?;
 
             var data = pre_wrap;
-            if (data.len < size) {
-                data = try self.allocator.alloc(u8, size);
+            if (data.len < header.size) {
+                data = try self.allocator.alloc(u8, header.size);
                 self.connection.in.copy(data);
             }
 
-            proxy.unmarshal_event(data[8..size], opcode);
+            proxy.unmarshal_event(data[8..header.size], header.opcode);
 
-            if (pre_wrap.len < 8) self.allocator.free(header_data);
-            if (pre_wrap.len < size) self.allocator.free(data);
+            if (pre_wrap.len < header.size) self.allocator.free(data);
 
-            self.connection.in.consume(size);
+            self.connection.in.consume(header.size);
             if (self.connection.in.count < 8) break;
         }
     }
@@ -131,24 +147,28 @@ pub const Display = struct {
     }
 
     pub fn getRegistry(self: *Display) !*Registry {
-        var registry = try self.allocator.create(Registry);
-        registry.* = .{ .proxy = .{ .display = self, .event_args = &Registry.event_signatures } };
-        try self.objects.append(&registry.proxy);
-        registry.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
-
-        std.debug.print("asd {any}\n", .{Registry.event_signatures});
-
         var _args = [_]Argument{
-            .{ .new_id = registry.proxy.id },
+            .{ .new_id = 0 },
         };
-        try self.proxy.marshal_request(1, &_args);
-        // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
-
-        // try self.connection.out.pushSlice(get_registry);
-
-        const ret = try self.connection.send();
-        std.debug.print("sent {}\n", .{ret});
-
-        return registry;
+        return self.proxy.marshal_request_constructor(Registry, 1, &_args);
     }
+
+    pub fn sync(self: *Display) !*Callback {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+        };
+        return self.proxy.marshal_request_constructor(Callback, 0, &_args);
+    }
+};
+
+pub const Callback = struct {
+    proxy: Proxy,
+
+    pub const Event = union(enum) {
+        done: struct {
+            callback_data: u32,
+        },
+    };
+
+    pub const event_signatures = Proxy.genEventArgs(Event);
 };
