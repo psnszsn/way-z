@@ -5,6 +5,7 @@ const IO = @import("io_async.zig").IO;
 const Registry = @import("main.zig").Registry;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
+const generated = @import("generated/wl.zig");
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
@@ -49,37 +50,28 @@ pub const Connection = struct {
 };
 
 pub const Display = struct {
-    proxy: Proxy,
+    wl_display: generated.Display,
     objects: std.ArrayList(?*Proxy),
     unused_oids: std.ArrayList(u32),
     connection: *Connection,
     allocator: std.mem.Allocator,
     // reusable_oids: std.
 
-    pub const Event = union(enum) {
-        @"error": struct {
-            object_id: ?*anyopaque,
-            code: u32,
-            message: [*:0]const u8,
-        },
-        delete_id: struct {
-            id: u32,
-        },
-    };
-    pub const event_signatures = Proxy.genEventArgs(Event);
+    pub const Event = generated.Display.Event;
+    pub const event_signatures = generated.Display.event_signatures;
 
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
         self.* = .{
-            .proxy = .{ .display = self, .event_args = &Display.event_signatures },
+            .wl_display = .{.proxy = .{ .display = self, .event_args = &Display.event_signatures }},
             .objects = std.ArrayList(?*Proxy).init(allocator),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
             .allocator = allocator,
         };
         try self.objects.append(null);
-        try self.objects.append(&self.proxy);
-        self.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
+        try self.objects.append(&self.wl_display.proxy);
+        self.wl_display.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
         const wl_display = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
@@ -91,7 +83,7 @@ pub const Display = struct {
         var addr = try std.net.Address.initUnix(a);
         try io.connect(fd, &addr.any, addr.getOsSockLen());
 
-        var connection = try allocator.create(Connection);
+        const connection = try allocator.create(Connection);
         connection.* = .{
             .socket_fd = fd,
             .io = io,
@@ -111,13 +103,13 @@ pub const Display = struct {
     };
 
     pub fn recvEvents(self: *Display) !void {
-        var total = try self.connection.recv();
+        const total = try self.connection.recv();
         // var rem = self.connection.in.count;
         if (total == 0) {
             return error.BrokenPipe;
         }
         while (true) {
-            var pre_wrap = self.connection.in.preWrapSlice();
+            const pre_wrap = self.connection.in.preWrapSlice();
             var header: Header = undefined;
             self.connection.in.copy(std.mem.asBytes(&header));
 
@@ -146,29 +138,27 @@ pub const Display = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn getRegistry(self: *Display) !*Registry {
-        var _args = [_]Argument{
-            .{ .new_id = 0 },
-        };
-        return self.proxy.marshal_request_constructor(Registry, 1, &_args);
+
+    pub inline fn get_registry(self: *Display) !*generated.Registry {
+        return self.wl_display.get_registry();
     }
 
-    pub fn sync(self: *Display) !*Callback {
-        var _args = [_]Argument{
-            .{ .new_id = 0 },
-        };
-        return self.proxy.marshal_request_constructor(Callback, 0, &_args);
+    pub inline fn sync(self: *Display) !*generated.Callback {
+        return self.wl_display.sync();
     }
-};
-
-pub const Callback = struct {
-    proxy: Proxy,
-
-    pub const Event = union(enum) {
-        done: struct {
-            callback_data: u32,
-        },
-    };
-
-    pub const event_signatures = Proxy.genEventArgs(Event);
+    pub inline fn setListener(
+        self: *Display,
+        comptime T: type,
+        comptime _listener: fn (display: *Display, event: Event, data: T) void,
+        _data: T,
+    ) void {
+        const w = struct { 
+            fn l (display: *generated.Display, event: Event, data: T) void{
+                const u: *Display = @ptrCast(display);
+                _listener(u,event,data);
+            }
+        };
+        return self.wl_display.setListener(T, w.l, _data);
+    }
+    // pub inline fn roundtrip()
 };

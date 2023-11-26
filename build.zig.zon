@@ -6,7 +6,7 @@
     .dependencies = .{
         .zigcoro = .{
             .url = "https://github.com/rsepassi/zigcoro/archive/master.tar.gz",
-            .hash = "12209b86e7e9ab0a77c657ba05e42ce1778ab30b1001ed26cbbe1ae0ecb0ad33fb4a",
+            .hash = "1220c5cd2bc1e355abd678b588cc0dcb401f553a5edacec8afb2cd53f5b9b3211b16",
         },
     },
 }

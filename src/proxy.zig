@@ -6,7 +6,8 @@ pub const Proxy = struct {
     id: u32 = 0,
     display: *Display,
     event_args: []const []const Argument.ArgumentType,
-    listener: ?*const fn (u16, []Argument) void = null,
+    listener: ?*const fn (*anyopaque, u16, []Argument, data: *anyopaque) void = null,
+    listener_data: *anyopaque = undefined,
     pub fn deinit(self: *Proxy) void {
         self.display.objects.items[self.id] = null;
         self.display.allocator.destroy(self);
@@ -24,7 +25,7 @@ pub const Proxy = struct {
             // std.debug.print("===\n", .{});
         }
         if (self.listener) |l| {
-            l(opcode, args[0..signature.len]);
+            l(@ptrCast(self), opcode, args[0..signature.len], self.listener_data);
         }
     }
 
@@ -71,10 +72,11 @@ pub const Proxy = struct {
     pub fn setListener(
         self: *Proxy,
         comptime Event: type,
-        comptime cb: *const fn (event: Event) void,
+        comptime cb: *const fn (self: *anyopaque, event: Event, data: *anyopaque) void,
+        data: *anyopaque,
     ) void {
         const w = struct {
-            fn inner(opcode: u16, args: []Argument) void {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, _data: *anyopaque) void {
                 for (args) |arg| {
                     _ = arg;
                     const fields = @typeInfo(Event).Union.fields;
@@ -90,8 +92,11 @@ pub const Proxy = struct {
                                     else => unreachable,
                                 }
                             }
-                            @call(.always_inline, cb, .{
+                            // TODO: use .always_inline
+                            @call(.auto, cb, .{
+                                impl,
                                 @unionInit(Event, union_variant.name, event),
+                                _data,
                             });
                             return;
                         },
@@ -101,6 +106,7 @@ pub const Proxy = struct {
             }
         };
         self.listener = w.inner;
+        self.listener_data = data;
     }
 
     pub fn genEventArgs(comptime Event: type) [std.meta.fields(Event).len][]const Argument.ArgumentType {

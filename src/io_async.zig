@@ -641,7 +641,7 @@ fn test_accept_connect_send_receive(io: *IO) !void {
 
     var accept_frame = async io.accept(server, &accept_address, &accept_address_size);
     try io.connect(client, &address.any, address.getOsSockLen());
-    var accept = try await accept_frame;
+    const accept = try await accept_frame;
     defer io.close(accept) catch unreachable;
 
     const send_size = try io.send(client, buffer_send[0..]);

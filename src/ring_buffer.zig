@@ -111,13 +111,13 @@ const Display = struct {
 };
 
 test "asd" {
-    var disp = try testing.allocator.create(Display);
+    const disp = try testing.allocator.create(Display);
     disp.* = .{
         .connection = undefined,
     };
     defer testing.allocator.destroy(disp);
 
-    var connection = try testing.allocator.create(Connection);
+    const connection = try testing.allocator.create(Connection);
     defer testing.allocator.destroy(connection);
     connection.* = .{
         .socket_fd = 7,
@@ -138,7 +138,7 @@ test "writev, readv" {
     try src_file.writevAll(&read_iovecs);
 
     try src_file.seekTo(0);
-    var read = try src_file.readToEndAlloc(testing.allocator, 5000);
+    const read = try src_file.readToEndAlloc(testing.allocator, 5000);
     defer testing.allocator.free(read);
     try testing.expectEqualStrings(read, "ieoa");
 
