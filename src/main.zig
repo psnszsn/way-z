@@ -89,7 +89,7 @@ fn displayListener(self: *Display, event: Display.Event, data: *anyopaque) void 
             std.log.info("delete id {}", .{ev.id});
             // if (ev.id == 3) {
             //     var cb = ddd.sync() catch unreachable;
-            //     cb.proxy.setListener(Callback.Event, cbListener);
+            //     cb.proxy.set_listener(Callback.Event, cbListener);
             // }
         },
     }
@@ -102,12 +102,12 @@ pub fn way(io: *IO) !void {
     _ = &registry;
     // defer registry.deinit();
 
-    registry.setListener(
+    registry.set_listener(
         *anyopaque,
         registryListener,
         @ptrFromInt(7),
     );
-    display.setListener(
+    display.set_listener(
         *anyopaque,
         displayListener,
         @ptrFromInt(7),

@@ -14,7 +14,7 @@ pub fn async_main(io: *wayland.IO) !void {
     const display = try wayland.Display.connect(allocator, io);
     const registry = try display.get_registry();
     var foo: u32 = 42;
-    registry.setListener(*u32, listener, &foo);
+    registry.set_listener(*u32, listener, &foo);
     // if (display.roundtrip() != .SUCCESS) return error.RoundtripFailed;
     // try display.recvEvents();
     try display.roundtrip();

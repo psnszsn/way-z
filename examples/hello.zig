@@ -22,8 +22,8 @@ pub fn main() !void {
 // pub fn async_main(io: *wayland.IO) !void {
 //     const display = try wayland.Display.connect(allocator, io);
 //     const registry = try display.get_registry();
-//     display.setListener(?*anyopaque, displayListener, null);
-//     registry.setListener(?*anyopaque, listener, null);
+//     display.set_listener(?*anyopaque, displayListener, null);
+//     registry.set_listener(?*anyopaque, listener, null);
 //     while (true) {
 //         try display.recvEvents();
 //         std.debug.print("count {}\n", .{display.connection.in.count});
@@ -40,7 +40,7 @@ pub fn async_main(io: *wayland.IO) !void {
         .wm_base = null,
     };
 
-    registry.setListener(*Context, registryListener, &context);
+    registry.set_listener(*Context, registryListener, &context);
     try display.roundtrip();
 
     const shm = context.shm orelse return error.NoWlShm;
@@ -74,8 +74,8 @@ pub fn async_main(io: *wayland.IO) !void {
 
     var running = true;
 
-    xdg_surface.setListener(*wl.Surface, xdgSurfaceListener, surface);
-    xdg_toplevel.setListener(*bool, xdgToplevelListener, &running);
+    xdg_surface.set_listener(*wl.Surface, xdgSurfaceListener, surface);
+    xdg_toplevel.set_listener(*bool, xdgToplevelListener, &running);
 
     surface.commit();
     try display.roundtrip();
@@ -128,7 +128,7 @@ fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) vo
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
                 const seat = registry.bind(global.name, wl.Seat) catch return;
-                seat.setListener(?*anyopaque, seatListener, null);
+                seat.set_listener(?*anyopaque, seatListener, null);
             }
         },
         .global_remove => {},

@@ -146,7 +146,7 @@ pub const Display = struct {
         return self.wl_display.sync();
     }
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Display,
         comptime T: type,
         comptime _listener: fn (display: *Display, event: Event, data: T) void,
@@ -158,7 +158,7 @@ pub const Display = struct {
                 _listener(u, event, data);
             }
         };
-        return self.wl_display.setListener(T, w.l, _data);
+        return self.wl_display.set_listener(T, w.l, _data);
     }
     pub fn roundtrip(self: *const Display) !void {
         const w = struct {
@@ -171,7 +171,7 @@ pub const Display = struct {
         };
         const callblack = try self.sync();
         var done: bool = false;
-        callblack.setListener(*bool, w.cbListener, &done);
+        callblack.set_listener(*bool, w.cbListener, &done);
         while(!done){
             try self.recvEvents();
         }

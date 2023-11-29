@@ -48,7 +48,7 @@ class Arg:
                 self.description = c.text
                 self.summary = c.get("summary") or Never
 
-    def zig_type(self) -> str:
+    def zig_type(self, obj_use_ptr:bool = False) -> str:
         # print(self)
         protocol = self.parent.interface.protocol
         match self.type:
@@ -77,6 +77,7 @@ class Arg:
             case "string":
                 return "?[*:0]const u8" if self.allow_null else "[*:0]const u8"
             case "object":
+                if not obj_use_ptr: return "u32"
                 qs = "?*" if self.allow_null else "*"
                 if not self.interface:
                     return qs + "anyopaque"
@@ -156,7 +157,7 @@ class Request:
                 if not arg.interface:
                     fd.write(f", comptime T: type, _version: u32")
             else:
-                fd.write(f", _{arg.name}: {arg.zig_type()}")
+                fd.write(f", _{arg.name}: {arg.zig_type(obj_use_ptr=True)}")
 
         fd.write(")")
 
@@ -464,17 +465,59 @@ class Interface:
             fd.write("};\n")
             fd.write("pub const event_signatures = Proxy.genEventArgs(Event);\n")
 
-            setlistener = f"""
-                pub inline fn setListener(
+            fd.write(f"""
+                pub inline fn set_listener(
                     self: *{name_camel},
                     comptime T: type,
                     comptime _listener: *const fn (*{name_camel}, Event, T) void,
                     _data: T,
                 ) void {{
-                    self.proxy.setListener({name_camel}.Event, @ptrCast(_listener), @ptrCast(_data) );
-                }}
-            """
-            fd.write(dedent(setlistener))
+                    const w = struct{{
+                        fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {{
+                            const event = switch (opcode) {{
+                        """)
+            for i, e in enumerate(self.events.values()):
+                fd.write(f"{i} => Event")
+                if e.args:
+                    fd.write("{")
+                fd.write(f'''.@"{e.name}"''')
+
+                if not e.args:
+                    fd.write(",")
+                    continue
+
+                fd.write("= .{")
+                for arg_i, arg in enumerate(e.args):
+                    fd.write(f'''.@"{arg.name}" = ''')
+                    match arg.type:
+                        case "array":
+                            fd.write("undefined,")
+                        case "uint" if arg.enum:
+                            fd.write(f"@bitCast(args[{arg_i}].uint),")
+                        case t:
+                            fd.write(f"args[{arg_i}].{t},")
+
+                fd.write("}")
+                fd.write("},")
+            fd.write("else => unreachable,")
+
+            fd.write("};")
+            if (all(not e.args for e in self.events.values() )):
+                fd.write("_ = args;")
+            fd.write(f"""
+                        @call(.always_inline, _listener, .{{
+                            @as(*{name_camel}, @ptrCast(@alignCast(impl))),
+                            event,
+                            @as(T, @ptrCast(@alignCast(__data))),
+                        }});
+                    }}
+                }};
+
+                self.proxy.listener = w.inner;
+                self.proxy.listener_data = _data;
+
+            }}
+            """)
 
         for e in self.requests.values():
             e.emit_fn(fd)

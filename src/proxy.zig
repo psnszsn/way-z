@@ -74,61 +74,6 @@ pub const Proxy = struct {
         std.debug.print("marshal {} {} {any}\n", .{ self.id, opcode, args });
     }
 
-    pub fn setListener(
-        self: *Proxy,
-        comptime Event: type,
-        comptime cb: *const fn (self: *anyopaque, event: Event, data: ?*anyopaque) void,
-        data: ?*anyopaque,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, _data: ?*anyopaque) void {
-                for (args) |arg| {
-                    _ = arg;
-                    const fields = @typeInfo(Event).Union.fields;
-                    return switch (opcode) {
-                        inline 0...fields.len - 1 => |_op| {
-                            const union_variant = fields[_op];
-                            var event: union_variant.type = undefined;
-                            if (@typeInfo(union_variant.type) != .Struct) continue;
-                            const variant_fields = @typeInfo(union_variant.type).Struct.fields;
-                            inline for (variant_fields, 0..) |f, i| {
-                                // switch (args[i]) {
-                                //     .string => |str| @field(event, f.name) = str,
-                                //     else => {},
-                                // }
-                                switch (f.type) {
-                                    [*:0]const u8 => @field(event, f.name) = args[i].string,
-                                    else => switch (@typeInfo(f.type)) {
-                                        .Int, .Struct => @field(event, f.name) = @bitCast(args[i].uint),
-                                        // .Pointer => @field(event, f.name) = args[i].object,
-                                        .Optional => @field(event, f.name) = @as(f.type, @ptrFromInt(args[i].object)),
-
-                                        // .Enum => @field(event, f.name) = @enumFromInt(args[i].uint),
-
-                                        else => {
-                                            std.debug.print("{}\n", .{f.type});
-                                            unreachable;
-                                        },
-                                    },
-                                }
-                            }
-                            // TODO: use .always_inline
-                            @call(.auto, cb, .{
-                                impl,
-                                @unionInit(Event, union_variant.name, event),
-                                _data,
-                            });
-                            return;
-                        },
-                        else => unreachable,
-                    };
-                }
-            }
-        };
-        self.listener = w.inner;
-        self.listener_data = data;
-    }
-
     pub fn genEventArgs(comptime Event: type) [std.meta.fields(Event).len][]const Argument.ArgumentType {
         const fields = std.meta.fields(Event);
         comptime var r: [fields.len][]const Argument.ArgumentType = undefined;

@@ -13,8 +13,8 @@ pub fn main() !void {
 pub fn async_main(io: *wayland.IO) !void {
     const display = try wayland.Display.connect(allocator, io);
     const registry = try display.get_registry();
-    display.setListener(?*anyopaque, displayListener, null);
-    registry.setListener(?*anyopaque, listener, null);
+    display.set_listener(?*anyopaque, displayListener, null);
+    registry.set_listener(?*anyopaque, listener, null);
     try display.roundtrip();
     try display.roundtrip();
 }
@@ -25,7 +25,7 @@ fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) vo
             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
                 std.debug.print("global: {}\n", .{global});
                 const seat = registry.bind(global.name, wl.Seat, global.version) catch return;
-                seat.setListener(?*anyopaque, seatListener, null);
+                seat.set_listener(?*anyopaque, seatListener, null);
             }
         },
         .global_remove => {},

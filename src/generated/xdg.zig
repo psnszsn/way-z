@@ -25,13 +25,30 @@ pub const WmBase = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *WmBase,
         comptime T: type,
         comptime _listener: *const fn (*WmBase, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(WmBase.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .ping = .{
+                        .serial = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*WmBase, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const WmBase) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -176,13 +193,30 @@ pub const Surface = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Surface,
         comptime T: type,
         comptime _listener: *const fn (*Surface, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Surface.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .configure = .{
+                        .serial = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Surface, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const Surface) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -272,13 +306,40 @@ pub const Toplevel = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Toplevel,
         comptime T: type,
         comptime _listener: *const fn (*Toplevel, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Toplevel.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .configure = .{
+                        .width = args[0].int,
+                        .height = args[1].int,
+                        .states = undefined,
+                    } },
+                    1 => Event.close,
+                    2 => Event{ .configure_bounds = .{
+                        .width = args[0].int,
+                        .height = args[1].int,
+                    } },
+                    3 => Event{ .wm_capabilities = .{
+                        .capabilities = undefined,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Toplevel, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const Toplevel) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -380,13 +441,37 @@ pub const Popup = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Popup,
         comptime T: type,
         comptime _listener: *const fn (*Popup, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Popup.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .configure = .{
+                        .x = args[0].int,
+                        .y = args[1].int,
+                        .width = args[2].int,
+                        .height = args[3].int,
+                    } },
+                    1 => Event.popup_done,
+                    2 => Event{ .repositioned = .{
+                        .token = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Popup, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const Popup) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;

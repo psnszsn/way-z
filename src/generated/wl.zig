@@ -16,7 +16,7 @@ pub const Display = struct {
     };
     pub const Event = union(enum) {
         @"error": struct {
-            object_id: ?*anyopaque,
+            object_id: ?u32,
             code: u32,
             message: [*:0]const u8,
         },
@@ -26,13 +26,35 @@ pub const Display = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Display,
         comptime T: type,
         comptime _listener: *const fn (*Display, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Display.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .@"error" = .{
+                        .object_id = args[0].object,
+                        .code = args[1].uint,
+                        .message = args[2].string,
+                    } },
+                    1 => Event{ .delete_id = .{
+                        .id = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Display, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn sync(self: *const Display) !*Callback {
         var _args = [_]Argument{
@@ -63,13 +85,35 @@ pub const Registry = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Registry,
         comptime T: type,
         comptime _listener: *const fn (*Registry, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Registry.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .global = .{
+                        .name = args[0].uint,
+                        .interface = args[1].string,
+                        .version = args[2].uint,
+                    } },
+                    1 => Event{ .global_remove = .{
+                        .name = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Registry, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) !*T {
         var _args = [_]Argument{
@@ -92,13 +136,30 @@ pub const Callback = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Callback,
         comptime T: type,
         comptime _listener: *const fn (*Callback, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Callback.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .done = .{
+                        .callback_data = args[0].uint,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Callback, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
 };
 pub const Compositor = struct {
@@ -270,13 +331,30 @@ pub const Shm = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Shm,
         comptime T: type,
         comptime _listener: *const fn (*Shm, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Shm.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .format = .{
+                        .format = @bitCast(args[0].uint),
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Shm, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) !*ShmPool {
         var _args = [_]Argument{
@@ -296,13 +374,29 @@ pub const Buffer = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Buffer,
         comptime T: type,
         comptime _listener: *const fn (*Buffer, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Buffer.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event.release,
+                    else => unreachable,
+                };
+                _ = args;
+                @call(.always_inline, _listener, .{
+                    @as(*Buffer, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const Buffer) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -332,13 +426,36 @@ pub const DataOffer = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *DataOffer,
         comptime T: type,
         comptime _listener: *const fn (*DataOffer, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(DataOffer.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .offer = .{
+                        .mime_type = args[0].string,
+                    } },
+                    1 => Event{ .source_actions = .{
+                        .source_actions = @bitCast(args[0].uint),
+                    } },
+                    2 => Event{ .action = .{
+                        .dnd_action = @bitCast(args[0].uint),
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*DataOffer, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn accept(self: *const DataOffer, _serial: u32, _mime_type: ?[*:0]const u8) void {
         var _args = [_]Argument{
@@ -394,13 +511,40 @@ pub const DataSource = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *DataSource,
         comptime T: type,
         comptime _listener: *const fn (*DataSource, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(DataSource.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .target = .{
+                        .mime_type = args[0].string,
+                    } },
+                    1 => Event{ .send = .{
+                        .mime_type = args[0].string,
+                        .fd = args[1].fd,
+                    } },
+                    2 => Event.cancelled,
+                    3 => Event.dnd_drop_performed,
+                    4 => Event.dnd_finished,
+                    5 => Event{ .action = .{
+                        .dnd_action = @bitCast(args[0].uint),
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*DataSource, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn offer(self: *const DataSource, _mime_type: [*:0]const u8) void {
         var _args = [_]Argument{
@@ -430,10 +574,10 @@ pub const DataDevice = struct {
         data_offer: struct { id: *DataOffer },
         enter: struct {
             serial: u32,
-            surface: ?*Surface,
+            surface: ?u32,
             x: Fixed,
             y: Fixed,
-            id: ?*DataOffer,
+            id: u32,
         },
         leave: void,
         motion: struct {
@@ -443,18 +587,52 @@ pub const DataDevice = struct {
         },
         drop: void,
         selection: struct {
-            id: ?*DataOffer,
+            id: u32,
         },
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *DataDevice,
         comptime T: type,
         comptime _listener: *const fn (*DataDevice, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(DataDevice.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .data_offer = .{
+                        .id = args[0].new_id,
+                    } },
+                    1 => Event{ .enter = .{
+                        .serial = args[0].uint,
+                        .surface = args[1].object,
+                        .x = args[2].fixed,
+                        .y = args[3].fixed,
+                        .id = args[4].object,
+                    } },
+                    2 => Event.leave,
+                    3 => Event{ .motion = .{
+                        .time = args[0].uint,
+                        .x = args[1].fixed,
+                        .y = args[2].fixed,
+                    } },
+                    4 => Event.drop,
+                    5 => Event{ .selection = .{
+                        .id = args[0].object,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*DataDevice, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn start_drag(self: *const DataDevice, _source: ?*DataSource, _origin: *Surface, _icon: ?*Surface, _serial: u32) void {
         var _args = [_]Argument{
@@ -550,13 +728,36 @@ pub const ShellSurface = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *ShellSurface,
         comptime T: type,
         comptime _listener: *const fn (*ShellSurface, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(ShellSurface.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .ping = .{
+                        .serial = args[0].uint,
+                    } },
+                    1 => Event{ .configure = .{
+                        .edges = @bitCast(args[0].uint),
+                        .width = args[1].int,
+                        .height = args[2].int,
+                    } },
+                    2 => Event.popup_done,
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*ShellSurface, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn pong(self: *const ShellSurface, _serial: u32) void {
         var _args = [_]Argument{
@@ -642,10 +843,10 @@ pub const Surface = struct {
     };
     pub const Event = union(enum) {
         enter: struct {
-            output: ?*Output,
+            output: ?u32,
         },
         leave: struct {
-            output: ?*Output,
+            output: ?u32,
         },
         preferred_buffer_scale: struct {
             factor: i32,
@@ -656,13 +857,39 @@ pub const Surface = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Surface,
         comptime T: type,
         comptime _listener: *const fn (*Surface, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Surface.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .enter = .{
+                        .output = args[0].object,
+                    } },
+                    1 => Event{ .leave = .{
+                        .output = args[0].object,
+                    } },
+                    2 => Event{ .preferred_buffer_scale = .{
+                        .factor = args[0].int,
+                    } },
+                    3 => Event{ .preferred_buffer_transform = .{
+                        .transform = @bitCast(args[0].uint),
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Surface, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn destroy(self: *const Surface) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -758,13 +985,33 @@ pub const Seat = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Seat,
         comptime T: type,
         comptime _listener: *const fn (*Seat, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Seat.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .capabilities = .{
+                        .capabilities = @bitCast(args[0].uint),
+                    } },
+                    1 => Event{ .name = .{
+                        .name = args[0].string,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Seat, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn get_pointer(self: *const Seat) !*Pointer {
         var _args = [_]Argument{
@@ -817,13 +1064,13 @@ pub const Pointer = struct {
     pub const Event = union(enum) {
         enter: struct {
             serial: u32,
-            surface: ?*Surface,
+            surface: ?u32,
             surface_x: Fixed,
             surface_y: Fixed,
         },
         leave: struct {
             serial: u32,
-            surface: ?*Surface,
+            surface: ?u32,
         },
         motion: struct {
             time: u32,
@@ -864,13 +1111,73 @@ pub const Pointer = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Pointer,
         comptime T: type,
         comptime _listener: *const fn (*Pointer, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Pointer.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .enter = .{
+                        .serial = args[0].uint,
+                        .surface = args[1].object,
+                        .surface_x = args[2].fixed,
+                        .surface_y = args[3].fixed,
+                    } },
+                    1 => Event{ .leave = .{
+                        .serial = args[0].uint,
+                        .surface = args[1].object,
+                    } },
+                    2 => Event{ .motion = .{
+                        .time = args[0].uint,
+                        .surface_x = args[1].fixed,
+                        .surface_y = args[2].fixed,
+                    } },
+                    3 => Event{ .button = .{
+                        .serial = args[0].uint,
+                        .time = args[1].uint,
+                        .button = args[2].uint,
+                        .state = @bitCast(args[3].uint),
+                    } },
+                    4 => Event{ .axis = .{
+                        .time = args[0].uint,
+                        .axis = @bitCast(args[1].uint),
+                        .value = args[2].fixed,
+                    } },
+                    5 => Event.frame,
+                    6 => Event{ .axis_source = .{
+                        .axis_source = @bitCast(args[0].uint),
+                    } },
+                    7 => Event{ .axis_stop = .{
+                        .time = args[0].uint,
+                        .axis = @bitCast(args[1].uint),
+                    } },
+                    8 => Event{ .axis_discrete = .{
+                        .axis = @bitCast(args[0].uint),
+                        .discrete = args[1].int,
+                    } },
+                    9 => Event{ .axis_value120 = .{
+                        .axis = @bitCast(args[0].uint),
+                        .value120 = args[1].int,
+                    } },
+                    10 => Event{ .axis_relative_direction = .{
+                        .axis = @bitCast(args[0].uint),
+                        .direction = @bitCast(args[1].uint),
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Pointer, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn set_cursor(self: *const Pointer, _serial: u32, _surface: ?*Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
@@ -906,12 +1213,12 @@ pub const Keyboard = struct {
         },
         enter: struct {
             serial: u32,
-            surface: ?*Surface,
+            surface: ?u32,
             keys: *anyopaque,
         },
         leave: struct {
             serial: u32,
-            surface: ?*Surface,
+            surface: ?u32,
         },
         key: struct {
             serial: u32,
@@ -933,13 +1240,58 @@ pub const Keyboard = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Keyboard,
         comptime T: type,
         comptime _listener: *const fn (*Keyboard, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Keyboard.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .keymap = .{
+                        .format = @bitCast(args[0].uint),
+                        .fd = args[1].fd,
+                        .size = args[2].uint,
+                    } },
+                    1 => Event{ .enter = .{
+                        .serial = args[0].uint,
+                        .surface = args[1].object,
+                        .keys = undefined,
+                    } },
+                    2 => Event{ .leave = .{
+                        .serial = args[0].uint,
+                        .surface = args[1].object,
+                    } },
+                    3 => Event{ .key = .{
+                        .serial = args[0].uint,
+                        .time = args[1].uint,
+                        .key = args[2].uint,
+                        .state = @bitCast(args[3].uint),
+                    } },
+                    4 => Event{ .modifiers = .{
+                        .serial = args[0].uint,
+                        .mods_depressed = args[1].uint,
+                        .mods_latched = args[2].uint,
+                        .mods_locked = args[3].uint,
+                        .group = args[4].uint,
+                    } },
+                    5 => Event{ .repeat_info = .{
+                        .rate = args[0].int,
+                        .delay = args[1].int,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Keyboard, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn release(self: *const Keyboard) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -954,7 +1306,7 @@ pub const Touch = struct {
         down: struct {
             serial: u32,
             time: u32,
-            surface: ?*Surface,
+            surface: ?u32,
             id: i32,
             x: Fixed,
             y: Fixed,
@@ -984,13 +1336,57 @@ pub const Touch = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Touch,
         comptime T: type,
         comptime _listener: *const fn (*Touch, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Touch.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .down = .{
+                        .serial = args[0].uint,
+                        .time = args[1].uint,
+                        .surface = args[2].object,
+                        .id = args[3].int,
+                        .x = args[4].fixed,
+                        .y = args[5].fixed,
+                    } },
+                    1 => Event{ .up = .{
+                        .serial = args[0].uint,
+                        .time = args[1].uint,
+                        .id = args[2].int,
+                    } },
+                    2 => Event{ .motion = .{
+                        .time = args[0].uint,
+                        .id = args[1].int,
+                        .x = args[2].fixed,
+                        .y = args[3].fixed,
+                    } },
+                    3 => Event.frame,
+                    4 => Event.cancel,
+                    5 => Event{ .shape = .{
+                        .id = args[0].int,
+                        .major = args[1].fixed,
+                        .minor = args[2].fixed,
+                    } },
+                    6 => Event{ .orientation = .{
+                        .id = args[0].int,
+                        .orientation = args[1].fixed,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Touch, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn release(self: *const Touch) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -1054,13 +1450,53 @@ pub const Output = struct {
     };
     pub const event_signatures = Proxy.genEventArgs(Event);
 
-    pub inline fn setListener(
+    pub inline fn set_listener(
         self: *Output,
         comptime T: type,
         comptime _listener: *const fn (*Output, Event, T) void,
         _data: T,
     ) void {
-        self.proxy.setListener(Output.Event, @ptrCast(_listener), @ptrCast(_data));
+        const w = struct {
+            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = switch (opcode) {
+                    0 => Event{ .geometry = .{
+                        .x = args[0].int,
+                        .y = args[1].int,
+                        .physical_width = args[2].int,
+                        .physical_height = args[3].int,
+                        .subpixel = args[4].int,
+                        .make = args[5].string,
+                        .model = args[6].string,
+                        .transform = args[7].int,
+                    } },
+                    1 => Event{ .mode = .{
+                        .flags = @bitCast(args[0].uint),
+                        .width = args[1].int,
+                        .height = args[2].int,
+                        .refresh = args[3].int,
+                    } },
+                    2 => Event.done,
+                    3 => Event{ .scale = .{
+                        .factor = args[0].int,
+                    } },
+                    4 => Event{ .name = .{
+                        .name = args[0].string,
+                    } },
+                    5 => Event{ .description = .{
+                        .description = args[0].string,
+                    } },
+                    else => unreachable,
+                };
+                @call(.always_inline, _listener, .{
+                    @as(*Output, @ptrCast(@alignCast(impl))),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.proxy.listener = w.inner;
+        self.proxy.listener_data = _data;
     }
     pub fn release(self: *const Output) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
