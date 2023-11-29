@@ -3,6 +3,7 @@ pub const Display = @import("display.zig").Display;
 pub const Argument = @import("argument.zig").Argument;
 pub const Proxy = @import("proxy.zig").Proxy;
 pub const wl = @import("generated/wl.zig");
+pub const xdg = @import("generated/xdg.zig");
 
 const std = @import("std");
 pub const IO = @import("./io_async.zig").IO;

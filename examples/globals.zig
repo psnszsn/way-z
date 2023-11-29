@@ -16,8 +16,8 @@ pub fn async_main(io: *wayland.IO) !void {
     var foo: u32 = 42;
     registry.setListener(*u32, listener, &foo);
     // if (display.roundtrip() != .SUCCESS) return error.RoundtripFailed;
-    try display.recvEvents();
-    try display.recvEvents();
+    // try display.recvEvents();
+    try display.roundtrip();
     // while (true) {
     //     try display.recvEvents();
     //     std.debug.print("count {}\n", .{display.connection.in.count});

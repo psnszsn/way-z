@@ -6,7 +6,8 @@ const Fixed = @import("../argument.zig").Fixed;
 
 pub const Display = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_display";
     pub const Error = enum(c_int) {
         invalid_object = 0,
         invalid_method = 1,
@@ -33,13 +34,13 @@ pub const Display = struct {
     ) void {
         self.proxy.setListener(Display.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn sync(self: *Display) !*Callback {
+    pub fn sync(self: *const Display) !*Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(Callback, 0, &_args);
     }
-    pub fn get_registry(self: *Display) !*Registry {
+    pub fn get_registry(self: *const Display) !*Registry {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -48,7 +49,8 @@ pub const Display = struct {
 };
 pub const Registry = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_registry";
     pub const Event = union(enum) {
         global: struct {
             name: u32,
@@ -69,9 +71,11 @@ pub const Registry = struct {
     ) void {
         self.proxy.setListener(Registry.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn bind(self: *Registry, _name: u32, comptime T: type) !*T {
+    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) !*T {
         var _args = [_]Argument{
             .{ .uint = _name },
+            .{ .string = T.name },
+            .{ .uint = _version },
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(T, 0, &_args);
@@ -79,7 +83,8 @@ pub const Registry = struct {
 };
 pub const Callback = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_callback";
     pub const Event = union(enum) {
         done: struct {
             callback_data: u32,
@@ -98,15 +103,51 @@ pub const Callback = struct {
 };
 pub const Compositor = struct {
     proxy: Proxy,
-    comptime version: usize = 6,
+    pub const version = 6;
+    pub const name = "wl_compositor";
+    pub fn create_surface(self: *const Compositor) !*Surface {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+        };
+        return self.proxy.marshal_request_constructor(Surface, 0, &_args);
+    }
+    pub fn create_region(self: *const Compositor) !*Region {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+        };
+        return self.proxy.marshal_request_constructor(Region, 1, &_args);
+    }
 };
 pub const ShmPool = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_shm_pool";
+    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) !*Buffer {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+            .{ .int = _offset },
+            .{ .int = _width },
+            .{ .int = _height },
+            .{ .int = _stride },
+            .{ .uint = @intCast(@intFromEnum(_format)) },
+        };
+        return self.proxy.marshal_request_constructor(Buffer, 0, &_args);
+    }
+    pub fn destroy(self: *const ShmPool) void {
+        self.proxy.marshal_request(1, &.{}) catch unreachable;
+        // self.proxy.destroy();
+    }
+    pub fn resize(self: *const ShmPool, _size: i32) void {
+        var _args = [_]Argument{
+            .{ .int = _size },
+        };
+        self.proxy.marshal_request(2, &_args) catch unreachable;
+    }
 };
 pub const Shm = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_shm";
     pub const Error = enum(c_int) {
         invalid_format = 0,
         invalid_stride = 1,
@@ -237,7 +278,7 @@ pub const Shm = struct {
     ) void {
         self.proxy.setListener(Shm.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn create_pool(self: *Shm, _fd: i32, _size: i32) !*ShmPool {
+    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) !*ShmPool {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .fd = _fd },
@@ -248,7 +289,8 @@ pub const Shm = struct {
 };
 pub const Buffer = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_buffer";
     pub const Event = union(enum) {
         release: void,
     };
@@ -262,14 +304,15 @@ pub const Buffer = struct {
     ) void {
         self.proxy.setListener(Buffer.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn destroy(self: *Buffer) void {
-        self.proxy.marshal(0, null);
-        // self.proxy.distroy();
+    pub fn destroy(self: *const Buffer) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const DataOffer = struct {
     proxy: Proxy,
-    comptime version: usize = 3,
+    pub const version = 3;
+    pub const name = "wl_data_offer";
     pub const Error = enum(c_int) {
         invalid_finish = 0,
         invalid_action_mask = 1,
@@ -297,38 +340,39 @@ pub const DataOffer = struct {
     ) void {
         self.proxy.setListener(DataOffer.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn accept(self: *DataOffer, _serial: u32, _mime_type: ?[*:0]const u8) void {
+    pub fn accept(self: *const DataOffer, _serial: u32, _mime_type: ?[*:0]const u8) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .string = _mime_type },
         };
-        self.proxy.marshal(0, &_args);
+        self.proxy.marshal_request(0, &_args) catch unreachable;
     }
-    pub fn receive(self: *DataOffer, _mime_type: [*:0]const u8, _fd: i32) void {
+    pub fn receive(self: *const DataOffer, _mime_type: [*:0]const u8, _fd: i32) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
             .{ .fd = _fd },
         };
-        self.proxy.marshal(1, &_args);
+        self.proxy.marshal_request(1, &_args) catch unreachable;
     }
-    pub fn destroy(self: *DataOffer) void {
-        self.proxy.marshal(2, null);
-        // self.proxy.distroy();
+    pub fn destroy(self: *const DataOffer) void {
+        self.proxy.marshal_request(2, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
-    pub fn finish(self: *DataOffer) void {
-        self.proxy.marshal(3, null);
+    pub fn finish(self: *const DataOffer) void {
+        self.proxy.marshal_request(3, &.{}) catch unreachable;
     }
-    pub fn set_actions(self: *DataOffer, _dnd_actions: DataDeviceManager.DndAction, _preferred_action: DataDeviceManager.DndAction) void {
+    pub fn set_actions(self: *const DataOffer, _dnd_actions: DataDeviceManager.DndAction, _preferred_action: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
-            .{ .uint = _dnd_actions },
-            .{ .uint = _preferred_action },
+            .{ .uint = @intCast(@intFromEnum(_dnd_actions)) },
+            .{ .uint = @intCast(@intFromEnum(_preferred_action)) },
         };
-        self.proxy.marshal(4, &_args);
+        self.proxy.marshal_request(4, &_args) catch unreachable;
     }
 };
 pub const DataSource = struct {
     proxy: Proxy,
-    comptime version: usize = 3,
+    pub const version = 3;
+    pub const name = "wl_data_source";
     pub const Error = enum(c_int) {
         invalid_action_mask = 0,
         invalid_source = 1,
@@ -358,26 +402,27 @@ pub const DataSource = struct {
     ) void {
         self.proxy.setListener(DataSource.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn offer(self: *DataSource, _mime_type: [*:0]const u8) void {
+    pub fn offer(self: *const DataSource, _mime_type: [*:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
         };
-        self.proxy.marshal(0, &_args);
+        self.proxy.marshal_request(0, &_args) catch unreachable;
     }
-    pub fn destroy(self: *DataSource) void {
-        self.proxy.marshal(1, null);
-        // self.proxy.distroy();
+    pub fn destroy(self: *const DataSource) void {
+        self.proxy.marshal_request(1, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
-    pub fn set_actions(self: *DataSource, _dnd_actions: DataDeviceManager.DndAction) void {
+    pub fn set_actions(self: *const DataSource, _dnd_actions: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
-            .{ .uint = _dnd_actions },
+            .{ .uint = @intCast(@intFromEnum(_dnd_actions)) },
         };
-        self.proxy.marshal(2, &_args);
+        self.proxy.marshal_request(2, &_args) catch unreachable;
     }
 };
 pub const DataDevice = struct {
     proxy: Proxy,
-    comptime version: usize = 3,
+    pub const version = 3;
+    pub const name = "wl_data_device";
     pub const Error = enum(c_int) {
         role = 0,
     };
@@ -411,47 +456,70 @@ pub const DataDevice = struct {
     ) void {
         self.proxy.setListener(DataDevice.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn start_drag(self: *DataDevice, _source: ?*DataSource, _origin: *Surface, _icon: ?*Surface, _serial: u32) void {
+    pub fn start_drag(self: *const DataDevice, _source: ?*DataSource, _origin: *Surface, _icon: ?*Surface, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_source) },
-            .{ .o = @ptrCast(_origin) },
-            .{ .o = @ptrCast(_icon) },
+            .{ .object = if (_source) |arg| arg.proxy.id else 0 },
+            .{ .object = _origin.proxy.id },
+            .{ .object = if (_icon) |arg| arg.proxy.id else 0 },
             .{ .uint = _serial },
         };
-        self.proxy.marshal(0, &_args);
+        self.proxy.marshal_request(0, &_args) catch unreachable;
     }
-    pub fn set_selection(self: *DataDevice, _source: ?*DataSource, _serial: u32) void {
+    pub fn set_selection(self: *const DataDevice, _source: ?*DataSource, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_source) },
+            .{ .object = if (_source) |arg| arg.proxy.id else 0 },
             .{ .uint = _serial },
         };
-        self.proxy.marshal(1, &_args);
+        self.proxy.marshal_request(1, &_args) catch unreachable;
     }
-    pub fn release(self: *DataDevice) void {
-        self.proxy.marshal(2, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const DataDevice) void {
+        self.proxy.marshal_request(2, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const DataDeviceManager = struct {
     proxy: Proxy,
-    comptime version: usize = 3,
+    pub const version = 3;
+    pub const name = "wl_data_device_manager";
     pub const DndAction = packed struct(u32) {
         copy: bool = false,
         move: bool = false,
         ask: bool = false,
         _padding: u29 = 0,
     };
+    pub fn create_data_source(self: *const DataDeviceManager) !*DataSource {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+        };
+        return self.proxy.marshal_request_constructor(DataSource, 0, &_args);
+    }
+    pub fn get_data_device(self: *const DataDeviceManager, _seat: *Seat) !*DataDevice {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+            .{ .object = _seat.proxy.id },
+        };
+        return self.proxy.marshal_request_constructor(DataDevice, 1, &_args);
+    }
 };
 pub const Shell = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_shell";
     pub const Error = enum(c_int) {
         role = 0,
     };
+    pub fn get_shell_surface(self: *const Shell, _surface: *Surface) !*ShellSurface {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+            .{ .object = _surface.proxy.id },
+        };
+        return self.proxy.marshal_request_constructor(ShellSurface, 0, &_args);
+    }
 };
 pub const ShellSurface = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_shell_surface";
     pub const Resize = packed struct(u32) {
         top: bool = false,
         bottom: bool = false,
@@ -490,80 +558,81 @@ pub const ShellSurface = struct {
     ) void {
         self.proxy.setListener(ShellSurface.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn pong(self: *ShellSurface, _serial: u32) void {
+    pub fn pong(self: *const ShellSurface, _serial: u32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
         };
-        self.proxy.marshal(0, &_args);
+        self.proxy.marshal_request(0, &_args) catch unreachable;
     }
-    pub fn move(self: *ShellSurface, _seat: *Seat, _serial: u32) void {
+    pub fn move(self: *const ShellSurface, _seat: *Seat, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_seat) },
+            .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
         };
-        self.proxy.marshal(1, &_args);
+        self.proxy.marshal_request(1, &_args) catch unreachable;
     }
-    pub fn resize(self: *ShellSurface, _seat: *Seat, _serial: u32, _edges: Resize) void {
+    pub fn resize(self: *const ShellSurface, _seat: *Seat, _serial: u32, _edges: Resize) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_seat) },
+            .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
-            .{ .uint = _edges },
+            .{ .uint = @intCast(@intFromEnum(_edges)) },
         };
-        self.proxy.marshal(2, &_args);
+        self.proxy.marshal_request(2, &_args) catch unreachable;
     }
-    pub fn set_toplevel(self: *ShellSurface) void {
-        self.proxy.marshal(3, null);
+    pub fn set_toplevel(self: *const ShellSurface) void {
+        self.proxy.marshal_request(3, &.{}) catch unreachable;
     }
-    pub fn set_transient(self: *ShellSurface, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_transient(self: *const ShellSurface, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_parent) },
+            .{ .object = _parent.proxy.id },
             .{ .int = _x },
             .{ .int = _y },
-            .{ .uint = _flags },
+            .{ .uint = @intCast(@intFromEnum(_flags)) },
         };
-        self.proxy.marshal(4, &_args);
+        self.proxy.marshal_request(4, &_args) catch unreachable;
     }
-    pub fn set_fullscreen(self: *ShellSurface, _method: FullscreenMethod, _framerate: u32, _output: ?*Output) void {
+    pub fn set_fullscreen(self: *const ShellSurface, _method: FullscreenMethod, _framerate: u32, _output: ?*Output) void {
         var _args = [_]Argument{
-            .{ .uint = _method },
+            .{ .uint = @intCast(@intFromEnum(_method)) },
             .{ .uint = _framerate },
-            .{ .o = @ptrCast(_output) },
+            .{ .object = if (_output) |arg| arg.proxy.id else 0 },
         };
-        self.proxy.marshal(5, &_args);
+        self.proxy.marshal_request(5, &_args) catch unreachable;
     }
-    pub fn set_popup(self: *ShellSurface, _seat: *Seat, _serial: u32, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_popup(self: *const ShellSurface, _seat: *Seat, _serial: u32, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_seat) },
+            .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
-            .{ .o = @ptrCast(_parent) },
+            .{ .object = _parent.proxy.id },
             .{ .int = _x },
             .{ .int = _y },
-            .{ .uint = _flags },
+            .{ .uint = @intCast(@intFromEnum(_flags)) },
         };
-        self.proxy.marshal(6, &_args);
+        self.proxy.marshal_request(6, &_args) catch unreachable;
     }
-    pub fn set_maximized(self: *ShellSurface, _output: ?*Output) void {
+    pub fn set_maximized(self: *const ShellSurface, _output: ?*Output) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_output) },
+            .{ .object = if (_output) |arg| arg.proxy.id else 0 },
         };
-        self.proxy.marshal(7, &_args);
+        self.proxy.marshal_request(7, &_args) catch unreachable;
     }
-    pub fn set_title(self: *ShellSurface, _title: [*:0]const u8) void {
+    pub fn set_title(self: *const ShellSurface, _title: [*:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _title },
         };
-        self.proxy.marshal(8, &_args);
+        self.proxy.marshal_request(8, &_args) catch unreachable;
     }
-    pub fn set_class(self: *ShellSurface, _class_: [*:0]const u8) void {
+    pub fn set_class(self: *const ShellSurface, _class_: [*:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _class_ },
         };
-        self.proxy.marshal(9, &_args);
+        self.proxy.marshal_request(9, &_args) catch unreachable;
     }
 };
 pub const Surface = struct {
     proxy: Proxy,
-    comptime version: usize = 6,
+    pub const version = 6;
+    pub const name = "wl_surface";
     pub const Error = enum(c_int) {
         invalid_scale = 0,
         invalid_transform = 1,
@@ -595,80 +664,81 @@ pub const Surface = struct {
     ) void {
         self.proxy.setListener(Surface.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn destroy(self: *Surface) void {
-        self.proxy.marshal(0, null);
-        // self.proxy.distroy();
+    pub fn destroy(self: *const Surface) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
-    pub fn attach(self: *Surface, _buffer: ?*Buffer, _x: i32, _y: i32) void {
+    pub fn attach(self: *const Surface, _buffer: ?*Buffer, _x: i32, _y: i32) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_buffer) },
+            .{ .object = if (_buffer) |arg| arg.proxy.id else 0 },
             .{ .int = _x },
             .{ .int = _y },
         };
-        self.proxy.marshal(1, &_args);
+        self.proxy.marshal_request(1, &_args) catch unreachable;
     }
-    pub fn damage(self: *Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn damage(self: *const Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal(2, &_args);
+        self.proxy.marshal_request(2, &_args) catch unreachable;
     }
-    pub fn frame(self: *Surface) !*Callback {
+    pub fn frame(self: *const Surface) !*Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(Callback, 3, &_args);
     }
-    pub fn set_opaque_region(self: *Surface, _region: ?*Region) void {
+    pub fn set_opaque_region(self: *const Surface, _region: ?*Region) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_region) },
+            .{ .object = if (_region) |arg| arg.proxy.id else 0 },
         };
-        self.proxy.marshal(4, &_args);
+        self.proxy.marshal_request(4, &_args) catch unreachable;
     }
-    pub fn set_input_region(self: *Surface, _region: ?*Region) void {
+    pub fn set_input_region(self: *const Surface, _region: ?*Region) void {
         var _args = [_]Argument{
-            .{ .o = @ptrCast(_region) },
+            .{ .object = if (_region) |arg| arg.proxy.id else 0 },
         };
-        self.proxy.marshal(5, &_args);
+        self.proxy.marshal_request(5, &_args) catch unreachable;
     }
-    pub fn commit(self: *Surface) void {
-        self.proxy.marshal(6, null);
+    pub fn commit(self: *const Surface) void {
+        self.proxy.marshal_request(6, &.{}) catch unreachable;
     }
-    pub fn set_buffer_transform(self: *Surface, _transform: Output.Transform) void {
+    pub fn set_buffer_transform(self: *const Surface, _transform: Output.Transform) void {
         var _args = [_]Argument{
             .{ .int = _transform },
         };
-        self.proxy.marshal(7, &_args);
+        self.proxy.marshal_request(7, &_args) catch unreachable;
     }
-    pub fn set_buffer_scale(self: *Surface, _scale: i32) void {
+    pub fn set_buffer_scale(self: *const Surface, _scale: i32) void {
         var _args = [_]Argument{
             .{ .int = _scale },
         };
-        self.proxy.marshal(8, &_args);
+        self.proxy.marshal_request(8, &_args) catch unreachable;
     }
-    pub fn damage_buffer(self: *Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn damage_buffer(self: *const Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal(9, &_args);
+        self.proxy.marshal_request(9, &_args) catch unreachable;
     }
-    pub fn offset(self: *Surface, _x: i32, _y: i32) void {
+    pub fn offset(self: *const Surface, _x: i32, _y: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
         };
-        self.proxy.marshal(10, &_args);
+        self.proxy.marshal_request(10, &_args) catch unreachable;
     }
 };
 pub const Seat = struct {
     proxy: Proxy,
-    comptime version: usize = 9,
+    pub const version = 9;
+    pub const name = "wl_seat";
     pub const Capability = packed struct(u32) {
         pointer: bool = false,
         keyboard: bool = false,
@@ -696,32 +766,33 @@ pub const Seat = struct {
     ) void {
         self.proxy.setListener(Seat.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn get_pointer(self: *Seat) !*Pointer {
+    pub fn get_pointer(self: *const Seat) !*Pointer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(Pointer, 0, &_args);
     }
-    pub fn get_keyboard(self: *Seat) !*Keyboard {
+    pub fn get_keyboard(self: *const Seat) !*Keyboard {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(Keyboard, 1, &_args);
     }
-    pub fn get_touch(self: *Seat) !*Touch {
+    pub fn get_touch(self: *const Seat) !*Touch {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
         return self.proxy.marshal_request_constructor(Touch, 2, &_args);
     }
-    pub fn release(self: *Seat) void {
-        self.proxy.marshal(3, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const Seat) void {
+        self.proxy.marshal_request(3, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const Pointer = struct {
     proxy: Proxy,
-    comptime version: usize = 9,
+    pub const version = 9;
+    pub const name = "wl_pointer";
     pub const Error = enum(c_int) {
         role = 0,
     };
@@ -801,23 +872,24 @@ pub const Pointer = struct {
     ) void {
         self.proxy.setListener(Pointer.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn set_cursor(self: *Pointer, _serial: u32, _surface: ?*Surface, _hotspot_x: i32, _hotspot_y: i32) void {
+    pub fn set_cursor(self: *const Pointer, _serial: u32, _surface: ?*Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
-            .{ .o = @ptrCast(_surface) },
+            .{ .object = if (_surface) |arg| arg.proxy.id else 0 },
             .{ .int = _hotspot_x },
             .{ .int = _hotspot_y },
         };
-        self.proxy.marshal(0, &_args);
+        self.proxy.marshal_request(0, &_args) catch unreachable;
     }
-    pub fn release(self: *Pointer) void {
-        self.proxy.marshal(1, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const Pointer) void {
+        self.proxy.marshal_request(1, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const Keyboard = struct {
     proxy: Proxy,
-    comptime version: usize = 9,
+    pub const version = 9;
+    pub const name = "wl_keyboard";
     pub const KeymapFormat = enum(c_int) {
         no_keymap = 0,
         xkb_v1 = 1,
@@ -869,14 +941,15 @@ pub const Keyboard = struct {
     ) void {
         self.proxy.setListener(Keyboard.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn release(self: *Keyboard) void {
-        self.proxy.marshal(0, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const Keyboard) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const Touch = struct {
     proxy: Proxy,
-    comptime version: usize = 9,
+    pub const version = 9;
+    pub const name = "wl_touch";
     pub const Event = union(enum) {
         down: struct {
             serial: u32,
@@ -919,14 +992,15 @@ pub const Touch = struct {
     ) void {
         self.proxy.setListener(Touch.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn release(self: *Touch) void {
-        self.proxy.marshal(0, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const Touch) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const Output = struct {
     proxy: Proxy,
-    comptime version: usize = 4,
+    pub const version = 4;
+    pub const name = "wl_output";
     pub const Subpixel = enum(c_int) {
         unknown = 0,
         none = 1,
@@ -988,27 +1062,93 @@ pub const Output = struct {
     ) void {
         self.proxy.setListener(Output.Event, @ptrCast(_listener), @ptrCast(_data));
     }
-    pub fn release(self: *Output) void {
-        self.proxy.marshal(0, null);
-        // self.proxy.distroy();
+    pub fn release(self: *const Output) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
     }
 };
 pub const Region = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_region";
+    pub fn destroy(self: *const Region) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
+    }
+    pub fn add(self: *const Region, _x: i32, _y: i32, _width: i32, _height: i32) void {
+        var _args = [_]Argument{
+            .{ .int = _x },
+            .{ .int = _y },
+            .{ .int = _width },
+            .{ .int = _height },
+        };
+        self.proxy.marshal_request(1, &_args) catch unreachable;
+    }
+    pub fn subtract(self: *const Region, _x: i32, _y: i32, _width: i32, _height: i32) void {
+        var _args = [_]Argument{
+            .{ .int = _x },
+            .{ .int = _y },
+            .{ .int = _width },
+            .{ .int = _height },
+        };
+        self.proxy.marshal_request(2, &_args) catch unreachable;
+    }
 };
 pub const Subcompositor = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_subcompositor";
     pub const Error = enum(c_int) {
         bad_surface = 0,
         bad_parent = 1,
     };
+    pub fn destroy(self: *const Subcompositor) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
+    }
+    pub fn get_subsurface(self: *const Subcompositor, _surface: *Surface, _parent: *Surface) !*Subsurface {
+        var _args = [_]Argument{
+            .{ .new_id = 0 },
+            .{ .object = _surface.proxy.id },
+            .{ .object = _parent.proxy.id },
+        };
+        return self.proxy.marshal_request_constructor(Subsurface, 1, &_args);
+    }
 };
 pub const Subsurface = struct {
     proxy: Proxy,
-    comptime version: usize = 1,
+    pub const version = 1;
+    pub const name = "wl_subsurface";
     pub const Error = enum(c_int) {
         bad_surface = 0,
     };
+    pub fn destroy(self: *const Subsurface) void {
+        self.proxy.marshal_request(0, &.{}) catch unreachable;
+        // self.proxy.destroy();
+    }
+    pub fn set_position(self: *const Subsurface, _x: i32, _y: i32) void {
+        var _args = [_]Argument{
+            .{ .int = _x },
+            .{ .int = _y },
+        };
+        self.proxy.marshal_request(1, &_args) catch unreachable;
+    }
+    pub fn place_above(self: *const Subsurface, _sibling: *Surface) void {
+        var _args = [_]Argument{
+            .{ .object = _sibling.proxy.id },
+        };
+        self.proxy.marshal_request(2, &_args) catch unreachable;
+    }
+    pub fn place_below(self: *const Subsurface, _sibling: *Surface) void {
+        var _args = [_]Argument{
+            .{ .object = _sibling.proxy.id },
+        };
+        self.proxy.marshal_request(3, &_args) catch unreachable;
+    }
+    pub fn set_sync(self: *const Subsurface) void {
+        self.proxy.marshal_request(4, &.{}) catch unreachable;
+    }
+    pub fn set_desync(self: *const Subsurface) void {
+        self.proxy.marshal_request(5, &.{}) catch unreachable;
+    }
 };

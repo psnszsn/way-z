@@ -8,17 +8,20 @@ from pathlib import Path
 from typing import Never, TextIO
 from pprint import pprint
 from textwrap import dedent
+import subprocess
 
 
 def title_case(txt: str) -> str:
     return "".join(w.capitalize() for w in txt.split("_"))
 
+
 # def camel_case(txt: str) -> str:
 #     return "".join(w.capitalize() for w in txt.split("_"))
 
+
 @dataclass(slots=True)
 class Arg:
-    parent: Event|Request
+    parent: Event | Request
     type: str
     name: str
     description: str | None = field(repr=False)
@@ -28,7 +31,7 @@ class Arg:
     interface: str | None
     enum: str | None
 
-    def __init__(self, parent: Event|Request, arg: ET.Element):
+    def __init__(self, parent: Event | Request, arg: ET.Element):
         self.parent = parent
         self.name = arg.get("name") or Never
         self.type = arg.get("type") or Never
@@ -77,8 +80,9 @@ class Arg:
                 qs = "?*" if self.allow_null else "*"
                 if not self.interface:
                     return qs + "anyopaque"
-                interface = protocol.interfaces[self.interface]
-                return qs + title_case(interface.name)
+                interface = protocol.find_interface(self.interface)
+                prefix = interface.prefix + "." if interface.prefix != protocol.prefix else ""
+                return qs + prefix + title_case(interface.name)
             case "array":
                 return "*anyopaque"
             case "fd":
@@ -110,17 +114,16 @@ class Request:
     args: list[Arg]
 
     description: str | None = field(repr=False)
-    summary: str| None = field(repr=False)
+    summary: str | None = field(repr=False)
 
     def __init__(self, interface: Interface, opcode: int, request: ET.Element):
         self.interface = interface
         self.opcode = opcode
         assert request.tag == "request"
 
-        self.name = request.get('name') or Never
-        self.type = request.get('type', "normal")
-        self.since = int(request.get('since', 1))
-
+        self.name = request.get("name") or Never
+        self.type = request.get("type", "normal")
+        self.since = int(request.get("since", 1))
 
         self.description = None
         self.summary = None
@@ -141,17 +144,17 @@ class Request:
                     pass
 
     def __str__(self):
-        return "{}.{}".format(self.interface.name,self.name)
+        return "{}.{}".format(self.interface.name, self.name)
 
     def emit_fn(self, fd: TextIO):
         # return
-        fd.write(f"pub fn {self.name}(self: *{self.interface.zig_type()}")
+        fd.write(f"pub fn {self.name}(self: *const {self.interface.zig_type()}")
 
         for arg in self.args:
             if arg.type == "new_id":
                 self.type = "constructor"
                 if not arg.interface:
-                    fd.write(f", comptime T: type")
+                    fd.write(f", comptime T: type, _version: u32")
             else:
                 fd.write(f", _{arg.name}: {arg.zig_type()}")
 
@@ -160,7 +163,14 @@ class Request:
         interface = None
         match self.type:
             case "constructor":
-                creates_interface = next((arg.interface for arg in self.args if arg.type=="new_id" and arg.interface), None) 
+                creates_interface = next(
+                    (
+                        arg.interface
+                        for arg in self.args
+                        if arg.type == "new_id" and arg.interface
+                    ),
+                    None,
+                )
                 if creates_interface:
                     interface = self.interface.protocol.interfaces[creates_interface]
                     fd.write(f"!*{title_case(interface.name)}")
@@ -175,57 +185,37 @@ class Request:
             for arg in self.args:
                 match arg.type:
                     case "new_id":
+                        if not interface:
+                            fd.write(".{ .string = T.name },")
+                            fd.write(".{ .uint = _version },")
                         fd.write(".{ .new_id = 0 },")
+
+                    case "object" if arg.allow_null:
+                        fd.write(f".{{ .object = if(_{arg.name})|arg| arg.proxy.id else 0 }},")
                     case "object":
-                        fd.write(f".{{ .o = @ptrCast(_{arg.name}) }},")
+                        fd.write(f".{{ .object = _{arg.name}.proxy.id }},")
+                    case "uint" if arg.enum:
+                        fd.write(f".{{ .uint = @intCast(@intFromEnum(_{arg.name})) }},")
                     case other:
                         fd.write(f".{{ .{other} = _{arg.name} }},")
             fd.write("};\n")
 
-        args_ref = "&_args" if self.args else "null";
+        args_ref = "&_args" if self.args else "&.{}"
         match self.type:
             case "normal":
-                fd.write(f"self.proxy.marshal({self.opcode}, {args_ref});\n")
+                fd.write(f"self.proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n")
             case "destructor":
-                fd.write(f"self.proxy.marshal({self.opcode}, {args_ref});\n")
-                fd.write("// self.proxy.distroy();\n")
+                fd.write(f"self.proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n")
+                fd.write("// self.proxy.destroy();\n")
             case "constructor":
-                ret_t = interface.zig_type() if interface else "T";
-                fd.write(f"return self.proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args);\n")
+                ret_t = interface.zig_type() if interface else "T"
+                fd.write(
+                    f"return self.proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args);\n"
+                )
             case _:
                 assert False, self
 
         fd.write("}\n")
-
-    # def invoke(self, proxy, *args):
-        # """Invoke this request on a client proxy."""
-        # if not proxy.oid:
-        #     proxy.log.warning("request %s on deleted %s proxy",
-        #                       self.name, proxy.interface.name)
-        #     raise DeletedProxyException
-        # if proxy.destroyed:
-        #     proxy.log.info("request %s.%s%s on destroyed object; ignoring",
-        #                    proxy, self.name, args)
-        #     return
-        # if proxy.version < self.since:
-        #     proxy.log.error(
-        #         "request %s.%s%s only exists from version %s, but proxy is "
-        #         "version %s", proxy, self.name, args, self.since,
-        #         proxy.version)
-        #     return
-        # r = proxy._marshal_request(self, *args)
-        # if r:
-        #     proxy.log.info(
-        #         "request %s.%s%s -> %s", proxy, self.name, args, r)
-        # else:
-        #     proxy.log.info("request %s.%s%s", proxy, self.name, args)
-        # if self.is_destructor:
-        #     proxy.destroyed = True
-        #     proxy.log.info(
-        #         "%s proxy destroyed by destructor request %s%s",
-        #         proxy, self.name, args)
-        # return r
-
 
 
 @dataclass(slots=True)
@@ -293,6 +283,7 @@ class Enum:
             elif c.tag == "entry":
                 e = EnumEntry(c)
                 self.entries[e.name] = e
+
     def emit(self, fd: TextIO):
         fd.write(f"pub const {title_case(self.name)}")
 
@@ -300,8 +291,10 @@ class Enum:
             fd.write(" = packed struct(u32) {")
             total_entries = 0
             for entry in self.entries.values():
-                if entry.value ==0: continue
-                if (entry.value & (entry.value-1) != 0): continue
+                if entry.value == 0:
+                    continue
+                if entry.value & (entry.value - 1) != 0:
+                    continue
                 fd.write(f"{entry.name}: bool = false,")
                 total_entries += 1
 
@@ -312,7 +305,6 @@ class Enum:
             for entry in self.entries.values():
                 fd.write(f'@"{entry.name}"= {entry.value},')
         fd.write("};\n")
-
 
 
 @dataclass(slots=True)
@@ -458,7 +450,8 @@ class Interface:
         fd.write(
             f"""pub const {name_camel} = struct {{
             proxy: Proxy,
-            comptime version: usize = {self.version},
+            pub const version = {self.version};
+            pub const name = "{self.prefix}_{self.name}";
             """
         )
         for enum in self.enums.values():
@@ -483,8 +476,8 @@ class Interface:
             """
             fd.write(dedent(setlistener))
 
-            for e in self.requests.values():
-                e.emit_fn(fd)
+        for e in self.requests.values():
+            e.emit_fn(fd)
 
         fd.write("};\n")
 
@@ -494,6 +487,8 @@ class Protocol:
     copyright: str = field(repr=False)
     name: str
     interfaces: dict[str, Interface]
+    prefix : str
+    parent: Protocol | None = field(repr=False)
 
     def __init__(self, file: Path, parent: Protocol | None = None):
         tree = ET.parse(file)
@@ -503,6 +498,7 @@ class Protocol:
 
         self.interfaces = parent.interfaces if parent else {}
         self.name = protocol.get("name") or Never
+        self.parent = None
 
         for c in protocol:
             if c.tag == "copyright":
@@ -515,37 +511,65 @@ class Protocol:
                     raise ValueError(f"Duplicate interface: {i.name}")
                 self.interfaces[c.get("name") or Never] = i
 
+        self.prefix = next(iter(self.interfaces.values())).prefix
+        assert all(proto.prefix == self.prefix for proto in self.interfaces.values())
+
+    def find_interface(self, name: str) -> Interface:
+        if interface := self.interfaces.get(name):
+            return interface
+        global protocols
+        prefix = name.split("_")[0]
+        parent_protocol = protocols[prefix]
+        if self.parent is not None:
+            assert self.parent is parent_protocol
+        else:
+            self.parent = parent_protocol
+        interface = parent_protocol.interfaces[name]
+        return interface
+
     def emit(self, fd: TextIO):
         fd.write(
             """\
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
+            const std = @import("std");
+            const os = std.os;
+            const Proxy = @import("../proxy.zig").Proxy;
+            const Argument = @import("../argument.zig").Argument;
+            const Fixed = @import("../argument.zig").Fixed;
 
-"""
+            """
         )
+        if self.parent:
+            fd.write(f"""
+            const {self.parent.prefix} = @import("{self.parent.prefix}.zig");
+            """)
 
         for i in self.interfaces.values():
             i.emit(fd)
 
 
+protocols: dict[str, Protocol] = {}
+
+
 def main():
-    protocols = [
+    global protocols
+    xml_protocols = [
         "/usr/share/wayland/wayland.xml",
+        "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml",
+        # "/usr/share/wayland-protocols/stable/presentation-time/presentation-time.xml",
+        # "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml",
     ]
-    out = Path(__file__).parent / "src/generated/wl.zig"
-    out.parent.mkdir(exist_ok=True)
-    with out.open("w") as f:
-        for p in protocols:
-            p = Protocol(Path(p))
+    for p in xml_protocols:
+        p = Protocol(Path(p))
+        protocols[p.prefix] = p
+        out = Path(__file__).parent / f"src/generated/{p.prefix}.zig"
+        out.parent.mkdir(exist_ok=True)
+        with out.open("w") as f:
             p.emit(f)
-            pprint(p)
+        with out.open("w") as f:
+            p.emit(f)
+        pprint(p)
 
-    import subprocess
-
-    subprocess.run(["zig", "fmt", str(out)], check=True)
+        subprocess.run(["zig", "fmt", str(out)], check=True)
 
 
 if __name__ == "__main__":

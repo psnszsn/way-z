@@ -5,7 +5,7 @@ const IO = @import("io_async.zig").IO;
 const Registry = @import("main.zig").Registry;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
-const generated = @import("generated/wl.zig");
+const wl = @import("generated/wl.zig");
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
@@ -50,20 +50,20 @@ pub const Connection = struct {
 };
 
 pub const Display = struct {
-    wl_display: generated.Display,
+    wl_display: wl.Display,
     objects: std.ArrayList(?*Proxy),
     unused_oids: std.ArrayList(u32),
     connection: *Connection,
     allocator: std.mem.Allocator,
     // reusable_oids: std.
 
-    pub const Event = generated.Display.Event;
-    pub const event_signatures = generated.Display.event_signatures;
+    pub const Event = wl.Display.Event;
+    pub const event_signatures = wl.Display.event_signatures;
 
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
         self.* = .{
-            .wl_display = .{.proxy = .{ .display = self, .event_args = &Display.event_signatures }},
+            .wl_display = .{ .proxy = .{ .display = self, .event_args = &Display.event_signatures } },
             .objects = std.ArrayList(?*Proxy).init(allocator),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
@@ -102,7 +102,7 @@ pub const Display = struct {
         size: u16,
     };
 
-    pub fn recvEvents(self: *Display) !void {
+    pub fn recvEvents(self: *const Display) !void {
         const total = try self.connection.recv();
         // var rem = self.connection.in.count;
         if (total == 0) {
@@ -138,27 +138,42 @@ pub const Display = struct {
         self.allocator.destroy(self);
     }
 
-
-    pub inline fn get_registry(self: *Display) !*generated.Registry {
+    pub inline fn get_registry(self: *Display) !*wl.Registry {
         return self.wl_display.get_registry();
     }
 
-    pub inline fn sync(self: *Display) !*generated.Callback {
+    pub inline fn sync(self: *const Display) !*wl.Callback {
         return self.wl_display.sync();
     }
+
     pub inline fn setListener(
         self: *Display,
         comptime T: type,
         comptime _listener: fn (display: *Display, event: Event, data: T) void,
         _data: T,
     ) void {
-        const w = struct { 
-            fn l (display: *generated.Display, event: Event, data: T) void{
+        const w = struct {
+            fn l(display: *wl.Display, event: Event, data: T) void {
                 const u: *Display = @ptrCast(display);
-                _listener(u,event,data);
+                _listener(u, event, data);
             }
         };
         return self.wl_display.setListener(T, w.l, _data);
     }
-    // pub inline fn roundtrip()
+    pub fn roundtrip(self: *const Display) !void {
+        const w = struct {
+            fn cbListener(cb: *wl.Callback, _: wl.Callback.Event, done: *bool) void {
+                _ = cb;
+                done.* = true;
+                // Todo: cb.destroy()
+                // std.log.info("event: {}", .{event});
+            }
+        };
+        const callblack = try self.sync();
+        var done: bool = false;
+        callblack.setListener(*bool, w.cbListener, &done);
+        while(!done){
+            try self.recvEvents();
+        }
+    }
 };

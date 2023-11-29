@@ -153,10 +153,12 @@ fn asdf(ptr: *u32) void {
     std.debug.print("value: {}", .{ptr.*});
 }
 test {
+    _ = @import("argument.zig");
+    _ = @import("ring_buffer.zig");
     var fn_ptr: *const fn (*anyopaque) void = @ptrCast(&asdf);
     _ = &fn_ptr;
     var a: u32 = 77;
-    @call(.always_inline, fn_ptr, .{@as(*anyopaque, @ptrCast(&a))});
+    @call(.auto, fn_ptr, .{@as(*anyopaque, @ptrCast(&a))});
 
     
 }

@@ -45,7 +45,7 @@ pub const Argument = union(enum) {
     uint: u32,
     fixed: Fixed,
     string: [:0]const u8,
-    object: ?*anyopaque,
+    object: u32,
     new_id: u32,
     array: ?*Array,
     fd: i32,
@@ -60,14 +60,28 @@ pub const Argument = union(enum) {
     }
     pub fn marshal(self: *const Argument, writer: anytype) !void {
         switch (self.*) {
-            .new_id => |new_id| {
-                try writer.writeInt(u32, new_id, .little);
+            .new_id,
+            .object,
+            .uint,
+            => |inner| {
+                try writer.writeInt(u32, inner, .little);
+            },
+            .int => |inner| {
+                try writer.writeInt(i32, inner, .little);
+            },
+            .string => |inner| {
+                try writer.writeInt(u32, @intCast(inner.len + 1), .little);
+                try writer.writeAll(inner);
+                std.debug.print("self.le {} {}\n", .{ self.len(), inner.len });
+                try writer.writeByteNTimes(0, self.len() - (4 + inner.len));
             },
             // .object => |o| {
-            //     _ = o;
-            //     try writer.writeInt(u32, 3, .little);
+            //     try writer.writeInt(u32, @intFromPtr(o), .little);
             // },
-            else => unreachable,
+            else => {
+                std.debug.print("arg {}", .{self});
+                unreachable;
+            },
         }
     }
     pub fn unmarshal(typ: ArgumentType, allocator: std.mem.Allocator, data: []const u8) Argument {
@@ -76,6 +90,10 @@ pub const Argument = union(enum) {
             .new_id => {
                 const v = std.mem.readInt(u32, data[0..4], native_endian);
                 return Argument{ .new_id = v };
+            },
+            .object => {
+                const v = std.mem.readInt(u32, data[0..4], native_endian);
+                return Argument{ .object = v };
             },
             .uint => {
                 const v = std.mem.readInt(u32, data[0..4], native_endian);
@@ -91,7 +109,21 @@ pub const Argument = union(enum) {
                     .string = data[4..][0 .. l - 1 :0],
                 };
             },
-            else => unreachable,
+            else => {
+                std.debug.print("{}\n", .{typ});
+                unreachable;
+            },
         }
     }
 };
+
+test "marshaling" {
+    var buf1: [255]u8 = undefined;
+    var fbs1 = std.io.fixedBufferStream(&buf1);
+    const arg = Argument{ .string = "frappo" };
+    try arg.marshal(fbs1.writer());
+    const written = fbs1.getWritten();
+    try std.testing.expect(@as(u32, @bitCast(written[0..4].*)) == 7);
+    try std.testing.expectEqualSlices(u8, "frappo", written[4..][0..6]);
+    try std.testing.expect(written.len % 4 == 0);
+}

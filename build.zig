@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        unit_tests.addModule("libcoro", libcoro);
         const run_unit_tests = b.addRunArtifact(unit_tests);
 
         const test_step = b.step("test", "Run unit tests");
@@ -42,7 +43,7 @@ pub fn build(b: *std.Build) void {
         .dependencies = &.{.{ .name = "libcoro", .module = libcoro }},
     });
 
-    inline for (.{"globals"}) |example| {
+    inline for (.{"globals", "seats", "hello"}) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },
@@ -56,7 +57,7 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
+        // run_cmd.step.dependOn(b.getInstallStep());
 
         const run_step = b.step("run-" ++ example, "Run the app");
         run_step.dependOn(&run_cmd.step);
