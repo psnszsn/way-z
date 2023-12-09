@@ -14,9 +14,6 @@ def title_case(txt: str) -> str:
     return "".join(w.capitalize() for w in txt.split("_"))
 
 
-# def camel_case(txt: str) -> str:
-#     return "".join(w.capitalize() for w in txt.split("_"))
-
 def emit_description(description: str|None, fd: TextIO, commment_type:str = "///"):
     if description:
         for line in description.strip().splitlines():

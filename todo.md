@@ -1,3 +1,4 @@
 - [x] scanner
 - [x] binding
-- [ ] FDs
+- [x] FDs
+- [ ] destroy()

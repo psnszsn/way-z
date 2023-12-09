@@ -2,7 +2,6 @@ const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
 const IO = @import("io_async.zig").IO;
-const Registry = @import("main.zig").Registry;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
 const wl = @import("generated/wl.zig");

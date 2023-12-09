@@ -6,44 +6,35 @@ pub fn build(b: *std.Build) void {
 
     const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
 
-    {
-        const exe = b.addExecutable(.{
-            .name = "zoinx",
-            .root_source_file = .{ .path = "src/main.zig" },
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.addModule("libcoro", libcoro);
-        exe.linkLibC();
-
-        b.installArtifact(exe);
-        const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
-
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
-        const run_step = b.step("run", "Run the app");
-        run_step.dependOn(&run_cmd.step);
-
-        const unit_tests = b.addTest(.{
-            .root_source_file = .{ .path = "src/main.zig" },
-            .target = target,
-            .optimize = optimize,
-        });
-        unit_tests.addModule("libcoro", libcoro);
-        const run_unit_tests = b.addRunArtifact(unit_tests);
-
-        const test_step = b.step("test", "Run unit tests");
-        test_step.dependOn(&run_unit_tests.step);
-    }
-
     const wayland = b.createModule(.{
         .source_file = .{ .path = "./src/lib.zig" },
         .dependencies = &.{.{ .name = "libcoro", .module = libcoro }},
     });
 
-    inline for (.{"globals", "seats", "hello"}) |example| {
+    {
+        // const unit_tests = b.addTest(.{
+        //     .root_source_file = .{ .path = "src/main.zig" },
+        //     .target = target,
+        //     .optimize = optimize,
+        // });
+        // unit_tests.addModule("libcoro", libcoro);
+        // const run_unit_tests = b.addRunArtifact(unit_tests);
+        //
+        // const test_step = b.step("test", "Run unit tests");
+        // test_step.dependOn(&run_unit_tests.step);
+
+        // const installDocs = b.addInstallDirectory(.{
+        //     .source_dir = exe.getEmittedDocs(),
+        //     .install_dir = .prefix,
+        //     .install_subdir = "docs",
+        // });
+        //
+        // const docsStep = b.step("docs", "Generate documentation");
+        // docsStep.dependOn(&installDocs.step);
+    }
+
+
+    inline for (.{ "globals", "seats", "hello" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },
@@ -58,6 +49,9 @@ pub fn build(b: *std.Build) void {
 
         const run_cmd = b.addRunArtifact(exe);
         // run_cmd.step.dependOn(b.getInstallStep());
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
 
         const run_step = b.step("run-" ++ example, "Run the app");
         run_step.dependOn(&run_cmd.step);
