@@ -6,11 +6,14 @@ const Registry = @import("main.zig").Registry;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
 const wl = @import("generated/wl.zig");
+const Cmsghdr = @import("cmsghdr.zig").Cmsghdr;
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
     in: RingBuffer(512),
     out: RingBuffer(512),
+    fd_in: RingBuffer(512),
+    fd_out: RingBuffer(512),
     io: *IO,
     pub fn recv(self: *Connection) !usize {
         var iovecs = self.in.get_write_iovecs();
@@ -32,13 +35,21 @@ pub const Connection = struct {
 
     pub fn send(self: *Connection) !usize {
         var iovecs = self.out.get_read_iovecs();
+        var cmsg = Cmsghdr([1]std.os.fd_t).init(.{
+            .level = std.os.SOL.SOCKET,
+            .type = 1, //SCM_RIGHTS
+        });
+        const len = self.fd_out.copy(std.mem.asBytes(cmsg.dataPtr()));
+        self.fd_out.consume(len);
+        std.debug.print("fd len {}\n", .{len});
+
         var msg = std.os.msghdr_const{
             .name = null,
             .namelen = 0,
             .iov = &iovecs,
             .iovlen = 2,
-            .control = null,
-            .controllen = 0,
+            .control = &cmsg,
+            .controllen = if (len>0) @sizeOf(@TypeOf(cmsg))  else 0,
             .flags = 0,
         };
 
@@ -58,12 +69,11 @@ pub const Display = struct {
     // reusable_oids: std.
 
     pub const Event = wl.Display.Event;
-    pub const event_signatures = wl.Display.event_signatures;
 
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
         self.* = .{
-            .wl_display = .{ .proxy = .{ .display = self, .event_args = &Display.event_signatures } },
+            .wl_display = .{ .proxy = .{ .display = self, .interface = &wl.Display.interface} },
             .objects = std.ArrayList(?*Proxy).init(allocator),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
@@ -89,6 +99,8 @@ pub const Display = struct {
             .io = io,
             .in = .{},
             .out = .{},
+            .fd_in = .{},
+            .fd_out = .{},
         };
 
         self.connection = connection;
@@ -111,7 +123,7 @@ pub const Display = struct {
         while (true) {
             const pre_wrap = self.connection.in.preWrapSlice();
             var header: Header = undefined;
-            self.connection.in.copy(std.mem.asBytes(&header));
+            _ = self.connection.in.copy(std.mem.asBytes(&header));
 
             if (self.connection.in.count < header.size) break;
             const proxy = self.objects.items[header.id].?;
@@ -119,7 +131,7 @@ pub const Display = struct {
             var data = pre_wrap;
             if (data.len < header.size) {
                 data = try self.allocator.alloc(u8, header.size);
-                self.connection.in.copy(data);
+                _ = self.connection.in.copy(data);
             }
 
             proxy.unmarshal_event(data[8..header.size], header.opcode);
@@ -172,7 +184,7 @@ pub const Display = struct {
         const callblack = try self.sync();
         var done: bool = false;
         callblack.set_listener(*bool, w.cbListener, &done);
-        while(!done){
+        while (!done) {
             try self.recvEvents();
         }
     }

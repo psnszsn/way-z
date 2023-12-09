@@ -89,7 +89,7 @@ fn displayListener(self: *Display, event: Display.Event, data: *anyopaque) void 
             std.log.info("delete id {}", .{ev.id});
             // if (ev.id == 3) {
             //     var cb = ddd.sync() catch unreachable;
-            //     cb.proxy.set_listener(Callback.Event, cbListener);
+            //     cb.proxy.setListener(Callback.Event, cbListener);
             // }
         },
     }
@@ -102,12 +102,12 @@ pub fn way(io: *IO) !void {
     _ = &registry;
     // defer registry.deinit();
 
-    registry.set_listener(
+    registry.setListener(
         *anyopaque,
         registryListener,
         @ptrFromInt(7),
     );
-    display.set_listener(
+    display.setListener(
         *anyopaque,
         displayListener,
         @ptrFromInt(7),
@@ -155,6 +155,7 @@ fn asdf(ptr: *u32) void {
 test {
     _ = @import("argument.zig");
     _ = @import("ring_buffer.zig");
+    // std.testing.refAllDecls(@This());
     var fn_ptr: *const fn (*anyopaque) void = @ptrCast(&asdf);
     _ = &fn_ptr;
     var a: u32 = 77;

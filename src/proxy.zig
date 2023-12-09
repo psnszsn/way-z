@@ -1,11 +1,20 @@
 const std = @import("std");
 const Argument = @import("argument.zig").Argument;
 const Display = @import("display.zig").Display;
+const log = std.log.scoped(.wl);
+
+pub const Interface = struct {
+    name: [:0]const u8,
+    version: u32,
+    event_signatures: []const []const Argument.ArgumentType = &.{},
+    event_names: []const []const u8 = &.{},
+    request_names: []const []const u8 = &.{},
+};
 
 pub const Proxy = struct {
     id: u32 = 0,
     display: *Display,
-    event_args: []const []const Argument.ArgumentType,
+    interface: *const Interface,
     listener: ?*const fn (*anyopaque, u16, []Argument, data: ?*anyopaque) void = null,
     listener_data: ?*anyopaque = undefined,
     pub fn deinit(self: *Proxy) void {
@@ -14,7 +23,7 @@ pub const Proxy = struct {
     }
     pub fn unmarshal_event(self: *Proxy, data: []const u8, opcode: u16) void {
         // std.log.info("event args {any}", .{self});
-        const signature = self.event_args[opcode];
+        const signature = self.interface.event_signatures[opcode];
         var argdata = data;
         var args: [20]Argument = undefined;
         for (signature, 0..) |arg_type, i| {
@@ -24,6 +33,7 @@ pub const Proxy = struct {
             argdata = argdata[args[i].len()..];
             // std.debug.print("===\n", .{});
         }
+        log.info("<- {s}@{}.{s}", .{self.interface.name, self.id, self.interface.event_names[opcode]});
         if (self.listener) |l| {
             l(@ptrCast(self), opcode, args[0..signature.len], self.listener_data);
         }
@@ -33,7 +43,7 @@ pub const Proxy = struct {
         var obj = try self.display.allocator.create(T);
         obj.* = .{ .proxy = .{
             .display = self.display,
-            .event_args = if (@hasDecl(T, "event_signatures")) &T.event_signatures else &.{},
+            .interface = &T.interface,
         } };
         try self.display.objects.append(&obj.proxy);
         obj.proxy.id = @intCast(self.display.objects.items.len - 1);
@@ -47,8 +57,6 @@ pub const Proxy = struct {
         }
         try self.marshal_request(opcode, args);
 
-        const ret = try self.display.connection.send();
-        std.debug.print("sent {}\n", .{ret});
 
         return obj;
     }
@@ -66,12 +74,21 @@ pub const Proxy = struct {
         const writer = connection.out.writer();
         for (args) |arg| {
             try arg.marshal(writer);
+            if (arg == .fd) {
+                const native_endian = @import("builtin").cpu.arch.endian();
+                try connection.fd_out.writer().writeInt(i32, arg.fd, native_endian);
+            }
         }
 
-        // try connection.out.pushSlice(std.mem.asBytes(&@as(u32, 2)));
-        std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
+
+        log.info("-> {s}@{}.{s}", .{self.interface.name, self.id, self.interface.request_names[opcode]});
+
+        const ret = try self.display.connection.send();
+        std.debug.print("sent {}\n", .{ret});
+
+        // std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
         // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
-        std.debug.print("marshal {} {} {any}\n", .{ self.id, opcode, args });
+        // std.debug.print("marshal {} {} {any}\n", .{ self.id, opcode, args });
     }
 
     pub fn genEventArgs(comptime Event: type) [std.meta.fields(Event).len][]const Argument.ArgumentType {

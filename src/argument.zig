@@ -53,6 +53,7 @@ pub const Argument = union(enum) {
     pub fn len(self: Argument) u16 {
         const l = switch (self) {
             .string => |str| (std.math.divCeil(usize, 4 + str.len + 1, 4) catch unreachable) * 4,
+            .fd => 0,
             inline else => |n| @sizeOf(@TypeOf(n)),
             // else => unreachable,
         };
@@ -75,6 +76,7 @@ pub const Argument = union(enum) {
                 std.debug.print("self.le {} {}\n", .{ self.len(), inner.len });
                 try writer.writeByteNTimes(0, self.len() - (4 + inner.len));
             },
+            .fd => {},
             // .object => |o| {
             //     try writer.writeInt(u32, @intFromPtr(o), .little);
             // },
@@ -99,6 +101,11 @@ pub const Argument = union(enum) {
                 const v = std.mem.readInt(u32, data[0..4], native_endian);
                 // std.debug.print("v: {}\n", .{v});
                 return Argument{ .uint = v };
+            },
+            .int => {
+                const v = std.mem.readInt(i32, data[0..4], native_endian);
+                // std.debug.print("v: {}\n", .{v});
+                return Argument{ .int = v };
             },
             .string => {
                 const l = std.mem.readInt(u32, data[0..4], native_endian);

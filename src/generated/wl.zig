@@ -1,13 +1,25 @@
 const std = @import("std");
 const os = std.os;
 const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
 
 pub const Display = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_display";
+    pub const interface = Interface{
+        .name = "wl_display",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "error",
+            "delete_id",
+        },
+        .request_names = &.{
+            "sync",
+            "get_registry",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_object = 0,
         invalid_method = 1,
@@ -24,7 +36,6 @@ pub const Display = struct {
             id: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Display,
@@ -71,8 +82,18 @@ pub const Display = struct {
 };
 pub const Registry = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_registry";
+    pub const interface = Interface{
+        .name = "wl_registry",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "global",
+            "global_remove",
+        },
+        .request_names = &.{
+            "bind",
+        },
+    };
     pub const Event = union(enum) {
         global: struct {
             name: u32,
@@ -83,7 +104,6 @@ pub const Registry = struct {
             name: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Registry,
@@ -118,7 +138,7 @@ pub const Registry = struct {
     pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) !*T {
         var _args = [_]Argument{
             .{ .uint = _name },
-            .{ .string = T.name },
+            .{ .string = T.interface.name },
             .{ .uint = _version },
             .{ .new_id = 0 },
         };
@@ -127,14 +147,19 @@ pub const Registry = struct {
 };
 pub const Callback = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_callback";
+    pub const interface = Interface{
+        .name = "wl_callback",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "done",
+        },
+    };
     pub const Event = union(enum) {
         done: struct {
             callback_data: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Callback,
@@ -164,8 +189,14 @@ pub const Callback = struct {
 };
 pub const Compositor = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "wl_compositor";
+    pub const interface = Interface{
+        .name = "wl_compositor",
+        .version = 6,
+        .request_names = &.{
+            "create_surface",
+            "create_region",
+        },
+    };
     pub fn create_surface(self: *const Compositor) !*Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
@@ -181,8 +212,15 @@ pub const Compositor = struct {
 };
 pub const ShmPool = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_shm_pool";
+    pub const interface = Interface{
+        .name = "wl_shm_pool",
+        .version = 1,
+        .request_names = &.{
+            "create_buffer",
+            "destroy",
+            "resize",
+        },
+    };
     pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) !*Buffer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
@@ -207,8 +245,17 @@ pub const ShmPool = struct {
 };
 pub const Shm = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_shm";
+    pub const interface = Interface{
+        .name = "wl_shm",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "format",
+        },
+        .request_names = &.{
+            "create_pool",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_format = 0,
         invalid_stride = 1,
@@ -329,7 +376,6 @@ pub const Shm = struct {
             format: Format,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Shm,
@@ -367,12 +413,20 @@ pub const Shm = struct {
 };
 pub const Buffer = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_buffer";
+    pub const interface = Interface{
+        .name = "wl_buffer",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "release",
+        },
+        .request_names = &.{
+            "destroy",
+        },
+    };
     pub const Event = union(enum) {
         release: void,
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Buffer,
@@ -405,8 +459,23 @@ pub const Buffer = struct {
 };
 pub const DataOffer = struct {
     proxy: Proxy,
-    pub const version = 3;
-    pub const name = "wl_data_offer";
+    pub const interface = Interface{
+        .name = "wl_data_offer",
+        .version = 3,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "offer",
+            "source_actions",
+            "action",
+        },
+        .request_names = &.{
+            "accept",
+            "receive",
+            "destroy",
+            "finish",
+            "set_actions",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_finish = 0,
         invalid_action_mask = 1,
@@ -424,7 +493,6 @@ pub const DataOffer = struct {
             dnd_action: DataDeviceManager.DndAction,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *DataOffer,
@@ -488,8 +556,24 @@ pub const DataOffer = struct {
 };
 pub const DataSource = struct {
     proxy: Proxy,
-    pub const version = 3;
-    pub const name = "wl_data_source";
+    pub const interface = Interface{
+        .name = "wl_data_source",
+        .version = 3,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "target",
+            "send",
+            "cancelled",
+            "dnd_drop_performed",
+            "dnd_finished",
+            "action",
+        },
+        .request_names = &.{
+            "offer",
+            "destroy",
+            "set_actions",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_action_mask = 0,
         invalid_source = 1,
@@ -509,7 +593,6 @@ pub const DataSource = struct {
             dnd_action: DataDeviceManager.DndAction,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *DataSource,
@@ -565,8 +648,24 @@ pub const DataSource = struct {
 };
 pub const DataDevice = struct {
     proxy: Proxy,
-    pub const version = 3;
-    pub const name = "wl_data_device";
+    pub const interface = Interface{
+        .name = "wl_data_device",
+        .version = 3,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "data_offer",
+            "enter",
+            "leave",
+            "motion",
+            "drop",
+            "selection",
+        },
+        .request_names = &.{
+            "start_drag",
+            "set_selection",
+            "release",
+        },
+    };
     pub const Error = enum(c_int) {
         role = 0,
     };
@@ -590,7 +689,6 @@ pub const DataDevice = struct {
             id: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *DataDevice,
@@ -657,8 +755,14 @@ pub const DataDevice = struct {
 };
 pub const DataDeviceManager = struct {
     proxy: Proxy,
-    pub const version = 3;
-    pub const name = "wl_data_device_manager";
+    pub const interface = Interface{
+        .name = "wl_data_device_manager",
+        .version = 3,
+        .request_names = &.{
+            "create_data_source",
+            "get_data_device",
+        },
+    };
     pub const DndAction = packed struct(u32) {
         copy: bool = false,
         move: bool = false,
@@ -681,8 +785,13 @@ pub const DataDeviceManager = struct {
 };
 pub const Shell = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_shell";
+    pub const interface = Interface{
+        .name = "wl_shell",
+        .version = 1,
+        .request_names = &.{
+            "get_shell_surface",
+        },
+    };
     pub const Error = enum(c_int) {
         role = 0,
     };
@@ -696,8 +805,28 @@ pub const Shell = struct {
 };
 pub const ShellSurface = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_shell_surface";
+    pub const interface = Interface{
+        .name = "wl_shell_surface",
+        .version = 1,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "ping",
+            "configure",
+            "popup_done",
+        },
+        .request_names = &.{
+            "pong",
+            "move",
+            "resize",
+            "set_toplevel",
+            "set_transient",
+            "set_fullscreen",
+            "set_popup",
+            "set_maximized",
+            "set_title",
+            "set_class",
+        },
+    };
     pub const Resize = packed struct(u32) {
         top: bool = false,
         bottom: bool = false,
@@ -726,7 +855,6 @@ pub const ShellSurface = struct {
         },
         popup_done: void,
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *ShellSurface,
@@ -832,8 +960,30 @@ pub const ShellSurface = struct {
 };
 pub const Surface = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "wl_surface";
+    pub const interface = Interface{
+        .name = "wl_surface",
+        .version = 6,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "enter",
+            "leave",
+            "preferred_buffer_scale",
+            "preferred_buffer_transform",
+        },
+        .request_names = &.{
+            "destroy",
+            "attach",
+            "damage",
+            "frame",
+            "set_opaque_region",
+            "set_input_region",
+            "commit",
+            "set_buffer_transform",
+            "set_buffer_scale",
+            "damage_buffer",
+            "offset",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_scale = 0,
         invalid_transform = 1,
@@ -855,7 +1005,6 @@ pub const Surface = struct {
             transform: Output.Transform,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Surface,
@@ -964,8 +1113,21 @@ pub const Surface = struct {
 };
 pub const Seat = struct {
     proxy: Proxy,
-    pub const version = 9;
-    pub const name = "wl_seat";
+    pub const interface = Interface{
+        .name = "wl_seat",
+        .version = 9,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "capabilities",
+            "name",
+        },
+        .request_names = &.{
+            "get_pointer",
+            "get_keyboard",
+            "get_touch",
+            "release",
+        },
+    };
     pub const Capability = packed struct(u32) {
         pointer: bool = false,
         keyboard: bool = false,
@@ -983,7 +1145,6 @@ pub const Seat = struct {
             name: [*:0]const u8,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Seat,
@@ -1038,8 +1199,28 @@ pub const Seat = struct {
 };
 pub const Pointer = struct {
     proxy: Proxy,
-    pub const version = 9;
-    pub const name = "wl_pointer";
+    pub const interface = Interface{
+        .name = "wl_pointer",
+        .version = 9,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "enter",
+            "leave",
+            "motion",
+            "button",
+            "axis",
+            "frame",
+            "axis_source",
+            "axis_stop",
+            "axis_discrete",
+            "axis_value120",
+            "axis_relative_direction",
+        },
+        .request_names = &.{
+            "set_cursor",
+            "release",
+        },
+    };
     pub const Error = enum(c_int) {
         role = 0,
     };
@@ -1109,7 +1290,6 @@ pub const Pointer = struct {
             direction: AxisRelativeDirection,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Pointer,
@@ -1195,8 +1375,22 @@ pub const Pointer = struct {
 };
 pub const Keyboard = struct {
     proxy: Proxy,
-    pub const version = 9;
-    pub const name = "wl_keyboard";
+    pub const interface = Interface{
+        .name = "wl_keyboard",
+        .version = 9,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "keymap",
+            "enter",
+            "leave",
+            "key",
+            "modifiers",
+            "repeat_info",
+        },
+        .request_names = &.{
+            "release",
+        },
+    };
     pub const KeymapFormat = enum(c_int) {
         no_keymap = 0,
         xkb_v1 = 1,
@@ -1238,7 +1432,6 @@ pub const Keyboard = struct {
             delay: i32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Keyboard,
@@ -1300,8 +1493,23 @@ pub const Keyboard = struct {
 };
 pub const Touch = struct {
     proxy: Proxy,
-    pub const version = 9;
-    pub const name = "wl_touch";
+    pub const interface = Interface{
+        .name = "wl_touch",
+        .version = 9,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "down",
+            "up",
+            "motion",
+            "frame",
+            "cancel",
+            "shape",
+            "orientation",
+        },
+        .request_names = &.{
+            "release",
+        },
+    };
     pub const Event = union(enum) {
         down: struct {
             serial: u32,
@@ -1334,7 +1542,6 @@ pub const Touch = struct {
             orientation: Fixed,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Touch,
@@ -1395,8 +1602,22 @@ pub const Touch = struct {
 };
 pub const Output = struct {
     proxy: Proxy,
-    pub const version = 4;
-    pub const name = "wl_output";
+    pub const interface = Interface{
+        .name = "wl_output",
+        .version = 4,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "geometry",
+            "mode",
+            "done",
+            "scale",
+            "name",
+            "description",
+        },
+        .request_names = &.{
+            "release",
+        },
+    };
     pub const Subpixel = enum(c_int) {
         unknown = 0,
         none = 1,
@@ -1448,7 +1669,6 @@ pub const Output = struct {
             description: [*:0]const u8,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Output,
@@ -1505,8 +1725,15 @@ pub const Output = struct {
 };
 pub const Region = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_region";
+    pub const interface = Interface{
+        .name = "wl_region",
+        .version = 1,
+        .request_names = &.{
+            "destroy",
+            "add",
+            "subtract",
+        },
+    };
     pub fn destroy(self: *const Region) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
@@ -1532,8 +1759,14 @@ pub const Region = struct {
 };
 pub const Subcompositor = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_subcompositor";
+    pub const interface = Interface{
+        .name = "wl_subcompositor",
+        .version = 1,
+        .request_names = &.{
+            "destroy",
+            "get_subsurface",
+        },
+    };
     pub const Error = enum(c_int) {
         bad_surface = 0,
         bad_parent = 1,
@@ -1553,8 +1786,18 @@ pub const Subcompositor = struct {
 };
 pub const Subsurface = struct {
     proxy: Proxy,
-    pub const version = 1;
-    pub const name = "wl_subsurface";
+    pub const interface = Interface{
+        .name = "wl_subsurface",
+        .version = 1,
+        .request_names = &.{
+            "destroy",
+            "set_position",
+            "place_above",
+            "place_below",
+            "set_sync",
+            "set_desync",
+        },
+    };
     pub const Error = enum(c_int) {
         bad_surface = 0,
     };

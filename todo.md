@@ -1,2 +1,3 @@
-- [*] scanner
-- [ ] binding
+- [x] scanner
+- [x] binding
+- [ ] FDs

@@ -22,30 +22,20 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             return self.bfr[self.index .. self.index + pre_wrap_count];
         }
 
-        // tail = MASK(b->tail);
-        // if (tail + count <= sizeof b->data) {
-        // 	memcpy(data, b->data + tail, count);
-        // } else {
-        // 	size = sizeof b->data - tail;
-        // 	memcpy(data, b->data + tail, size);
-        // 	memcpy((char *) data + size, b->data, count - size);
-        // }
-
-        pub fn copy(self: *Self, dest: []u8) void {
+        pub fn copy(self: *Self, dest: []u8) usize {
             const pre_wrap_count = @min(self.count, self.bfr.len - self.index, dest.len);
             const post_wrap_count = @min(dest.len - pre_wrap_count, self.count - pre_wrap_count);
-            std.mem.copy(
-                u8,
+            @memcpy(
                 dest[0..pre_wrap_count],
                 self.bfr[self.index .. self.index + pre_wrap_count],
             );
             if (post_wrap_count > 0) {
-                std.mem.copy(
-                    u8,
+                @memcpy(
                     dest[pre_wrap_count .. pre_wrap_count + post_wrap_count],
                     self.bfr[0..post_wrap_count],
                 );
             }
+            return pre_wrap_count + post_wrap_count;
         }
 
         pub fn pushSlice(self: *Self, items: []const u8) error{NoSpaceLeft}!void {
@@ -55,8 +45,8 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             const pre_wrap_count = @min(items.len, self.bfr.len - pre_wrap_start);
             const post_wrap_count = items.len - pre_wrap_count;
 
-            std.mem.copy(u8, self.bfr[pre_wrap_start..], items[0..pre_wrap_count]);
-            std.mem.copy(u8, self.bfr[0..post_wrap_count], items[pre_wrap_count..]);
+            @memcpy(self.bfr[pre_wrap_start..][0..pre_wrap_count], items[0..pre_wrap_count]);
+            @memcpy(self.bfr[0..post_wrap_count], items[pre_wrap_count..]);
 
             self.count += items.len;
         }

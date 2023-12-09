@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Never, TextIO
 from pprint import pprint
-from textwrap import dedent
 import subprocess
 
 
@@ -187,7 +186,7 @@ class Request:
                 match arg.type:
                     case "new_id":
                         if not interface:
-                            fd.write(".{ .string = T.name },")
+                            fd.write(".{ .string = T.interface.name },")
                             fd.write(".{ .uint = _version },")
                         fd.write(".{ .new_id = 0 },")
 
@@ -451,10 +450,22 @@ class Interface:
         fd.write(
             f"""pub const {name_camel} = struct {{
             proxy: Proxy,
-            pub const version = {self.version};
-            pub const name = "{self.prefix}_{self.name}";
+            pub const interface = Interface{{
+               .name = "{self.prefix}_{self.name}",
+               .version = {self.version},
             """
         )
+        if self.events:
+            fd.write(".event_signatures = &Proxy.genEventArgs(Event),\n")
+            event_names = "".join(f'"{event.name}",' for event in self.events.values())
+            fd.write(f".event_names = &.{{{event_names}}},\n")
+
+        if self.requests:
+            request_names = "".join(f'"{req.name}",' for req in self.requests.values())
+            fd.write(f".request_names = &.{{{request_names}}},\n")
+
+        fd.write("};")
+
         for enum in self.enums.values():
             enum.emit(fd)
 
@@ -463,7 +474,6 @@ class Interface:
             for e in self.events.values():
                 e.emit_field(fd)
             fd.write("};\n")
-            fd.write("pub const event_signatures = Proxy.genEventArgs(Event);\n")
 
             fd.write(f"""
                 pub inline fn set_listener(
@@ -576,6 +586,7 @@ class Protocol:
             const std = @import("std");
             const os = std.os;
             const Proxy = @import("../proxy.zig").Proxy;
+            const Interface = @import("../proxy.zig").Interface;
             const Argument = @import("../argument.zig").Argument;
             const Fixed = @import("../argument.zig").Fixed;
 

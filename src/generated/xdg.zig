@@ -1,14 +1,27 @@
 const std = @import("std");
 const os = std.os;
 const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
 
 const wl = @import("wl.zig");
 pub const WmBase = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "xdg_wm_base";
+    pub const interface = Interface{
+        .name = "xdg_wm_base",
+        .version = 6,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "ping",
+        },
+        .request_names = &.{
+            "destroy",
+            "create_positioner",
+            "get_xdg_surface",
+            "pong",
+        },
+    };
     pub const Error = enum(c_int) {
         role = 0,
         defunct_surfaces = 1,
@@ -23,7 +36,6 @@ pub const WmBase = struct {
             serial: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *WmBase,
@@ -76,8 +88,22 @@ pub const WmBase = struct {
 };
 pub const Positioner = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "xdg_positioner";
+    pub const interface = Interface{
+        .name = "xdg_positioner",
+        .version = 6,
+        .request_names = &.{
+            "destroy",
+            "set_size",
+            "set_anchor_rect",
+            "set_anchor",
+            "set_gravity",
+            "set_constraint_adjustment",
+            "set_offset",
+            "set_reactive",
+            "set_parent_size",
+            "set_parent_configure",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_input = 0,
     };
@@ -176,8 +202,21 @@ pub const Positioner = struct {
 };
 pub const Surface = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "xdg_surface";
+    pub const interface = Interface{
+        .name = "xdg_surface",
+        .version = 6,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "configure",
+        },
+        .request_names = &.{
+            "destroy",
+            "get_toplevel",
+            "get_popup",
+            "set_window_geometry",
+            "ack_configure",
+        },
+    };
     pub const Error = enum(c_int) {
         not_constructed = 1,
         already_constructed = 2,
@@ -191,7 +230,6 @@ pub const Surface = struct {
             serial: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Surface,
@@ -254,8 +292,33 @@ pub const Surface = struct {
 };
 pub const Toplevel = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "xdg_toplevel";
+    pub const interface = Interface{
+        .name = "xdg_toplevel",
+        .version = 6,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "configure",
+            "close",
+            "configure_bounds",
+            "wm_capabilities",
+        },
+        .request_names = &.{
+            "destroy",
+            "set_parent",
+            "set_title",
+            "set_app_id",
+            "show_window_menu",
+            "move",
+            "resize",
+            "set_max_size",
+            "set_min_size",
+            "set_maximized",
+            "unset_maximized",
+            "set_fullscreen",
+            "unset_fullscreen",
+            "set_minimized",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_resize_edge = 0,
         invalid_parent = 1,
@@ -304,7 +367,6 @@ pub const Toplevel = struct {
             capabilities: *anyopaque,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Toplevel,
@@ -422,8 +484,21 @@ pub const Toplevel = struct {
 };
 pub const Popup = struct {
     proxy: Proxy,
-    pub const version = 6;
-    pub const name = "xdg_popup";
+    pub const interface = Interface{
+        .name = "xdg_popup",
+        .version = 6,
+        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_names = &.{
+            "configure",
+            "popup_done",
+            "repositioned",
+        },
+        .request_names = &.{
+            "destroy",
+            "grab",
+            "reposition",
+        },
+    };
     pub const Error = enum(c_int) {
         invalid_grab = 0,
     };
@@ -439,7 +514,6 @@ pub const Popup = struct {
             token: u32,
         },
     };
-    pub const event_signatures = Proxy.genEventArgs(Event);
 
     pub inline fn set_listener(
         self: *Popup,

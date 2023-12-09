@@ -16,7 +16,10 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 
 pub fn main() !void {
-    try wayland.run_async(allocator, async_main);
+    try wayland.run_async(allocator, async_main_w);
+}
+pub fn async_main_w(io: *wayland.IO) void {
+    return async_main(io) catch unreachable;
 }
 
 // pub fn async_main(io: *wayland.IO) !void {
@@ -32,6 +35,7 @@ pub fn main() !void {
 
 pub fn async_main(io: *wayland.IO) !void {
     const display = try wayland.Display.connect(allocator, io);
+    display.set_listener(?*anyopaque, displayListener, null);
     const registry = try display.get_registry();
 
     var context = Context{
@@ -79,6 +83,7 @@ pub fn async_main(io: *wayland.IO) !void {
 
     surface.commit();
     try display.roundtrip();
+    try display.roundtrip();
 
     surface.attach(buffer, 0, 0);
     surface.commit();
@@ -91,11 +96,11 @@ pub fn async_main(io: *wayland.IO) !void {
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *Context) void {
     switch (event) {
         .global => |global| {
-            if (mem.orderZ(u8, global.interface, wl.Compositor.name) == .eq) {
+            if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
                 context.compositor = registry.bind(global.name, wl.Compositor, 1) catch return;
-            } else if (mem.orderZ(u8, global.interface, wl.Shm.name) == .eq) {
+            } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
                 context.shm = registry.bind(global.name, wl.Shm, 1) catch return;
-            } else if (mem.orderZ(u8, global.interface, xdg.WmBase.name) == .eq) {
+            } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
                 context.wm_base = registry.bind(global.name, xdg.WmBase, 1) catch return;
             }
         },
@@ -106,6 +111,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
 fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, surface: *wl.Surface) void {
     switch (event) {
         .configure => |configure| {
+            std.debug.print("configure\n", .{});
             xdg_surface.ack_configure(configure.serial);
             surface.commit();
         },
@@ -120,20 +126,17 @@ fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, running: *bo
     }
 }
 
-
-
-
-fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
-    switch (event) {
-        .global => |global| {
-            if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
-                const seat = registry.bind(global.name, wl.Seat) catch return;
-                seat.set_listener(?*anyopaque, seatListener, null);
-            }
-        },
-        .global_remove => {},
-    }
-}
+// fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
+//     switch (event) {
+//         .global => |global| {
+//             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
+//                 const seat = registry.bind(global.name, wl.Seat) catch return;
+//                 seat.set_listener(?*anyopaque, seatListener, null);
+//             }
+//         },
+//         .global_remove => {},
+//     }
+// }
 
 fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     switch (event) {
@@ -150,12 +153,17 @@ fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     }
 }
 
-fn displayListener(_: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
+fn displayListener(self: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
+    _ = self;
     switch (event) {
         .@"error" => |e| {
             std.debug.print("error {} {s}\n", .{ e.code, e.message });
         },
         .delete_id => |id| {
+        
+            // const obj = self.objects.items[id.id];
+            //
+            // std.debug.print("obj {?}\n", .{obj});
             std.debug.print("delede_id {}\n", .{id});
         },
     }
