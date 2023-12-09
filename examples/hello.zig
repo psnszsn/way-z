@@ -22,17 +22,6 @@ pub fn async_main_w(io: *wayland.IO) void {
     return async_main(io) catch unreachable;
 }
 
-// pub fn async_main(io: *wayland.IO) !void {
-//     const display = try wayland.Display.connect(allocator, io);
-//     const registry = try display.get_registry();
-//     display.set_listener(?*anyopaque, displayListener, null);
-//     registry.set_listener(?*anyopaque, listener, null);
-//     while (true) {
-//         try display.recvEvents();
-//         std.debug.print("count {}\n", .{display.connection.in.count});
-//     }
-// }
-
 pub fn async_main(io: *wayland.IO) !void {
     const display = try wayland.Display.connect(allocator, io);
     display.set_listener(?*anyopaque, displayListener, null);

@@ -84,7 +84,8 @@ pub const Proxy = struct {
         log.info("-> {s}@{}.{s}", .{self.interface.name, self.id, self.interface.request_names[opcode]});
 
         const ret = try self.display.connection.send();
-        std.debug.print("sent {}\n", .{ret});
+        _ = ret;
+        // std.debug.print("sent {}\n", .{ret});
 
         // std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
         // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";

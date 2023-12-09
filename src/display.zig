@@ -41,7 +41,7 @@ pub const Connection = struct {
         });
         const len = self.fd_out.copy(std.mem.asBytes(cmsg.dataPtr()));
         self.fd_out.consume(len);
-        std.debug.print("fd len {}\n", .{len});
+        // std.debug.print("fd len {}\n", .{len});
 
         var msg = std.os.msghdr_const{
             .name = null,

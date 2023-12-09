@@ -17,6 +17,11 @@ def title_case(txt: str) -> str:
 # def camel_case(txt: str) -> str:
 #     return "".join(w.capitalize() for w in txt.split("_"))
 
+def emit_description(description: str|None, fd: TextIO, commment_type:str = "///"):
+    if description:
+        for line in description.strip().splitlines():
+            fd.write(f"\n{commment_type} {line.strip()}")
+        fd.write("\n")
 
 @dataclass(slots=True)
 class Arg:
@@ -36,7 +41,7 @@ class Arg:
         self.type = arg.get("type") or Never
 
         self.description = None
-        self.summary = arg.get("summary") or Never
+        self.summary = arg.get("summary") or ""
         self.allow_null = arg.get("allow-null", None) == "true"
 
         self.interface = arg.get("interface")
@@ -95,17 +100,6 @@ class Arg:
 
 @dataclass(slots=True)
 class Request:
-    """A request on an interface.
-
-    Requests have a name, optional type (to indicate whether the
-    request destroys the object), optional "since version of
-    interface", optional description, and optional summary.
-
-    If a request has an argument of type "new_id" then the request
-    creates a new object; the Interface for this new object is
-    accessible as the "creates" attribute.
-    """
-
     interface: Interface
     opcode: int
     name: str
@@ -134,7 +128,7 @@ class Request:
             match c.tag:
                 case "description":
                     self.description = c.text
-                    self.summary = c.get("summary") or Never
+                    self.summary = c.get("summary") or ""
                 case "arg":
                     a = Arg(self, c)
                     # if a.type == "new_id":
@@ -147,7 +141,8 @@ class Request:
         return "{}.{}".format(self.interface.name, self.name)
 
     def emit_fn(self, fd: TextIO):
-        # return
+        emit_description(self.description, fd)
+
         fd.write(f"pub fn {self.name}(self: *const {self.interface.zig_type()}")
 
         for arg in self.args:
@@ -244,19 +239,6 @@ class EnumEntry:
 
 @dataclass(slots=True)
 class Enum:
-    """An enumeration declared in an interface.
-
-    Enumerations have a name, optional "since version of interface",
-    option description, optional summary, and a number of entries.
-
-    The entries are accessible by name in the dictionary available
-    through the "entries" attribute.  Further, if the Enum instance is
-    accessed as a dictionary then if a string argument is used it
-    returns the integer value of the corresponding entry, and if an
-    integer argument is used it returns the name of the corresponding
-    entry.
-    """
-
     name: str
     since: int
     entries: dict[str, EnumEntry]
@@ -309,14 +291,6 @@ class Enum:
 
 @dataclass(slots=True)
 class Event:
-    """An event on an interface.
-
-    Events have a number (which depends on the order in which they are
-    declared in the protocol XML file), name, optional "since version
-    of interface", optional description, optional summary, and a
-    number of arguments.
-    """
-
     interface: Interface = field(repr=False)
     name: str
     number: int
@@ -350,6 +324,7 @@ class Event:
         return "{}::{}".format(self.interface, self.name)
 
     def emit_field(self, fd: TextIO):
+        emit_description(self.description, fd)
         fd.write(f'''@"{self.name}"''')
         if not self.args:
             fd.write(": void,")
@@ -367,32 +342,15 @@ class Event:
                 if arg.type == "object" and not arg.allow_null:
                     fd.write("?")
                 fd.write(arg.zig_type())
-                fd.write(", ")
+            fd.write(", ")
+            if arg.summary:
+                fd.write(f"// {arg.summary}\n")
+
         fd.write("},\n")
 
 
 @dataclass(slots=True)
 class Interface:
-    """A Wayland protocol interface.
-
-    Wayland interfaces have a name and version, plus a number of
-    requests, events and enumerations.  Optionally they have a
-    description.
-
-    The name and version are accessible as the "name" and "version"
-    attributes.
-
-    The requests and enums are accessible as dictionaries as the
-    "requests" and "enums" attributes.  The events are accessible by
-    name as a dictionary as the "events_by_name" attribute, and by
-    number as a list as the "events_by_number" attribute.
-
-    A client proxy class for this interface is available as the
-    "client_proxy_class" attribute; instances of this class have
-    methods corresponding to the requests, and deal with dispatching
-    the events.
-    """
-
     protocol: Protocol
     version: int
     prefix: str
@@ -446,6 +404,8 @@ class Interface:
         return title_case(self.name)
 
     def emit(self, fd: TextIO):
+        emit_description(self.description, fd)
+            
         name_camel = "".join(w.capitalize() for w in self.name.split("_"))
         fd.write(
             f"""pub const {name_camel} = struct {{
@@ -470,7 +430,7 @@ class Interface:
             enum.emit(fd)
 
         if self.events:
-            fd.write("pub const Event = union(enum) {")
+            fd.write("pub const Event = union(enum) {\n")
             for e in self.events.values():
                 e.emit_field(fd)
             fd.write("};\n")
@@ -581,6 +541,8 @@ class Protocol:
         return interface
 
     def emit(self, fd: TextIO):
+        emit_description(self.copyright, fd, r'//')
+
         fd.write(
             """\
             const std = @import("std");
