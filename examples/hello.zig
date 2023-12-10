@@ -115,18 +115,6 @@ fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, running: *bo
     }
 }
 
-// fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
-//     switch (event) {
-//         .global => |global| {
-//             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
-//                 const seat = registry.bind(global.name, wl.Seat) catch return;
-//                 seat.set_listener(?*anyopaque, seatListener, null);
-//             }
-//         },
-//         .global_remove => {},
-//     }
-// }
-
 fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     switch (event) {
         .capabilities => |data| {
