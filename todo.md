@@ -2,3 +2,4 @@
 - [x] binding
 - [x] FDs
 - [ ] destroy()
+- [ ] shared buffer management

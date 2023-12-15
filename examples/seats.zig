@@ -3,7 +3,6 @@ const wayland = @import("wayland");
 const wl = wayland.wl;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-// defer std.debug.assert(!gpa.deinit());
 const allocator = gpa.allocator();
 
 pub fn main() !void {
@@ -17,6 +16,8 @@ pub fn async_main(io: *wayland.IO) !void {
     registry.set_listener(?*anyopaque, listener, null);
     try display.roundtrip();
     try display.roundtrip();
+    display.deinit();
+    std.debug.assert(gpa.deinit() == .ok);
 }
 
 fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {

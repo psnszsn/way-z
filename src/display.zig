@@ -1,7 +1,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
-const IO = @import("io_async.zig").IO;
+const IO = @import("lib.zig").IO;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
 const wl = @import("generated/wl.zig");
@@ -34,12 +34,14 @@ pub const Connection = struct {
 
     pub fn send(self: *Connection) !usize {
         var iovecs = self.out.get_read_iovecs();
-        var cmsg = Cmsghdr([1]std.os.fd_t).init(.{
+        var cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
             .type = 1, //SCM_RIGHTS
         });
         const len = self.fd_out.copy(std.mem.asBytes(cmsg.dataPtr()));
         self.fd_out.consume(len);
+        const cmsg_len: u32 = @intCast(@TypeOf(cmsg).data_offset + len);
+        cmsg.headerPtr().len = cmsg_len;
         // std.debug.print("fd len {}\n", .{len});
 
         var msg = std.os.msghdr_const{
@@ -48,7 +50,7 @@ pub const Connection = struct {
             .iov = &iovecs,
             .iovlen = 2,
             .control = &cmsg,
-            .controllen = if (len>0) @sizeOf(@TypeOf(cmsg))  else 0,
+            .controllen = if (len > 0) cmsg_len else 0,
             .flags = 0,
         };
 
@@ -60,7 +62,7 @@ pub const Connection = struct {
 };
 
 pub const Display = struct {
-    wl_display: wl.Display,
+    wl_display: *wl.Display,
     objects: std.ArrayList(?*Proxy),
     unused_oids: std.ArrayList(u32),
     connection: *Connection,
@@ -71,8 +73,10 @@ pub const Display = struct {
 
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
+        const wl_display = try allocator.create(wl.Display);
+        wl_display.* = .{ .proxy = .{ .display = self, .interface = &wl.Display.interface } };
         self.* = .{
-            .wl_display = .{ .proxy = .{ .display = self, .interface = &wl.Display.interface} },
+            .wl_display = wl_display,
             .objects = std.ArrayList(?*Proxy).init(allocator),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
@@ -83,11 +87,11 @@ pub const Display = struct {
         self.wl_display.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
-        const wl_display = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
+        const wl_display_name = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
 
         const fd = try std.os.socket(linux.AF.UNIX, linux.SOCK.STREAM, 0);
         var buf: [std.os.PATH_MAX]u8 = undefined;
-        const a = try std.fmt.bufPrint(&buf, "{s}/{s}", .{ xdg_runtime_dir, wl_display });
+        const a = try std.fmt.bufPrint(&buf, "{s}/{s}", .{ xdg_runtime_dir, wl_display_name });
 
         var addr = try std.net.Address.initUnix(a);
         try io.connect(fd, &addr.any, addr.getOsSockLen());
@@ -143,6 +147,10 @@ pub const Display = struct {
     }
     pub fn deinit(self: *Display) void {
         self.connection.io.close(self.connection.socket_fd) catch unreachable;
+        for (self.objects.items) |proxy| {
+            if (proxy) |p|
+                self.allocator.destroy(p);
+        }
         self.objects.deinit();
         self.unused_oids.deinit();
         self.allocator.destroy(self.connection);

@@ -13,10 +13,10 @@ pub fn Cmsghdr(comptime T: type) type {
         type: c_int,
     };
 
-    const data_align = @sizeOf(usize);
-    const data_offset = std.mem.alignForward(usize, @sizeOf(Header), data_align);
 
     return extern struct {
+        const data_align = @sizeOf(usize);
+        pub const data_offset = std.mem.alignForward(usize, @sizeOf(Header), data_align);
         const Self = @This();
 
         bytes: [data_offset + @sizeOf(T)]u8 align(@alignOf(Header)),

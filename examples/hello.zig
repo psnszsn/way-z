@@ -51,6 +51,19 @@ pub fn async_main(io: *wayland.IO) !void {
         const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, fd, 0);
         @memcpy(data, @embedFile("cat.bgra"));
 
+        const data_u32: []u32 = std.mem.bytesAsSlice(u32, data);
+        for (0..height) |y| {
+            for (0..width) |x| {
+                if ((x + y / 8 * 8) % 16 < 8) {
+                    data_u32[y * width + x] = 0xFF666666;
+                } else {
+                    data_u32[y * width + x] = 0xFFEEEEEE;
+                }
+            }
+        }
+
+        os.munmap(data);
+
         const pool = try shm.create_pool(fd, size);
         defer pool.destroy();
 
@@ -137,7 +150,7 @@ fn displayListener(self: *wayland.Display, event: wl.Display.Event, _: ?*anyopaq
             std.debug.print("error {} {s}\n", .{ e.code, e.message });
         },
         .delete_id => |id| {
-        
+
             // const obj = self.objects.items[id.id];
             //
             // std.debug.print("obj {?}\n", .{obj});
