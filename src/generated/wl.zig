@@ -76,7 +76,7 @@ pub const Display = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Display,
         comptime T: type,
         comptime _listener: *const fn (*Display, Event, T) void,
@@ -86,7 +86,7 @@ pub const Display = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .@"error" = .{
-                        .object_id = args[0].object,
+                        .object_id = args[0].uint,
                         .code = args[1].uint,
                         .message = args[2].string,
                     } },
@@ -269,7 +269,7 @@ pub const Callback = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Callback,
         comptime T: type,
         comptime _listener: *const fn (*Callback, Event, T) void,

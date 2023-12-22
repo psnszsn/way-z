@@ -6,10 +6,27 @@ const wayland = @import("wayland");
 const wl = wayland.wl;
 const xdg = wayland.xdg;
 
+const Buffer = wayland.shm.Buffer;
+
 const Context = struct {
     shm: ?*wl.Shm,
     compositor: ?*wl.Compositor,
     wm_base: ?*xdg.WmBase,
+};
+
+pub const std_options = struct {
+    pub const log_level = .info;
+};
+
+const SurfaceCtx = struct {
+    ctx: *Context,
+    wl_surface: *wl.Surface,
+    xdg_surface: *xdg.Surface,
+    xdg_toplevel: *xdg.Toplevel,
+    width: u32,
+    height: u32,
+    offset: f32,
+    last_frame: u32,
 };
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -37,58 +54,43 @@ pub fn async_main(io: *wayland.IO) !void {
     try display.roundtrip();
 
     const shm = context.shm orelse return error.NoWlShm;
+    _ = shm;
     const compositor = context.compositor orelse return error.NoWlCompositor;
     const wm_base = context.wm_base orelse return error.NoXdgWmBase;
 
-    const buffer = blk: {
-        const width = 128;
-        const height = 128;
-        const stride = width * 4;
-        const size = stride * height;
-
-        const fd = try os.memfd_create("hello-zig-wayland", 0);
-        try os.ftruncate(fd, size);
-        const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, fd, 0);
-        @memcpy(data, @embedFile("cat.bgra"));
-
-        const data_u32: []u32 = std.mem.bytesAsSlice(u32, data);
-        for (0..height) |y| {
-            for (0..width) |x| {
-                if ((x + y / 8 * 8) % 16 < 8) {
-                    data_u32[y * width + x] = 0xFF666666;
-                } else {
-                    data_u32[y * width + x] = 0xFFEEEEEE;
-                }
-            }
-        }
-
-        os.munmap(data);
-
-        const pool = try shm.create_pool(fd, size);
-        defer pool.destroy();
-
-        break :blk try pool.create_buffer(0, width, height, stride, wl.Shm.Format.argb8888);
+    var surface: SurfaceCtx = .{
+        .xdg_surface = undefined,
+        .xdg_toplevel = undefined,
+        .wl_surface = undefined,
+        .width = 100,
+        .height = 100,
+        .last_frame = 0,
+        .offset = 0,
+        .ctx = &context,
     };
-    defer buffer.destroy();
 
-    const surface = try compositor.create_surface();
-    defer surface.destroy();
-    const xdg_surface = try wm_base.get_xdg_surface(surface);
-    defer xdg_surface.destroy();
-    const xdg_toplevel = try xdg_surface.get_toplevel();
-    defer xdg_toplevel.destroy();
+    surface.wl_surface = try compositor.create_surface();
+    defer surface.wl_surface.destroy();
+    surface.xdg_surface = try wm_base.get_xdg_surface(surface.wl_surface);
+    defer surface.xdg_surface.destroy();
+    surface.xdg_toplevel = try surface.xdg_surface.get_toplevel();
+    defer surface.xdg_toplevel.destroy();
 
-    var running = true;
+    const running = true;
 
-    xdg_surface.set_listener(*wl.Surface, xdgSurfaceListener, surface);
-    xdg_toplevel.set_listener(*bool, xdgToplevelListener, &running);
+    surface.xdg_surface.set_listener(*SurfaceCtx, xdgSurfaceListener, &surface);
+    surface.xdg_toplevel.set_listener(*SurfaceCtx, xdgToplevelListener, &surface);
+    surface.xdg_toplevel.set_min_size(500, 200);
 
-    surface.commit();
-    try display.roundtrip();
-    try display.roundtrip();
+    surface.wl_surface.commit();
 
-    surface.attach(buffer, 0, 0);
-    surface.commit();
+    const frame_cb = try surface.wl_surface.frame();
+    frame_cb.set_listener(*SurfaceCtx, frameListener, &surface);
+    // try display.roundtrip();
+    // try display.roundtrip();
+    //
+    // surface.attach(buffer.wl_buffer, 0, 0);
+    // surface.commit();
 
     while (running) {
         try display.recvEvents();
@@ -110,20 +112,89 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
     }
 }
 
-fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, surface: *wl.Surface) void {
+const palette = [_]u32{
+    0xff1a1c2c,
+    0xff5d275d,
+    0xffb13e53,
+    0xffef7d57,
+    0xffffcd75,
+    0xffa7f070,
+    0xff38b764,
+    0xff257179,
+    0xff29366f,
+    0xff3b5dc9,
+    0xff41a6f6,
+    0xff73eff7,
+    0xfff4f4f4,
+    0xff94b0c2,
+    0xff566c86,
+    0xff333c57,
+};
+
+fn draw(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
+    const offset_int: u32 = @intFromFloat(_offset);
+    _ = offset_int;
+    // const offset = offset_int % 8;
+    const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
+
+    const t = _offset;
+    const sin = std.math.sin;
+    const r = 50;
+    _ = r;
+    for (0..height) |y| {
+        for (0..width) |x| {
+            const x_f: f32, const y_f: f32 = .{ @floatFromInt(x), @floatFromInt(y) };
+            const c = sin(x_f / 80) + sin(y_f / 80) + sin(t / 80);
+            const index: i64 = @intFromFloat(c * 4);
+            data_u32[y * width + x] = palette[@abs(index) % 16];
+        }
+    }
+}
+
+fn draw2(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
+    const offset_int: u32 = @intFromFloat(_offset);
+    const offset = offset_int % 8;
+    const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
+    for (0..height) |y| {
+        for (0..width) |x| {
+            if (((x + offset) + (y + offset) / 8 * 8) % 16 < 8) {
+                // if ((x + y / 8 * 8) % 16 < 8) {
+                data_u32[y * width + x] = 0xFF666666;
+            } else {
+                data_u32[y * width + x] = 0xFFEEEEEE;
+            }
+        }
+    }
+}
+
+fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
     switch (event) {
         .configure => |configure| {
             std.debug.print("configure\n", .{});
             xdg_surface.ack_configure(configure.serial);
-            surface.commit();
+
+            const buf = Buffer.get(surf.ctx.shm.?, surf.width, surf.height) catch |err| {
+                std.log.info("err {}", .{err});
+                unreachable;
+            };
+            draw(buf.mmap, surf.width, surf.height, surf.offset);
+            surf.wl_surface.attach(buf.wl_buffer, 0, 0);
+            surf.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
+            surf.wl_surface.commit();
         },
     }
 }
 
-fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, running: *bool) void {
+fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
     switch (event) {
-        .configure => {},
-        .close => running.* = false,
+        .configure => |configure| {
+            std.log.warn("new size {} {}", .{ configure.width, configure.height });
+            surf.width = @intCast(configure.width);
+            surf.height = @intCast(configure.height);
+        },
+        .close => {
+            // running.* = false;
+        },
         else => {},
     }
 }
@@ -143,18 +214,44 @@ fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     }
 }
 
-fn displayListener(self: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
-    _ = self;
+fn frameListener(cb: *wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
+    _ = cb;
+    switch (event) {
+        .done => |done| {
+            const time = done.callback_data;
+            const frame_cb = surf.wl_surface.frame() catch return;
+            frame_cb.set_listener(*SurfaceCtx, frameListener, surf);
+
+            if (surf.last_frame != 0) {
+                const elapsed: f32 = @floatFromInt(time - surf.last_frame);
+                surf.offset += elapsed / 1000.0 * 24;
+            }
+
+            const buf = Buffer.get(surf.ctx.shm.?, surf.width, surf.height) catch |err| {
+                std.log.info("err {}", .{err});
+                unreachable;
+            };
+            draw(buf.mmap, surf.width, surf.height, surf.offset);
+            surf.wl_surface.attach(buf.wl_buffer, 0, 0);
+            surf.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
+            surf.wl_surface.commit();
+
+            surf.last_frame = time;
+            // std.debug.print("done:{}\n", .{done});
+        },
+    }
+}
+
+fn displayListener(display: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
     switch (event) {
         .@"error" => |e| {
             std.debug.print("error {} {s}\n", .{ e.code, e.message });
         },
-        .delete_id => |id| {
-
-            // const obj = self.objects.items[id.id];
-            //
-            // std.debug.print("obj {?}\n", .{obj});
-            std.debug.print("delede_id {}\n", .{id});
+        .delete_id => |del| {
+            // const obj_opt = &display.objects.items[del.id];
+            // const obj: *wayland.Proxy = @ptrCast(obj_opt);
+            // // std.debug.print("delede_id {} {s}\n", .{ del.id, obj.interface.name });
+            display.objects.items[del.id] = null;
         },
     }
 }

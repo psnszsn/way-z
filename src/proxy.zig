@@ -27,38 +27,34 @@ pub const Proxy = struct {
         var argdata = data;
         var args: [20]Argument = undefined;
         for (signature, 0..) |arg_type, i| {
-            // std.debug.print("argdata {any}\n", .{argdata});
             args[i] = Argument.unmarshal(arg_type, self.display.allocator, argdata);
-            // std.debug.print("arg len: {}\n", .{arg.len()});
             argdata = argdata[args[i].len()..];
-            // std.debug.print("===\n", .{});
         }
-        log.info("<- {s}@{}.{s}", .{self.interface.name, self.id, self.interface.event_names[opcode]});
+        log.debug("<- {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.event_names[opcode] });
         if (self.listener) |l| {
             l(@ptrCast(self), opcode, args[0..signature.len], self.listener_data);
         }
     }
 
-    pub inline fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
-        var obj = try self.display.allocator.create(T);
-        obj.* = .{ .proxy = .{
+    pub fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
+        const next_id = self.display.next_id();
+        const next = &self.display.objects.items[next_id];
+        next.* = Proxy{
             .display = self.display,
             .interface = &T.interface,
-        } };
-        try self.display.objects.append(&obj.proxy);
-        obj.proxy.id = @intCast(self.display.objects.items.len - 1);
+            .id = next_id,
+        };
 
         for (args) |*arg| {
             switch (arg.*) {
-                .new_id => |_| arg.* = .{ .new_id = obj.proxy.id },
+                .new_id => |_| arg.* = .{ .new_id = next_id },
                 // .new_id => |_| arg.* = .{ .object = obj.proxy.id },
                 else => {},
             }
         }
         try self.marshal_request(opcode, args);
 
-
-        return obj;
+        return @ptrCast(next);
     }
 
     pub fn marshal_request(self: *const Proxy, opcode: u16, args: []const Argument) !void {
@@ -80,8 +76,7 @@ pub const Proxy = struct {
             }
         }
 
-
-        log.info("-> {s}@{}.{s}", .{self.interface.name, self.id, self.interface.request_names[opcode]});
+        log.debug("-> {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.request_names[opcode] });
 
         const ret = try self.display.connection.send();
         _ = ret;
@@ -114,3 +109,4 @@ pub const Proxy = struct {
         return r;
     }
 };
+

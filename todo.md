@@ -3,3 +3,5 @@
 - [x] FDs
 - [ ] destroy()
 - [ ] shared buffer management
+- [ ] zero allocations
+- [ ] proxy types are enum(u32)

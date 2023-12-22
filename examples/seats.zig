@@ -48,13 +48,17 @@ fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     }
 }
 
-fn displayListener(_: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
+fn displayListener(display: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
     switch (event) {
         .@"error" => |e| {
             std.debug.print("error {} {s}\n", .{ e.code, e.message });
         },
-        .delete_id => |id| {
-            std.debug.print("delede_id {}\n", .{id});
+        .delete_id => |del| {
+
+            const obj_opt = &display.objects.items[del.id];
+            const obj: *wayland.Proxy = @ptrCast(obj_opt);
+            std.debug.print("delede_id {} {s}\n", .{del.id, obj.interface.name});
+            display.objects.items[del.id] = null;
         },
     }
 }

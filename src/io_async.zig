@@ -19,6 +19,8 @@ const Frame = libcoro.Frame;
 pub const IO = struct {
     ring: IO_Uring,
 
+    comptime blocking: bool = true,
+
     /// The number of SQEs queued but not yet submitted to the kernel:
     queued: u32 = 0,
 
@@ -43,6 +45,22 @@ pub const IO = struct {
         self.ring.deinit();
     }
 
+    pub fn wait_one(self: *IO) !void {
+        try self.flush_submissions(true);
+        try self.flush_completions(true);
+        const head = self.completed_head;
+        self.completed_head = null;
+        self.completed_tail = null;
+        std.debug.assert(head.?.next == null);
+    }
+
+    pub inline fn susp(self: *IO) void {
+        if (self.blocking == false) {
+            xsuspend();
+        } else {
+            self.wait_one() catch {};
+        }
+    }
     pub fn run(self: *IO) !void {
         // Run the event loop while there is IO pending:
         while (self.queued + self.submitted > 0 or self.completed_head != null) {
@@ -132,7 +150,7 @@ pub const IO = struct {
                 error.SubmissionQueueFull => {
                     var completion = Completion{ .frame = xframe(), .result = 0 };
                     self.append_completion(&completion);
-                    xsuspend();
+                    self.susp();
                     continue;
                 },
             };
@@ -152,7 +170,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_accept(sqe, socket, address, address_size, os.SOCK.CLOEXEC);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -182,7 +200,7 @@ pub const IO = struct {
         const sqe = self.get_sqe();
         linux.io_uring_prep_close(sqe, fd);
         sqe.user_data = @intFromPtr(&completion);
-        xsuspend();
+        self.susp();
         if (completion.result < 0) {
             switch (@as(os.E, @enumFromInt(-completion.result))) {
                 .INTR => return, // A success, see https://github.com/ziglang/zig/issues/2425.
@@ -208,7 +226,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_connect(sqe, socket, address, address_size);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -243,7 +261,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_fsync(sqe, fd, 0);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -275,7 +293,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_openat(sqe, dir_fd, &pathname_c, flags, mode);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -314,7 +332,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_read(sqe, fd, buffer[0..buffer_limit(buffer.len)], offset);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -344,7 +362,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_recv(sqe, socket, buffer, os.MSG.NOSIGNAL);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -370,7 +388,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_recvmsg(sqe, socket, msg, os.MSG.NOSIGNAL);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -396,7 +414,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_send(sqe, socket, buffer, os.MSG.NOSIGNAL);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -431,7 +449,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_sendmsg(sqe, socket, msg, os.MSG.NOSIGNAL);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -470,7 +488,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_timeout(sqe, &ts, 0, 0);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -490,7 +508,7 @@ pub const IO = struct {
             const sqe = self.get_sqe();
             linux.io_uring_prep_write(sqe, fd, buffer[0..buffer_limit(buffer.len)], offset);
             sqe.user_data = @intFromPtr(&completion);
-            xsuspend();
+            self.susp();
             if (completion.result < 0) {
                 switch (@as(os.E, @enumFromInt(-completion.result))) {
                     .INTR => continue,
@@ -521,7 +539,7 @@ pub const IO = struct {
         const sqe = self.get_sqe();
         linux.io_uring_prep_poll_add(sqe, fd, poll_mask);
         sqe.user_data = @intFromPtr(&completion);
-        xsuspend();
+        self.susp();
         if (completion.result < 0) {
             switch (@as(os.E, @enumFromInt(-completion.result))) {
                 .FAULT => unreachable,

@@ -63,7 +63,7 @@ pub const Connection = struct {
 
 pub const Display = struct {
     wl_display: *wl.Display,
-    objects: std.ArrayList(?*Proxy),
+    objects: std.ArrayList(?Proxy),
     unused_oids: std.ArrayList(u32),
     connection: *Connection,
     allocator: std.mem.Allocator,
@@ -71,20 +71,34 @@ pub const Display = struct {
 
     pub const Event = wl.Display.Event;
 
+    pub fn next_id(self: *const Display) u32 {
+        for (self.objects.items, 0..) |*obj, id| {
+            if (id == 0) continue;
+            if (obj.* == null) return @intCast(id);
+        }
+        unreachable;
+    }
+
+    pub fn next_object(self: *const Display) *?Proxy {
+        return &self.objects.items[self.next_id()];
+    }
+
+
     pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
         var self = try allocator.create(Display);
-        const wl_display = try allocator.create(wl.Display);
-        wl_display.* = .{ .proxy = .{ .display = self, .interface = &wl.Display.interface } };
         self.* = .{
-            .wl_display = wl_display,
-            .objects = std.ArrayList(?*Proxy).init(allocator),
+            .wl_display = undefined,
+            .objects = try std.ArrayList(?Proxy).initCapacity(allocator, 1000),
             .unused_oids = std.ArrayList(u32).init(allocator),
             .connection = undefined,
             .allocator = allocator,
         };
-        try self.objects.append(null);
-        try self.objects.append(&self.wl_display.proxy);
-        self.wl_display.proxy.id = @as(u32, @intCast(self.objects.items.len - 1));
+
+        try self.objects.appendNTimes(null, 1000);
+
+        const next = self.next_object();
+        next.* = Proxy{  .display = self, .interface = &wl.Display.interface , .id = 1} ;
+        self.wl_display = @ptrCast(next);
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
         const wl_display_name = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
@@ -129,7 +143,7 @@ pub const Display = struct {
             _ = self.connection.in.copy(std.mem.asBytes(&header));
 
             if (self.connection.in.count < header.size) break;
-            const proxy = self.objects.items[header.id].?;
+            const proxy = &self.objects.items[header.id].?;
 
             var data = pre_wrap;
             if (data.len < header.size) {
@@ -147,10 +161,6 @@ pub const Display = struct {
     }
     pub fn deinit(self: *Display) void {
         self.connection.io.close(self.connection.socket_fd) catch unreachable;
-        for (self.objects.items) |proxy| {
-            if (proxy) |p|
-                self.allocator.destroy(p);
-        }
         self.objects.deinit();
         self.unused_oids.deinit();
         self.allocator.destroy(self.connection);
@@ -173,7 +183,8 @@ pub const Display = struct {
     ) void {
         const w = struct {
             fn l(display: *wl.Display, event: Event, data: T) void {
-                const u: *Display = @ptrCast(display);
+                // const u: *Display = @ptrCast(display);
+                const u: *Display = display.proxy.display;
                 _listener(u, event, data);
             }
         };

@@ -43,7 +43,7 @@ pub fn build(b: *std.Build) void {
         });
 
         exe.addModule("wayland", wayland);
-        exe.linkLibC();
+        // exe.linkLibC();
 
         b.installArtifact(exe);
 
