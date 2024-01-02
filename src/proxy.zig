@@ -1,6 +1,8 @@
 const std = @import("std");
 const Argument = @import("argument.zig").Argument;
 const Display = @import("display.zig").Display;
+const wayland = @import("lib.zig");
+const wl = wayland.wl;
 const log = std.log.scoped(.wl);
 
 pub const Interface = struct {
@@ -10,6 +12,7 @@ pub const Interface = struct {
     event_names: []const []const u8 = &.{},
     request_names: []const []const u8 = &.{},
 };
+
 
 pub const Proxy = struct {
     id: u32 = 0,
@@ -23,6 +26,7 @@ pub const Proxy = struct {
     }
     pub fn unmarshal_event(self: *Proxy, data: []const u8, opcode: u16) void {
         // std.log.info("event args {any}", .{self});
+
         const signature = self.interface.event_signatures[opcode];
         var argdata = data;
         var args: [20]Argument = undefined;
@@ -99,7 +103,7 @@ pub const Proxy = struct {
                 argts[ii] = switch (sf.type) {
                     u32 => .uint,
                     i32 => .int,
-                    [*:0]const u8 => .string,
+                    [:0]const u8 => .string,
                     ?*anyopaque => .object,
                     else => .uint,
                 };

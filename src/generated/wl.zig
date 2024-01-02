@@ -63,7 +63,7 @@ pub const Display = struct {
         @"error": struct {
             object_id: ?u32, // object where the error occurred
             code: u32, // error code
-            message: [*:0]const u8, // error description
+            message: [:0]const u8, // error description
         },
 
         /// This event is used internally by the object ID management
@@ -86,7 +86,7 @@ pub const Display = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .@"error" = .{
-                        .object_id = args[0].uint,
+                        .object_id = args[0].object,
                         .code = args[1].uint,
                         .message = args[2].string,
                     } },
@@ -184,7 +184,7 @@ pub const Registry = struct {
         /// given version of the given interface.
         global: struct {
             name: u32, // numeric name of the global object
-            interface: [*:0]const u8, // interface implemented by the object
+            interface: [:0]const u8, // interface implemented by the object
             version: u32, // interface version
         },
 
@@ -203,7 +203,7 @@ pub const Registry = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Registry,
         comptime T: type,
         comptime _listener: *const fn (*Registry, Event, T) void,
@@ -541,7 +541,7 @@ pub const Shm = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Shm,
         comptime T: type,
         comptime _listener: *const fn (*Shm, Event, T) void,
@@ -624,7 +624,7 @@ pub const Buffer = struct {
         release: void,
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Buffer,
         comptime T: type,
         comptime _listener: *const fn (*Buffer, Event, T) void,
@@ -694,7 +694,7 @@ pub const DataOffer = struct {
         /// Sent immediately after creating the wl_data_offer object.  One
         /// event per offered mime type.
         offer: struct {
-            mime_type: [*:0]const u8, // offered mime type
+            mime_type: [:0]const u8, // offered mime type
         },
 
         /// This event indicates the actions offered by the data source. It
@@ -745,7 +745,7 @@ pub const DataOffer = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *DataOffer,
         comptime T: type,
         comptime _listener: *const fn (*DataOffer, Event, T) void,
@@ -791,7 +791,7 @@ pub const DataOffer = struct {
     /// will be cancelled and the corresponding drag source will receive
     /// wl_data_source.cancelled. Clients may still use this event in
     /// conjunction with wl_data_source.action for feedback.
-    pub fn accept(self: *const DataOffer, _serial: u32, _mime_type: ?[*:0]const u8) void {
+    pub fn accept(self: *const DataOffer, _serial: u32, _mime_type: ?[:0]const u8) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .string = _mime_type },
@@ -814,7 +814,7 @@ pub const DataOffer = struct {
     /// both before and after wl_data_device.drop. Drag-and-drop destination
     /// clients may preemptively fetch data or examine it more closely to
     /// determine acceptance.
-    pub fn receive(self: *const DataOffer, _mime_type: [*:0]const u8, _fd: i32) void {
+    pub fn receive(self: *const DataOffer, _mime_type: [:0]const u8, _fd: i32) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
             .{ .fd = _fd },
@@ -920,14 +920,14 @@ pub const DataSource = struct {
         ///
         /// Used for feedback during drag-and-drop.
         target: struct {
-            mime_type: ?[*:0]const u8, // mime type accepted by the target
+            mime_type: ?[:0]const u8, // mime type accepted by the target
         },
 
         /// Request for data from the client.  Send the data as the
         /// specified mime type over the passed file descriptor, then
         /// close it.
         send: struct {
-            mime_type: [*:0]const u8, // mime type for the data
+            mime_type: [:0]const u8, // mime type for the data
             fd: i32, // file descriptor for the data
         },
 
@@ -999,7 +999,7 @@ pub const DataSource = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *DataSource,
         comptime T: type,
         comptime _listener: *const fn (*DataSource, Event, T) void,
@@ -1038,7 +1038,7 @@ pub const DataSource = struct {
     /// This request adds a mime type to the set of mime types
     /// advertised to targets.  Can be called several times to offer
     /// multiple types.
-    pub fn offer(self: *const DataSource, _mime_type: [*:0]const u8) void {
+    pub fn offer(self: *const DataSource, _mime_type: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
         };
@@ -1169,7 +1169,7 @@ pub const DataDevice = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *DataDevice,
         comptime T: type,
         comptime _listener: *const fn (*DataDevice, Event, T) void,
@@ -1435,7 +1435,7 @@ pub const ShellSurface = struct {
         popup_done: void,
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *ShellSurface,
         comptime T: type,
         comptime _listener: *const fn (*ShellSurface, Event, T) void,
@@ -1632,7 +1632,7 @@ pub const ShellSurface = struct {
     /// compositor.
     ///
     /// The string must be encoded in UTF-8.
-    pub fn set_title(self: *const ShellSurface, _title: [*:0]const u8) void {
+    pub fn set_title(self: *const ShellSurface, _title: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _title },
         };
@@ -1645,7 +1645,7 @@ pub const ShellSurface = struct {
     /// to which the surface belongs. A common convention is to use the
     /// file name (or the full path if it is a non-standard location) of
     /// the application's .desktop file as the class.
-    pub fn set_class(self: *const ShellSurface, _class_: [*:0]const u8) void {
+    pub fn set_class(self: *const ShellSurface, _class_: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _class_ },
         };
@@ -1773,7 +1773,7 @@ pub const Surface = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Surface,
         comptime T: type,
         comptime _listener: *const fn (*Surface, Event, T) void,
@@ -2236,11 +2236,11 @@ pub const Seat = struct {
         /// Compositors may re-use the same seat name if the wl_seat global is
         /// destroyed and re-created later.
         name: struct {
-            name: [*:0]const u8, // seat identifier
+            name: [:0]const u8, // seat identifier
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Seat,
         comptime T: type,
         comptime _listener: *const fn (*Seat, Event, T) void,
@@ -2636,7 +2636,7 @@ pub const Pointer = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Pointer,
         comptime T: type,
         comptime _listener: *const fn (*Pointer, Event, T) void,
@@ -2868,7 +2868,7 @@ pub const Keyboard = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Keyboard,
         comptime T: type,
         comptime _listener: *const fn (*Keyboard, Event, T) void,
@@ -3061,7 +3061,7 @@ pub const Touch = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Touch,
         comptime T: type,
         comptime _listener: *const fn (*Touch, Event, T) void,
@@ -3189,8 +3189,8 @@ pub const Output = struct {
             physical_width: i32, // width in millimeters of the output
             physical_height: i32, // height in millimeters of the output
             subpixel: Subpixel, // subpixel orientation of the output
-            make: [*:0]const u8, // textual description of the manufacturer
-            model: [*:0]const u8, // textual description of the model
+            make: [:0]const u8, // textual description of the manufacturer
+            model: [:0]const u8, // textual description of the model
             transform: Transform, // transform that maps framebuffer to output
         },
 
@@ -3293,7 +3293,7 @@ pub const Output = struct {
         ///
         /// The name event will be followed by a done event.
         name: struct {
-            name: [*:0]const u8, // output name
+            name: [:0]const u8, // output name
         },
 
         /// Many compositors can produce human-readable descriptions of their
@@ -3311,11 +3311,11 @@ pub const Output = struct {
         ///
         /// The description event will be followed by a done event.
         description: struct {
-            description: [*:0]const u8, // output description
+            description: [:0]const u8, // output description
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Output,
         comptime T: type,
         comptime _listener: *const fn (*Output, Event, T) void,

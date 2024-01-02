@@ -10,16 +10,26 @@ const std = @import("std");
 pub const IO = @import("./io_async.zig").IO;
 // pub const IO = @import("./io_blocking.zig").IO;
 const libcoro = @import("libcoro");
+const root = @import("root");
 
-pub fn run_async(allocator: std.mem.Allocator, func: anytype) !void {
-    const stack = try libcoro.stackAlloc(
+
+pub fn my_main() void {
+    const allocator = std.heap.page_allocator;
+    run_async(allocator, async_main_w);
+}
+pub fn async_main_w(io: *IO) void {
+    return root.async_main(io) catch unreachable;
+}
+
+pub fn run_async(allocator: std.mem.Allocator, func: anytype) void {
+    const stack = libcoro.stackAlloc(
         allocator,
         1024 * 32,
-    );
+    ) catch @panic("oom");
 
     var io = IO.init(32, 0) catch unreachable;
     defer io.deinit();
-    // var f1 = async signals(&io);
+
     if (!io.blocking) {
         var frame = try libcoro.xasync(func, .{&io}, stack);
         _ = &frame;

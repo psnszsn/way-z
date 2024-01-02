@@ -81,7 +81,7 @@ pub const WmBase = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *WmBase,
         comptime T: type,
         comptime _listener: *const fn (*WmBase, Event, T) void,
@@ -467,7 +467,7 @@ pub const Surface = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Surface,
         comptime T: type,
         comptime _listener: *const fn (*Surface, Event, T) void,
@@ -777,7 +777,7 @@ pub const Toplevel = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Toplevel,
         comptime T: type,
         comptime _listener: *const fn (*Toplevel, Event, T) void,
@@ -854,7 +854,7 @@ pub const Toplevel = struct {
     /// compositor.
     ///
     /// The string must be encoded in UTF-8.
-    pub fn set_title(self: *const Toplevel, _title: [*:0]const u8) void {
+    pub fn set_title(self: *const Toplevel, _title: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _title },
         };
@@ -884,7 +884,7 @@ pub const Toplevel = struct {
     /// names and .desktop files.
     ///
     /// [0] https://standards.freedesktop.org/desktop-entry-spec/
-    pub fn set_app_id(self: *const Toplevel, _app_id: [*:0]const u8) void {
+    pub fn set_app_id(self: *const Toplevel, _app_id: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _app_id },
         };
@@ -1261,7 +1261,7 @@ pub const Popup = struct {
         },
     };
 
-    pub inline fn set_listener(
+    pub fn set_listener(
         self: *Popup,
         comptime T: type,
         comptime _listener: *const fn (*Popup, Event, T) void,

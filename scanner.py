@@ -76,7 +76,7 @@ class Arg:
             case "fixed":
                 return "Fixed"
             case "string":
-                return "?[*:0]const u8" if self.allow_null else "[*:0]const u8"
+                return "?[:0]const u8" if self.allow_null else "[:0]const u8"
             case "object":
                 if not obj_use_ptr: return "u32"
                 qs = "?*" if self.allow_null else "*"
@@ -433,7 +433,7 @@ class Interface:
             fd.write("};\n")
 
             fd.write(f"""
-                pub inline fn set_listener(
+                pub fn set_listener(
                     self: *{name_camel},
                     comptime T: type,
                     comptime _listener: *const fn (*{name_camel}, Event, T) void,

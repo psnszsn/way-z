@@ -2,14 +2,14 @@ const std = @import("std");
 const wayland = @import("wayland");
 const wl = wayland.wl;
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-const allocator = gpa.allocator();
 
-pub fn main() !void {
-    try wayland.run_async(allocator, async_main);
-}
+pub const main = wayland.my_main;
 
 pub fn async_main(io: *wayland.IO) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
     const display = try wayland.Display.connect(allocator, io);
     const registry = try display.get_registry();
     display.set_listener(?*anyopaque, displayListener, null);
@@ -17,7 +17,6 @@ pub fn async_main(io: *wayland.IO) !void {
     try display.roundtrip();
     try display.roundtrip();
     display.deinit();
-    std.debug.assert(gpa.deinit() == .ok);
 }
 
 fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {

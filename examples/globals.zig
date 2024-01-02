@@ -6,9 +6,7 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 // defer std.debug.assert(!gpa.deinit());
 const allocator = gpa.allocator();
 
-pub fn main() !void {
-    try wayland.run_async(allocator, async_main);
-}
+pub const main = wayland.my_main;
 
 pub fn async_main(io: *wayland.IO) !void {
     const display = try wayland.Display.connect(allocator, io);

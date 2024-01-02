@@ -122,6 +122,8 @@ pub const Display = struct {
 
         self.connection = connection;
 
+        self.set_listener(?*anyopaque, displayListener, null);
+
         return self;
     }
 
@@ -207,3 +209,15 @@ pub const Display = struct {
         }
     }
 };
+
+fn displayListener(display: *Display, event: wl.Display.Event, _: ?*anyopaque) void {
+    switch (event) {
+        .@"error" => |e| {
+            std.log.err("Wayland error {}: {s}", .{e.code, e.message});
+        },
+        .delete_id => |del| {
+            std.debug.assert(display.objects.items[del.id] != null);
+            display.objects.items[del.id] = null;
+        },
+    }
+}
