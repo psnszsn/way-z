@@ -37,8 +37,8 @@ pub fn async_main(io: *wayland.IO) !void {
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    const display = try wayland.Display.connect(allocator, io);
-    const registry = try display.get_registry();
+    const client = try wayland.Client.connect(allocator, io);
+    const registry = try client.get_registry();
 
     var context = Context{
         .shm = null,
@@ -47,7 +47,7 @@ pub fn async_main(io: *wayland.IO) !void {
     };
 
     registry.set_listener(*Context, registryListener, &context);
-    try display.roundtrip();
+    try client.roundtrip();
 
     const shm = context.shm orelse return error.NoWlShm;
     _ = shm;
@@ -77,19 +77,19 @@ pub fn async_main(io: *wayland.IO) !void {
     surface.xdg_toplevel.set_min_size(500, 200);
     surface.xdg_toplevel.set_title("Demo");
     surface.wl_surface.commit();
-    try display.roundtrip();
+    try client.roundtrip();
 
     const buf = try Buffer.get(surface.ctx.shm.?, surface.width, surface.height);
     surface.wl_surface.attach(buf.wl_buffer, 0, 0);
     surface.wl_surface.commit();
-    try display.roundtrip();
+    try client.roundtrip();
 
     const frame_cb = try surface.wl_surface.frame();
     frame_cb.set_listener(*SurfaceCtx, frameListener, &surface);
     surface.wl_surface.commit();
 
     while (context.running) {
-        try display.recvEvents();
+        try client.recvEvents();
     }
 }
 

@@ -10,13 +10,12 @@ pub fn async_main(io: *wayland.IO) !void {
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    const display = try wayland.Display.connect(allocator, io);
-    const registry = try display.get_registry();
-    display.set_listener(?*anyopaque, displayListener, null);
+    const client = try wayland.Client.connect(allocator, io);
+    const registry = try client.get_registry();
     registry.set_listener(?*anyopaque, listener, null);
-    try display.roundtrip();
-    try display.roundtrip();
-    display.deinit();
+    try client.roundtrip();
+    try client.roundtrip();
+    client.deinit();
 }
 
 fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
@@ -43,21 +42,6 @@ fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
         },
         .name => |name| {
             std.debug.print("seat name: {s}\n", .{name.name});
-        },
-    }
-}
-
-fn displayListener(display: *wayland.Display, event: wl.Display.Event, _: ?*anyopaque) void {
-    switch (event) {
-        .@"error" => |e| {
-            std.debug.print("error {} {s}\n", .{ e.code, e.message });
-        },
-        .delete_id => |del| {
-
-            const obj_opt = &display.objects.items[del.id];
-            const obj: *wayland.Proxy = @ptrCast(obj_opt);
-            std.debug.print("delede_id {} {s}\n", .{del.id, obj.interface.name});
-            display.objects.items[del.id] = null;
         },
     }
 }

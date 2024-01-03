@@ -1,6 +1,6 @@
 const std = @import("std");
 const Argument = @import("argument.zig").Argument;
-const Display = @import("display.zig").Display;
+const Display = @import("display.zig").Client;
 const wayland = @import("lib.zig");
 const wl = wayland.wl;
 const log = std.log.scoped(.wl);

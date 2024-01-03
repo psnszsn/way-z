@@ -2,24 +2,18 @@ const std = @import("std");
 const wayland = @import("wayland");
 const wl = wayland.wl;
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-// defer std.debug.assert(!gpa.deinit());
-const allocator = gpa.allocator();
-
 pub const main = wayland.my_main;
 
 pub fn async_main(io: *wayland.IO) !void {
-    const display = try wayland.Display.connect(allocator, io);
-    const registry = try display.get_registry();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    const client = try wayland.Client.connect(allocator, io);
+    const registry = try client.get_registry();
     var foo: u32 = 42;
     registry.set_listener(*u32, listener, &foo);
-    // if (display.roundtrip() != .SUCCESS) return error.RoundtripFailed;
-    // try display.recvEvents();
-    try display.roundtrip();
-    // while (true) {
-    //     try display.recvEvents();
-    //     std.debug.print("count {}\n", .{display.connection.in.count});
-    // }
+    try client.roundtrip();
 }
 
 fn listener(_: *wl.Registry, event: wl.Registry.Event, data: *u32) void {

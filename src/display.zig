@@ -9,10 +9,10 @@ const Cmsghdr = @import("cmsghdr.zig").Cmsghdr;
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
-    in: RingBuffer(512),
-    out: RingBuffer(512),
-    fd_in: RingBuffer(512),
-    fd_out: RingBuffer(512),
+    in: RingBuffer(512) = .{},
+    out: RingBuffer(512) = .{},
+    fd_in: RingBuffer(512) = .{},
+    fd_out: RingBuffer(512) = .{},
     io: *IO,
     pub fn recv(self: *Connection) !usize {
         var iovecs = self.in.get_write_iovecs();
@@ -61,7 +61,7 @@ pub const Connection = struct {
     }
 };
 
-pub const Display = struct {
+pub const Client = struct {
     wl_display: *wl.Display,
     objects: std.ArrayList(?Proxy),
     unused_oids: std.ArrayList(u32),
@@ -71,7 +71,7 @@ pub const Display = struct {
 
     pub const Event = wl.Display.Event;
 
-    pub fn next_id(self: *const Display) u32 {
+    pub fn next_id(self: *const Client) u32 {
         for (self.objects.items, 0..) |*obj, id| {
             if (id == 0) continue;
             if (obj.* == null) return @intCast(id);
@@ -79,13 +79,13 @@ pub const Display = struct {
         unreachable;
     }
 
-    pub fn next_object(self: *const Display) *?Proxy {
+    pub fn next_object(self: *const Client) *?Proxy {
         return &self.objects.items[self.next_id()];
     }
 
 
-    pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Display {
-        var self = try allocator.create(Display);
+    pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Client {
+        var self = try allocator.create(Client);
         self.* = .{
             .wl_display = undefined,
             .objects = try std.ArrayList(?Proxy).initCapacity(allocator, 1000),
@@ -133,7 +133,7 @@ pub const Display = struct {
         size: u16,
     };
 
-    pub fn recvEvents(self: *const Display) !void {
+    pub fn recvEvents(self: *const Client) !void {
         const total = try self.connection.recv();
         // var rem = self.connection.in.count;
         if (total == 0) {
@@ -161,7 +161,7 @@ pub const Display = struct {
             if (self.connection.in.count < 8) break;
         }
     }
-    pub fn deinit(self: *Display) void {
+    pub fn deinit(self: *Client) void {
         self.connection.io.close(self.connection.socket_fd) catch unreachable;
         self.objects.deinit();
         self.unused_oids.deinit();
@@ -169,30 +169,30 @@ pub const Display = struct {
         self.allocator.destroy(self);
     }
 
-    pub inline fn get_registry(self: *Display) !*wl.Registry {
+    pub inline fn get_registry(self: *Client) !*wl.Registry {
         return self.wl_display.get_registry();
     }
 
-    pub inline fn sync(self: *const Display) !*wl.Callback {
+    pub inline fn sync(self: *const Client) !*wl.Callback {
         return self.wl_display.sync();
     }
 
     pub inline fn set_listener(
-        self: *Display,
+        self: *Client,
         comptime T: type,
-        comptime _listener: fn (display: *Display, event: Event, data: T) void,
+        comptime _listener: fn (display: *Client, event: Event, data: T) void,
         _data: T,
     ) void {
         const w = struct {
             fn l(display: *wl.Display, event: Event, data: T) void {
                 // const u: *Display = @ptrCast(display);
-                const u: *Display = display.proxy.display;
+                const u: *Client = display.proxy.display;
                 _listener(u, event, data);
             }
         };
         return self.wl_display.set_listener(T, w.l, _data);
     }
-    pub fn roundtrip(self: *const Display) !void {
+    pub fn roundtrip(self: *const Client) !void {
         const w = struct {
             fn cbListener(cb: *wl.Callback, _: wl.Callback.Event, done: *bool) void {
                 _ = cb;
@@ -210,7 +210,7 @@ pub const Display = struct {
     }
 };
 
-fn displayListener(display: *Display, event: wl.Display.Event, _: ?*anyopaque) void {
+fn displayListener(display: *Client, event: wl.Display.Event, _: ?*anyopaque) void {
     switch (event) {
         .@"error" => |e| {
             std.log.err("Wayland error {}: {s}", .{e.code, e.message});
