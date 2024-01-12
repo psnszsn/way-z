@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Never, TextIO
+from typing import Never, TextIO, assert_never
 from pprint import pprint
 import subprocess
 
@@ -187,7 +187,11 @@ class Request:
                     case "object":
                         fd.write(f".{{ .object = _{arg.name}.proxy.id }},")
                     case "uint" if arg.enum:
-                        fd.write(f".{{ .uint = @intCast(@intFromEnum(_{arg.name})) }},")
+                        enum = self.interface.find_enum(arg.enum)
+                        if enum.bitfield:
+                            fd.write(f".{{ .uint = @bitCast(_{arg.name}) }},")
+                        else:
+                            fd.write(f".{{ .uint = @intCast(@intFromEnum(_{arg.name})) }},")
                     case other:
                         fd.write(f".{{ .{other} = _{arg.name} }},")
             fd.write("};\n")
@@ -400,6 +404,15 @@ class Interface:
     def zig_type(self) -> str:
         return title_case(self.name)
 
+    def find_enum(self, name: str) -> Enum:
+        parts = name.split(".")
+        if len(parts) == 1:
+            return self.enums[name]
+        if len(parts) == 2:
+            interface = self.protocol.find_interface(parts[0])
+            return interface.enums[parts[1]]
+        assert False, "unreachable"
+
     def emit(self, fd: TextIO):
         emit_description(self.description, fd)
             
@@ -460,7 +473,13 @@ class Interface:
                         case "array":
                             fd.write("undefined,")
                         case "uint" if arg.enum:
-                            fd.write(f"@bitCast(args[{arg_i}].uint),")
+                            enum = self.find_enum(arg.enum)
+                            if enum.bitfield:
+                                fd.write(f"@bitCast(args[{arg_i}].uint),")
+                            else:
+                                fd.write(f"@enumFromInt(args[{arg_i}].uint),")
+                        case "object":
+                            fd.write(f"args[{arg_i}].uint,")
                         case t:
                             fd.write(f"args[{arg_i}].{t},")
 
@@ -498,7 +517,7 @@ class Protocol:
     name: str
     interfaces: dict[str, Interface]
     prefix : str
-    parent: Protocol | None = field(repr=False)
+    globals: list[Protocol] = field(repr=False)
 
     def __init__(self, file: Path, parent: Protocol | None = None):
         tree = ET.parse(file)
@@ -508,7 +527,7 @@ class Protocol:
 
         self.interfaces = parent.interfaces if parent else {}
         self.name = protocol.get("name") or Never
-        self.parent = None
+        self.globals = []
 
         for c in protocol:
             if c.tag == "copyright":
@@ -530,10 +549,9 @@ class Protocol:
         global protocols
         prefix = name.split("_")[0]
         parent_protocol = protocols[prefix]
-        if self.parent is not None:
-            assert self.parent is parent_protocol
-        else:
-            self.parent = parent_protocol
+        print(name)
+        if parent_protocol not in self.globals:
+            self.globals.append(parent_protocol)
         interface = parent_protocol.interfaces[name]
         return interface
 
@@ -551,10 +569,10 @@ class Protocol:
 
             """
         )
-        if self.parent:
+        for g in self.globals:
             fd.write(f"""
-            const {self.parent.prefix} = @import("{self.parent.prefix}.zig");
-            """)
+            const {g.prefix} = @import("{g.prefix}.zig");""")
+        fd.write("\n");
 
         for i in self.interfaces.values():
             i.emit(fd)
@@ -568,6 +586,7 @@ def main():
     xml_protocols = [
         "/usr/share/wayland/wayland.xml",
         "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml",
+        "./protocols/wlr-layer-shell-unstable-v1.xml",
         # "/usr/share/wayland-protocols/stable/presentation-time/presentation-time.xml",
         # "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml",
     ]

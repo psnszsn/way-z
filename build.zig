@@ -7,8 +7,8 @@ pub fn build(b: *std.Build) void {
     const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
 
     const wayland = b.createModule(.{
-        .source_file = .{ .path = "./src/lib.zig" },
-        .dependencies = &.{.{ .name = "libcoro", .module = libcoro }},
+        .root_source_file = .{ .path = "./src/lib.zig" },
+        .imports = &.{.{ .name = "libcoro", .module = libcoro }},
     });
 
     {
@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
     }
 
 
-    inline for (.{ "globals", "seats", "hello" }) |example| {
+    inline for (.{ "globals", "seats", "hello", "bar"}) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },
@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
 
-        exe.addModule("wayland", wayland);
+        exe.root_module.addImport("wayland", wayland);
         // exe.linkLibC();
 
         b.installArtifact(exe);

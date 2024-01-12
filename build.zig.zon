@@ -4,9 +4,13 @@
     .version = "0.0.0",
     .paths = .{""},
     .dependencies = .{
+        .zigcoro2 = .{
+            .url = "https://github.com/kitsuniru/zigcoro/archive/patch-1.tar.gz",
+            .hash = "1220cf989eec642055dcd28bcdce61e5928cbe23b5eab9c0b0f3ae682c89d57d424a",
+        },
         .zigcoro = .{
-            .url = "https://github.com/rsepassi/zigcoro/archive/master.tar.gz",
-            .hash = "1220c5cd2bc1e355abd678b588cc0dcb401f553a5edacec8afb2cd53f5b9b3211b16",
+            .url = "https://github.com/kitsuniru/zigcoro/archive/patch-1.tar.gz",
+            .hash = "1220cf989eec642055dcd28bcdce61e5928cbe23b5eab9c0b0f3ae682c89d57d424a",
         },
     },
 }

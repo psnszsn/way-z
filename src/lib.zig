@@ -5,6 +5,7 @@ pub const shm = @import("shm.zig");
 
 pub const wl = @import("generated/wl.zig");
 pub const xdg = @import("generated/xdg.zig");
+pub const zwlr = @import("generated/zwlr.zig");
 
 const std = @import("std");
 pub const IO = @import("./io_async.zig").IO;

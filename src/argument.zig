@@ -90,31 +90,31 @@ pub const Argument = union(enum) {
         _ = allocator;
         switch (typ) {
             .new_id => {
-                const v = std.mem.readInt(u32, data[0..4], native_endian);
-                return Argument{ .new_id = v };
+                return Argument{ .new_id = @bitCast(data[0..4].*) };
             },
             .object => {
-                const v = std.mem.readInt(u32, data[0..4], native_endian);
-                return Argument{ .object = v };
+                return Argument{ .object = @bitCast(data[0..4].*) };
             },
             .uint => {
-                const v = std.mem.readInt(u32, data[0..4], native_endian);
                 // std.debug.print("v: {}\n", .{v});
-                return Argument{ .uint = v };
+                return Argument{ .uint = @bitCast(data[0..4].*)};
             },
             .int => {
-                const v = std.mem.readInt(i32, data[0..4], native_endian);
                 // std.debug.print("v: {}\n", .{v});
-                return Argument{ .int = v };
+                return Argument{ .int = @bitCast(data[0..4].*) };
             },
             .string => {
-                const l = std.mem.readInt(u32, data[0..4], native_endian);
+                const l: u32 = @bitCast(data[0..4].*);
 
                 // std.debug.print("s len: {}\n", .{l});
                 std.debug.assert(l > 0);
                 return Argument{
                     .string = data[4..][0 .. l - 1 :0],
                 };
+            },
+            .fixed => {
+                const l: i32 = @bitCast(data[0..4].*);
+                return Argument{ .fixed = @enumFromInt(l) };
             },
             else => {
                 std.debug.print("{}\n", .{typ});

@@ -10,15 +10,16 @@ const Buffer = wayland.shm.Buffer;
 
 pub const main = wayland.my_main;
 
+
+pub const std_options = struct {
+    pub const log_level = .info;
+};
+
 const Context = struct {
     shm: ?*wl.Shm,
     compositor: ?*wl.Compositor,
     wm_base: ?*xdg.WmBase,
     running: bool = true,
-};
-
-pub const std_options = struct {
-    pub const log_level = .info;
 };
 
 const SurfaceCtx = struct {

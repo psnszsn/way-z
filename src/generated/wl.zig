@@ -86,7 +86,7 @@ pub const Display = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .@"error" = .{
-                        .object_id = args[0].object,
+                        .object_id = args[0].uint,
                         .code = args[1].uint,
                         .message = args[2].string,
                     } },
@@ -551,7 +551,7 @@ pub const Shm = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .format = .{
-                        .format = @bitCast(args[0].uint),
+                        .format = @enumFromInt(args[0].uint),
                     } },
                     else => unreachable,
                 };
@@ -879,8 +879,8 @@ pub const DataOffer = struct {
     /// will be raised otherwise.
     pub fn set_actions(self: *const DataOffer, _dnd_actions: DataDeviceManager.DndAction, _preferred_action: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
-            .{ .uint = @intCast(@intFromEnum(_dnd_actions)) },
-            .{ .uint = @intCast(@intFromEnum(_preferred_action)) },
+            .{ .uint = @bitCast(_dnd_actions) },
+            .{ .uint = @bitCast(_preferred_action) },
         };
         self.proxy.marshal_request(4, &_args) catch unreachable;
     }
@@ -1066,7 +1066,7 @@ pub const DataSource = struct {
     /// for drag-and-drop will raise a protocol error.
     pub fn set_actions(self: *const DataSource, _dnd_actions: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
-            .{ .uint = @intCast(@intFromEnum(_dnd_actions)) },
+            .{ .uint = @bitCast(_dnd_actions) },
         };
         self.proxy.marshal_request(2, &_args) catch unreachable;
     }
@@ -1183,10 +1183,10 @@ pub const DataDevice = struct {
                     } },
                     1 => Event{ .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].object,
+                        .surface = args[1].uint,
                         .x = args[2].fixed,
                         .y = args[3].fixed,
-                        .id = args[4].object,
+                        .id = args[4].uint,
                     } },
                     2 => Event.leave,
                     3 => Event{ .motion = .{
@@ -1196,7 +1196,7 @@ pub const DataDevice = struct {
                     } },
                     4 => Event.drop,
                     5 => Event{ .selection = .{
-                        .id = args[0].object,
+                        .id = args[0].uint,
                     } },
                     else => unreachable,
                 };
@@ -1498,7 +1498,7 @@ pub const ShellSurface = struct {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
-            .{ .uint = @intCast(@intFromEnum(_edges)) },
+            .{ .uint = @bitCast(_edges) },
         };
         self.proxy.marshal_request(2, &_args) catch unreachable;
     }
@@ -1522,7 +1522,7 @@ pub const ShellSurface = struct {
             .{ .object = _parent.proxy.id },
             .{ .int = _x },
             .{ .int = _y },
-            .{ .uint = @intCast(@intFromEnum(_flags)) },
+            .{ .uint = @bitCast(_flags) },
         };
         self.proxy.marshal_request(4, &_args) catch unreachable;
     }
@@ -1595,7 +1595,7 @@ pub const ShellSurface = struct {
             .{ .object = _parent.proxy.id },
             .{ .int = _x },
             .{ .int = _y },
-            .{ .uint = @intCast(@intFromEnum(_flags)) },
+            .{ .uint = @bitCast(_flags) },
         };
         self.proxy.marshal_request(6, &_args) catch unreachable;
     }
@@ -1783,16 +1783,16 @@ pub const Surface = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .enter = .{
-                        .output = args[0].object,
+                        .output = args[0].uint,
                     } },
                     1 => Event{ .leave = .{
-                        .output = args[0].object,
+                        .output = args[0].uint,
                     } },
                     2 => Event{ .preferred_buffer_scale = .{
                         .factor = args[0].int,
                     } },
                     3 => Event{ .preferred_buffer_transform = .{
-                        .transform = @bitCast(args[0].uint),
+                        .transform = @enumFromInt(args[0].uint),
                     } },
                     else => unreachable,
                 };
@@ -2647,13 +2647,13 @@ pub const Pointer = struct {
                 const event = switch (opcode) {
                     0 => Event{ .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].object,
+                        .surface = args[1].uint,
                         .surface_x = args[2].fixed,
                         .surface_y = args[3].fixed,
                     } },
                     1 => Event{ .leave = .{
                         .serial = args[0].uint,
-                        .surface = args[1].object,
+                        .surface = args[1].uint,
                     } },
                     2 => Event{ .motion = .{
                         .time = args[0].uint,
@@ -2664,32 +2664,32 @@ pub const Pointer = struct {
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .button = args[2].uint,
-                        .state = @bitCast(args[3].uint),
+                        .state = @enumFromInt(args[3].uint),
                     } },
                     4 => Event{ .axis = .{
                         .time = args[0].uint,
-                        .axis = @bitCast(args[1].uint),
+                        .axis = @enumFromInt(args[1].uint),
                         .value = args[2].fixed,
                     } },
                     5 => Event.frame,
                     6 => Event{ .axis_source = .{
-                        .axis_source = @bitCast(args[0].uint),
+                        .axis_source = @enumFromInt(args[0].uint),
                     } },
                     7 => Event{ .axis_stop = .{
                         .time = args[0].uint,
-                        .axis = @bitCast(args[1].uint),
+                        .axis = @enumFromInt(args[1].uint),
                     } },
                     8 => Event{ .axis_discrete = .{
-                        .axis = @bitCast(args[0].uint),
+                        .axis = @enumFromInt(args[0].uint),
                         .discrete = args[1].int,
                     } },
                     9 => Event{ .axis_value120 = .{
-                        .axis = @bitCast(args[0].uint),
+                        .axis = @enumFromInt(args[0].uint),
                         .value120 = args[1].int,
                     } },
                     10 => Event{ .axis_relative_direction = .{
-                        .axis = @bitCast(args[0].uint),
-                        .direction = @bitCast(args[1].uint),
+                        .axis = @enumFromInt(args[0].uint),
+                        .direction = @enumFromInt(args[1].uint),
                     } },
                     else => unreachable,
                 };
@@ -2878,24 +2878,24 @@ pub const Keyboard = struct {
             fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
                 const event = switch (opcode) {
                     0 => Event{ .keymap = .{
-                        .format = @bitCast(args[0].uint),
+                        .format = @enumFromInt(args[0].uint),
                         .fd = args[1].fd,
                         .size = args[2].uint,
                     } },
                     1 => Event{ .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].object,
+                        .surface = args[1].uint,
                         .keys = undefined,
                     } },
                     2 => Event{ .leave = .{
                         .serial = args[0].uint,
-                        .surface = args[1].object,
+                        .surface = args[1].uint,
                     } },
                     3 => Event{ .key = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .key = args[2].uint,
-                        .state = @bitCast(args[3].uint),
+                        .state = @enumFromInt(args[3].uint),
                     } },
                     4 => Event{ .modifiers = .{
                         .serial = args[0].uint,
@@ -3073,7 +3073,7 @@ pub const Touch = struct {
                     0 => Event{ .down = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
-                        .surface = args[2].object,
+                        .surface = args[2].uint,
                         .id = args[3].int,
                         .x = args[4].fixed,
                         .y = args[5].fixed,

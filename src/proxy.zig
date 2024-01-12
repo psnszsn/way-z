@@ -1,5 +1,6 @@
 const std = @import("std");
-const Argument = @import("argument.zig").Argument;
+const argm = @import("argument.zig");
+const Argument = argm.Argument;
 const Display = @import("display.zig").Client;
 const wayland = @import("lib.zig");
 const wl = wayland.wl;
@@ -105,6 +106,7 @@ pub const Proxy = struct {
                     i32 => .int,
                     [:0]const u8 => .string,
                     ?*anyopaque => .object,
+                    argm.Fixed => .fixed,
                     else => .uint,
                 };
             }
