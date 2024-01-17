@@ -1,4 +1,4 @@
-pub const Client = @import("display.zig").Client;
+pub const Client = @import("client.zig").Client;
 pub const Argument = @import("argument.zig").Argument;
 pub const Proxy = @import("proxy.zig").Proxy;
 pub const shm = @import("shm.zig");

@@ -101,7 +101,7 @@ pub const Client = struct {
         try self.objects.appendNTimes(null, 1000);
 
         const next = self.next_object();
-        next.* = Proxy{  .display = self, .interface = &wl.Display.interface , .id = 1} ;
+        next.* = Proxy{  .client = self, .interface = &wl.Display.interface , .id = 1} ;
         self.wl_display = @ptrCast(next);
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
@@ -193,7 +193,7 @@ pub const Client = struct {
         const w = struct {
             fn l(display: *wl.Display, event: Event, data: T) void {
                 // const u: *Display = @ptrCast(display);
-                const u: *Client = display.proxy.display;
+                const u: *Client = display.proxy.client;
                 _listener(u, event, data);
             }
         };

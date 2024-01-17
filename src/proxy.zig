@@ -1,7 +1,7 @@
 const std = @import("std");
 const argm = @import("argument.zig");
 const Argument = argm.Argument;
-const Display = @import("display.zig").Client;
+const Client = @import("client.zig").Client;
 const wayland = @import("lib.zig");
 const wl = wayland.wl;
 const log = std.log.scoped(.wl);
@@ -17,13 +17,13 @@ pub const Interface = struct {
 
 pub const Proxy = struct {
     id: u32 = 0,
-    display: *Display,
+    client: *Client,
     interface: *const Interface,
     listener: ?*const fn (*anyopaque, u16, []Argument, data: ?*anyopaque) void = null,
     listener_data: ?*anyopaque = undefined,
     pub fn deinit(self: *Proxy) void {
-        self.display.objects.items[self.id] = null;
-        self.display.allocator.destroy(self);
+        self.client.objects.items[self.id] = null;
+        self.client.allocator.destroy(self);
     }
     pub fn unmarshal_event(self: *Proxy, data: []const u8, opcode: u16) void {
         // std.log.info("event args {any}", .{self});
@@ -32,7 +32,7 @@ pub const Proxy = struct {
         var argdata = data;
         var args: [20]Argument = undefined;
         for (signature, 0..) |arg_type, i| {
-            args[i] = Argument.unmarshal(arg_type, self.display.allocator, argdata);
+            args[i] = Argument.unmarshal(arg_type, self.client.allocator, argdata);
             argdata = argdata[args[i].len()..];
         }
         log.debug("<- {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.event_names[opcode] });
@@ -42,11 +42,11 @@ pub const Proxy = struct {
     }
 
     pub fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
-        const next_id = self.display.next_id();
+        const next_id = self.client.next_id();
         std.log.info("next id {}", .{next_id});
-        const next = &self.display.objects.items[next_id];
+        const next = &self.client.objects.items[next_id];
         next.* = Proxy{
-            .display = self.display,
+            .client = self.client,
             .interface = &T.interface,
             .id = next_id,
         };
@@ -64,7 +64,7 @@ pub const Proxy = struct {
     }
 
     pub fn marshal_request(self: *const Proxy, opcode: u16, args: []const Argument) !void {
-        const connection = self.display.connection;
+        const connection = self.client.connection;
         try connection.out.pushSlice(std.mem.asBytes(&self.id));
         try connection.out.pushSlice(std.mem.asBytes(&opcode));
         var size: u16 = 0;
