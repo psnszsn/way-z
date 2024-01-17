@@ -13,9 +13,12 @@ pub const IO = @import("./io_async.zig").IO;
 const libcoro = @import("libcoro");
 const root = @import("root");
 
-
 pub fn my_main() void {
     const allocator = std.heap.page_allocator;
+    libcoro.initEnv(.{
+        .stack_allocator = allocator,
+        .default_stack_size = 32*1024,
+    });
     run_async(allocator, async_main_w);
 }
 pub fn async_main_w(io: *IO) void {
@@ -32,7 +35,7 @@ pub fn run_async(allocator: std.mem.Allocator, func: anytype) void {
     defer io.deinit();
 
     if (!io.blocking) {
-        var frame = try libcoro.xasync(func, .{&io}, stack);
+        var frame = libcoro.xasync(func, .{&io}, stack) catch unreachable;
         _ = &frame;
         io.run() catch unreachable;
     } else {

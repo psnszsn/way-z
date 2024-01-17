@@ -9,8 +9,8 @@ const Cmsghdr = @import("cmsghdr.zig").Cmsghdr;
 
 pub const Connection = struct {
     socket_fd: std.os.socket_t,
-    in: RingBuffer(512) = .{},
-    out: RingBuffer(512) = .{},
+    in: RingBuffer(1024) = .{},
+    out: RingBuffer(1024) = .{},
     fd_in: RingBuffer(512) = .{},
     fd_out: RingBuffer(512) = .{},
     io: *IO,
@@ -33,6 +33,7 @@ pub const Connection = struct {
     }
 
     pub fn send(self: *Connection) !usize {
+        if (self.out.count == 0 and self.fd_out.count == 0)  return 0;
         var iovecs = self.out.get_read_iovecs();
         var cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
@@ -55,7 +56,10 @@ pub const Connection = struct {
         };
 
         const ret = try self.io.sendmsg(self.socket_fd, &msg);
-        self.out.count -= ret;
+        self.out.consume(ret);
+        // self.out.count -= ret;
+
+        // todo: close fds
 
         return ret;
     }
@@ -134,6 +138,9 @@ pub const Client = struct {
     };
 
     pub fn recvEvents(self: *const Client) !void {
+        const sent = try self.connection.send();
+        std.log.info("sent: {}", .{sent});
+
         const total = try self.connection.recv();
         // var rem = self.connection.in.count;
         if (total == 0) {
@@ -217,6 +224,7 @@ fn displayListener(display: *Client, event: wl.Display.Event, _: ?*anyopaque) vo
         },
         .delete_id => |del| {
             std.debug.assert(display.objects.items[del.id] != null);
+            std.log.info("deleted id: {}", .{del.id});
             display.objects.items[del.id] = null;
         },
     }

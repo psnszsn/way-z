@@ -19,7 +19,7 @@ const Frame = libcoro.Frame;
 pub const IO = struct {
     ring: IO_Uring,
 
-    comptime blocking: bool = true,
+    comptime blocking: bool = false,
 
     /// The number of SQEs queued but not yet submitted to the kernel:
     queued: u32 = 0,
@@ -480,7 +480,7 @@ pub const IO = struct {
 
     pub fn sleep(self: *IO, nanoseconds: u64) !void {
         while (true) {
-            var completion = Completion{ .frame = @frame() };
+            var completion = Completion{ .frame = xframe() };
             const ts: os.timespec = .{
                 .tv_sec = 0,
                 .tv_nsec = @as(i64, @intCast(nanoseconds)),

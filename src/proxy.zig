@@ -43,6 +43,7 @@ pub const Proxy = struct {
 
     pub fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
         const next_id = self.display.next_id();
+        std.log.info("next id {}", .{next_id});
         const next = &self.display.objects.items[next_id];
         next.* = Proxy{
             .display = self.display,
@@ -83,8 +84,8 @@ pub const Proxy = struct {
 
         log.debug("-> {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.request_names[opcode] });
 
-        const ret = try self.display.connection.send();
-        _ = ret;
+        // const ret = try self.display.connection.send();
+        // _ = ret;
         // std.debug.print("sent {}\n", .{ret});
 
         // std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
