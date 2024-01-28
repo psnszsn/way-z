@@ -1,6 +1,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
+const xev = @import("xev");
 const IO = @import("lib.zig").IO;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Argument = @import("argument.zig").Argument;
@@ -13,8 +14,11 @@ pub const Connection = struct {
     out: RingBuffer(1024) = .{},
     fd_in: RingBuffer(512) = .{},
     fd_out: RingBuffer(512) = .{},
-    io: *IO,
-    pub fn recv(self: *Connection) !usize {
+    client: *Client,
+    loop: xev.IO_Uring.Loop,
+    recv_c: xev.Completion = .{},
+    send_c: xev.Completion = .{},
+    pub fn recv(self: *Connection) void {
         var iovecs = self.in.get_write_iovecs();
         var msg = std.os.msghdr{
             .name = null,
@@ -26,14 +30,35 @@ pub const Connection = struct {
             .flags = 0,
         };
 
-        const ret = try self.io.recvmsg(self.socket_fd, &msg);
-        self.in.count += ret;
+        self.recv_c = .{
+            .op = .{
+                .recvmsg = .{
+                    .fd = self.socket_fd,
+                    .msghdr = &msg,
+                },
+            },
 
-        return ret;
+            .userdata = self,
+            .callback = (struct {
+                fn callback(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
+                    _ = l;
+                    _ = c;
+                    // std.log.info("asdasd", .{});
+                    const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
+                    connection.in.count += r.recvmsg catch unreachable;
+
+                    connection.client.consumeEvents() catch unreachable;
+                    return .disarm;
+                }
+            }).callback,
+        };
+        self.loop.add(&self.recv_c);
+        // self.loop.submit() catch unreachable;
+        self.loop.run(.until_done) catch unreachable;
     }
 
-    pub fn send(self: *Connection) !usize {
-        if (self.out.count == 0 and self.fd_out.count == 0)  return 0;
+    pub fn send(self: *Connection) !void {
+        if (self.out.count == 0 and self.fd_out.count == 0) return;
         var iovecs = self.out.get_read_iovecs();
         var cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
@@ -55,13 +80,28 @@ pub const Connection = struct {
             .flags = 0,
         };
 
-        const ret = try self.io.sendmsg(self.socket_fd, &msg);
-        self.out.consume(ret);
-        // self.out.count -= ret;
+        self.send_c = .{
+            .op = .{
+                .sendmsg = .{
+                    .fd = self.socket_fd,
+                    .msghdr = &msg,
+                },
+            },
+            .userdata = self,
+            .callback = (struct {
+                fn callback(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
+                    _ = l;
+                    _ = c;
+                    const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
+                    const ret = r.sendmsg catch unreachable;
+                    connection.out.count -= ret;
+                    return .disarm;
+                }
+            }).callback,
+        };
+        self.loop.add(&self.send_c);
 
-        // todo: close fds
-
-        return ret;
+        try self.loop.run(.until_done);
     }
 };
 
@@ -87,8 +127,10 @@ pub const Client = struct {
         return &self.objects.items[self.next_id()];
     }
 
+    pub fn connect(allocator: std.mem.Allocator) !*Client {
+        var loop = try xev.IO_Uring.Loop.init(.{});
+        errdefer loop.deinit();
 
-    pub fn connect(allocator: std.mem.Allocator, io: *IO) !*Client {
         var self = try allocator.create(Client);
         self.* = .{
             .wl_display = undefined,
@@ -101,7 +143,7 @@ pub const Client = struct {
         try self.objects.appendNTimes(null, 1000);
 
         const next = self.next_object();
-        next.* = Proxy{  .client = self, .interface = &wl.Display.interface , .id = 1} ;
+        next.* = Proxy{ .client = self, .interface = &wl.Display.interface, .id = 1 };
         self.wl_display = @ptrCast(next);
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
@@ -112,16 +154,17 @@ pub const Client = struct {
         const a = try std.fmt.bufPrint(&buf, "{s}/{s}", .{ xdg_runtime_dir, wl_display_name });
 
         var addr = try std.net.Address.initUnix(a);
-        try io.connect(fd, &addr.any, addr.getOsSockLen());
+        try std.os.connect(fd, &addr.any, addr.getOsSockLen());
 
         const connection = try allocator.create(Connection);
         connection.* = .{
             .socket_fd = fd,
-            .io = io,
             .in = .{},
             .out = .{},
             .fd_in = .{},
             .fd_out = .{},
+            .loop = loop,
+            .client = self,
         };
 
         self.connection = connection;
@@ -137,15 +180,7 @@ pub const Client = struct {
         size: u16,
     };
 
-    pub fn recvEvents(self: *const Client) !void {
-        const sent = try self.connection.send();
-        std.log.info("sent: {}", .{sent});
-
-        const total = try self.connection.recv();
-        // var rem = self.connection.in.count;
-        if (total == 0) {
-            return error.BrokenPipe;
-        }
+    pub fn consumeEvents(self: *const Client) !void {
         while (true) {
             const pre_wrap = self.connection.in.preWrapSlice();
             var header: Header = undefined;
@@ -168,8 +203,17 @@ pub const Client = struct {
             if (self.connection.in.count < 8) break;
         }
     }
+    pub fn recvEvents(self: *const Client) !void {
+        try self.connection.send();
+        // std.log.info("sent: {s}", .{"asdf"});
+        try self.connection.loop.run(.until_done);
+        // std.os.exit(44);
+
+        self.connection.recv();
+        try self.connection.loop.run(.until_done);
+    }
     pub fn deinit(self: *Client) void {
-        self.connection.io.close(self.connection.socket_fd) catch unreachable;
+        std.os.close(self.connection.socket_fd);
         self.objects.deinit();
         self.unused_oids.deinit();
         self.allocator.destroy(self.connection);
@@ -220,7 +264,7 @@ pub const Client = struct {
 fn displayListener(display: *Client, event: wl.Display.Event, _: ?*anyopaque) void {
     switch (event) {
         .@"error" => |e| {
-            std.log.err("Wayland error {}: {s}", .{e.code, e.message});
+            std.log.err("Wayland error {}: {s}", .{ e.code, e.message });
         },
         .delete_id => |del| {
             std.debug.assert(display.objects.items[del.id] != null);

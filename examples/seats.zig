@@ -3,14 +3,13 @@ const wayland = @import("wayland");
 const wl = wayland.wl;
 
 
-pub const main = wayland.my_main;
 
-pub fn async_main(io: *wayland.IO) !void {
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    const client = try wayland.Client.connect(allocator, io);
+    const client = try wayland.Client.connect(allocator);
     const registry = try client.get_registry();
     registry.set_listener(?*anyopaque, listener, null);
     try client.roundtrip();

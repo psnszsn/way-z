@@ -9,8 +9,6 @@ const zwlr = wayland.zwlr;
 
 const Buffer = wayland.shm.Buffer;
 
-pub const main = wayland.my_main;
-
 pub const std_options = struct {
     pub const log_level = .info;
 };
@@ -60,9 +58,9 @@ const Bar = struct {
         wl_surface.commit();
         try app.client.roundtrip();
 
-        const libcoro = @import("libcoro");
-        const frame = try libcoro.xasync(timer, .{ app.client.connection.io, self }, null);
-        _ = frame; // autofix
+        // const libcoro = @import("libcoro");
+        // const frame = try libcoro.xasync(timer, .{ app.client.connection.io, self }, null);
+        // _ = frame; // autofix
     }
 
     fn timer(io: *wayland.IO, self: *Bar) void {
@@ -129,12 +127,12 @@ const Bar = struct {
     }
 };
 
-pub fn async_main(io: *wayland.IO) !void {
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    const client = try wayland.Client.connect(allocator, io);
+    const client = try wayland.Client.connect(allocator);
     const registry = try client.get_registry();
 
     var context = App{

@@ -8,7 +8,7 @@ const xdg = wayland.xdg;
 
 const Buffer = wayland.shm.Buffer;
 
-pub const main = wayland.my_main;
+// pub const main = wayland.my_main;
 
 
 pub const std_options = struct {
@@ -33,12 +33,12 @@ const SurfaceCtx = struct {
     last_frame: u32,
 };
 
-pub fn async_main(io: *wayland.IO) !void {
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    const client = try wayland.Client.connect(allocator, io);
+    const client = try wayland.Client.connect(allocator);
     const registry = try client.get_registry();
 
     var context = Context{

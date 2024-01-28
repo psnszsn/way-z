@@ -4,11 +4,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
+    const libxev = b.dependency("libxev", .{}).module("xev");
 
     const wayland = b.createModule(.{
         .root_source_file = .{ .path = "./src/lib.zig" },
-        .imports = &.{.{ .name = "libcoro", .module = libcoro }},
+        .imports = &.{
+            .{ .name = "xev", .module = libxev },
+        },
     });
 
     {
@@ -33,8 +35,7 @@ pub fn build(b: *std.Build) void {
         // docsStep.dependOn(&installDocs.step);
     }
 
-
-    inline for (.{ "globals", "seats", "hello", "bar"}) |example| {
+    inline for (.{ "globals", "seats", "hello", "bar" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },
@@ -43,8 +44,8 @@ pub fn build(b: *std.Build) void {
         });
 
         exe.root_module.addImport("wayland", wayland);
-        exe.root_module.addImport("libcoro", libcoro);
-        exe.linkLibC();
+        exe.root_module.addImport("xev", libxev);
+        // exe.linkLibC();
 
         b.installArtifact(exe);
 
