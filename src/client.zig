@@ -16,14 +16,24 @@ pub const Connection = struct {
     fd_out: RingBuffer(512) = .{},
     client: *Client,
     loop: xev.IO_Uring.Loop,
+
     recv_c: xev.Completion = .{},
+    recv_iovecs: [2]std.os.iovec = undefined,
+    recv_msghdr: std.os.msghdr = undefined,
+
     send_c: xev.Completion = .{},
+    send_iovecs: [2]std.os.iovec_const = undefined,
+    send_msghdr: std.os.msghdr_const = undefined,
+    send_cmsg: Cmsghdr([5]std.os.fd_t) = undefined,
+
+    is_running: bool = true,
+
     pub fn recv(self: *Connection) void {
-        var iovecs = self.in.get_write_iovecs();
-        var msg = std.os.msghdr{
+        self.recv_iovecs = self.in.get_write_iovecs();
+        self.recv_msghdr = std.os.msghdr{
             .name = null,
             .namelen = 0,
-            .iov = &iovecs,
+            .iov = &self.recv_iovecs,
             .iovlen = 2,
             .control = null,
             .controllen = 0,
@@ -34,7 +44,7 @@ pub const Connection = struct {
             .op = .{
                 .recvmsg = .{
                     .fd = self.socket_fd,
-                    .msghdr = &msg,
+                    .msghdr = &self.recv_msghdr,
                 },
             },
 
@@ -48,34 +58,41 @@ pub const Connection = struct {
                     connection.in.count += r.recvmsg catch unreachable;
 
                     connection.client.consumeEvents() catch unreachable;
+
+                    if (connection.is_running) {
+                        if (connection.can_send()) connection.send() else connection.recv();
+                    }
                     return .disarm;
                 }
             }).callback,
         };
         self.loop.add(&self.recv_c);
         // self.loop.submit() catch unreachable;
-        self.loop.run(.until_done) catch unreachable;
+        // self.loop.run(.until_done) catch unreachable;
     }
 
-    pub fn send(self: *Connection) !void {
+    pub fn can_send(self: *Connection) bool {
+        return !(self.out.count == 0 and self.fd_out.count == 0);
+    }
+    pub fn send(self: *Connection) void {
         if (self.out.count == 0 and self.fd_out.count == 0) return;
-        var iovecs = self.out.get_read_iovecs();
-        var cmsg = Cmsghdr([5]std.os.fd_t).init(.{
+        self.send_iovecs = self.out.get_read_iovecs();
+        self.send_cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
             .type = 1, //SCM_RIGHTS
         });
-        const len = self.fd_out.copy(std.mem.asBytes(cmsg.dataPtr()));
+        const len = self.fd_out.copy(std.mem.asBytes(self.send_cmsg.dataPtr()));
         self.fd_out.consume(len);
-        const cmsg_len: u32 = @intCast(@TypeOf(cmsg).data_offset + len);
-        cmsg.headerPtr().len = cmsg_len;
+        const cmsg_len: u32 = @intCast(@TypeOf(self.send_cmsg).data_offset + len);
+        self.send_cmsg.headerPtr().len = cmsg_len;
         // std.debug.print("fd len {}\n", .{len});
 
-        var msg = std.os.msghdr_const{
+        self.send_msghdr = std.os.msghdr_const{
             .name = null,
             .namelen = 0,
-            .iov = &iovecs,
+            .iov = &self.send_iovecs,
             .iovlen = 2,
-            .control = &cmsg,
+            .control = &self.send_cmsg,
             .controllen = if (len > 0) cmsg_len else 0,
             .flags = 0,
         };
@@ -84,7 +101,7 @@ pub const Connection = struct {
             .op = .{
                 .sendmsg = .{
                     .fd = self.socket_fd,
-                    .msghdr = &msg,
+                    .msghdr = &self.send_msghdr,
                 },
             },
             .userdata = self,
@@ -95,13 +112,13 @@ pub const Connection = struct {
                     const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
                     const ret = r.sendmsg catch unreachable;
                     connection.out.count -= ret;
+
+                    connection.recv();
                     return .disarm;
                 }
             }).callback,
         };
         self.loop.add(&self.send_c);
-
-        try self.loop.run(.until_done);
     }
 };
 
@@ -204,14 +221,10 @@ pub const Client = struct {
         }
     }
     pub fn recvEvents(self: *const Client) !void {
-        try self.connection.send();
-        // std.log.info("sent: {s}", .{"asdf"});
-        try self.connection.loop.run(.until_done);
-        // std.os.exit(44);
-
-        self.connection.recv();
+        self.connection.send();
         try self.connection.loop.run(.until_done);
     }
+
     pub fn deinit(self: *Client) void {
         std.os.close(self.connection.socket_fd);
         self.objects.deinit();
@@ -255,8 +268,16 @@ pub const Client = struct {
         const callblack = try self.sync();
         var done: bool = false;
         callblack.set_listener(*bool, w.cbListener, &done);
+        self.connection.is_running = false;
+        defer self.connection.is_running = true;
+        self.connection.send();
+        try self.connection.loop.run(.until_done);
         while (!done) {
-            try self.recvEvents();
+            self.connection.recv();
+            try self.connection.loop.run(.until_done);
+            // std.log.info("zzz {}", .{self.connection.state});
+            // if (!done and self.connection.state == .done) self.connection.tick();
+            // try self.recvEvents();
         }
     }
 };
