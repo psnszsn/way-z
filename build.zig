@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
 
         exe.root_module.addImport("wayland", wayland);
         exe.root_module.addImport("xev", libxev);
+        // exe.use_lld = false;
         // exe.linkLibC();
 
         b.installArtifact(exe);

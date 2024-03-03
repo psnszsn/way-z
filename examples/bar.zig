@@ -6,11 +6,12 @@ const wayland = @import("wayland");
 const wl = wayland.wl;
 const xdg = wayland.xdg;
 const zwlr = wayland.zwlr;
+const xev = @import("xev");
 
 const Buffer = wayland.shm.Buffer;
 
-pub const std_options = struct {
-    pub const log_level = .info;
+pub const std_options = std.Options{
+    .log_level = .info,
 };
 
 const App = struct {
@@ -32,7 +33,10 @@ const Bar = struct {
     height: u32,
     offset: f32,
     last_frame: u32,
-    frame_done: bool = false,
+    frame_done: bool = true,
+
+    timer: xev.Timer,
+    timer_c: xev.Completion = .{},
 
     fn init(self: *Bar, app: *App) !void {
         const wl_surface = try app.compositor.?.create_surface();
@@ -53,28 +57,37 @@ const Bar = struct {
             .height = 0,
             .last_frame = 0,
             .offset = 0,
+            .timer = try xev.Timer.init(),
         };
 
         wl_surface.commit();
         try app.client.roundtrip();
-
-        // const libcoro = @import("libcoro");
-        // const frame = try libcoro.xasync(timer, .{ app.client.connection.io, self }, null);
-        // _ = frame; // autofix
     }
-
-    fn timer(io: *wayland.IO, self: *Bar) void {
-        while (true) {
-            io.sleep(std.time.ns_per_ms*200) catch {};
-            const frame_cb =  self.wl_surface.frame() catch unreachable;
-            frame_cb.set_listener(*Bar, frame_listener, self);
-            self.wl_surface.commit();
-            std.log.info("tick {}", .{self.frame_done});
-            self.frame_done = false;
-            const sent = self.ctx.client.connection.send() catch 0;
-            _ = sent; // autofix
-            // self.ctx.client.connection.schedule_send() catch {};
+    fn timerCallback(
+        ud: ?*Bar,
+        _: *xev.Loop,
+        _: *xev.Completion,
+        result: xev.Timer.RunError!void,
+    ) xev.CallbackAction {
+        _ = result catch unreachable;
+        const bar = ud.?;
+        const connection = bar.ctx.client.connection;
+        if (!bar.frame_done) {
+            std.log.info("asd{}", .{connection.recv_c.state()});
+            std.log.info("send queue {}", .{connection.out.count});
+            return .disarm;
         }
+        const frame_cb = bar.wl_surface.frame() catch unreachable;
+        frame_cb.set_listener(*Bar, frame_listener, bar);
+        bar.wl_surface.commit();
+        bar.frame_done = false;
+
+        if (connection.send_c.state() == .dead) {
+            connection.send();
+        } else {
+            std.log.info("send not done", .{});
+        }
+        return .disarm;
     }
 
     fn layer_suface_listener(layer_suface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, bar: *Bar) void {
@@ -111,6 +124,7 @@ const Bar = struct {
                 if (bar.last_frame != 0) {
                     const elapsed: f32 = @floatFromInt(time - bar.last_frame);
                     bar.offset += elapsed / 1000.0 * 24;
+                    std.log.info("zzzz{d:.3}", .{elapsed});
                 }
 
                 const buf = Buffer.get(bar.ctx.shm.?, bar.width, bar.height) catch unreachable;
@@ -120,8 +134,8 @@ const Bar = struct {
                 bar.wl_surface.commit();
 
                 bar.last_frame = time;
-                std.log.info("zzzz{}", .{bar.offset});
                 bar.frame_done = true;
+                bar.timer.run(&bar.ctx.client.connection.loop, &bar.timer_c, 20, Bar, bar, &timerCallback);
             },
         }
     }
@@ -159,9 +173,7 @@ pub fn main() !void {
     bar.wl_surface.commit();
     try client.roundtrip();
 
-    // const frame_cb = try bar.wl_surface.frame();
-    // frame_cb.set_listener(*Bar, frameListener, &bar);
-    // bar.wl_surface.commit();
+    bar.timer.run(&bar.ctx.client.connection.loop, &bar.timer_c, 500, Bar, &bar, &Bar.timerCallback);
 
     while (context.running) {
         try client.recvEvents();

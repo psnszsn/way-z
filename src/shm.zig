@@ -9,7 +9,6 @@ fn bufferListener(wl_buffer: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer
         .release => {
             std.debug.assert(buffer.busy == true);
             buffer.busy = false;
-
         },
     }
 }
@@ -28,7 +27,7 @@ pub const Pool = struct {
             self.wl_pool.resize(@intCast(newsize));
             self.size = newsize;
             os.munmap(self.mmap);
-            self.mmap = try os.mmap(null, newsize, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, self.backing_fd, 0);
+            self.mmap = try os.mmap(null, newsize, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, self.backing_fd, 0);
         }
     }
 };
@@ -48,9 +47,9 @@ pub const Buffer = struct {
             buf = try Buffer.init(shm, width, height);
             buf.?.wl_buffer.set_listener(*Buffer, bufferListener, &buf.?);
         }
-        if (buf) |*b|{
+        if (buf) |*b| {
+            if (b.busy) return error.BufferBuzy;
             try b.resize(width, height);
-            std.debug.assert(b.busy == false);
             b.busy = true;
             return b;
         }
@@ -64,7 +63,7 @@ pub const Buffer = struct {
         const fd = try os.memfd_create("way-z-shm", 0);
         // defer os.close(fd);
         try os.ftruncate(fd, size);
-        const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, os.MAP.SHARED, fd, 0);
+        const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0);
         // os.munmap(data);
 
         const pool = try shm.create_pool(fd, @intCast(size));

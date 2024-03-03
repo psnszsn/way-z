@@ -18,6 +18,7 @@ pub const Connection = struct {
     loop: xev.IO_Uring.Loop,
 
     recv_c: xev.Completion = .{},
+    recv_cancel_c: xev.Completion = .{},
     recv_iovecs: [2]std.os.iovec = undefined,
     recv_msghdr: std.os.msghdr = undefined,
 
@@ -27,6 +28,27 @@ pub const Connection = struct {
     send_cmsg: Cmsghdr([5]std.os.fd_t) = undefined,
 
     is_running: bool = true,
+
+    pub fn cancel_recv(self: *Connection) void {
+        if (self.recv_c.state() != .active) return;
+        std.log.info("cancel_recv", .{});
+        self.loop.cancel(
+            &self.recv_c,
+            &self.recv_cancel_c,
+            void,
+            null,
+            (struct {
+                fn callback(ud: ?*void, l: *xev.Loop, c: *xev.Completion, r: xev.CancelError!void) xev.CallbackAction {
+                    std.log.info("r: {!}", .{r});
+                    r catch unreachable;
+                    _ = c;
+                    _ = l;
+                    _ = ud;
+                    return .disarm;
+                }
+            }).callback,
+        );
+    }
 
     pub fn recv(self: *Connection) void {
         self.recv_iovecs = self.in.get_write_iovecs();
@@ -47,35 +69,36 @@ pub const Connection = struct {
                     .msghdr = &self.recv_msghdr,
                 },
             },
-
             .userdata = self,
-            .callback = (struct {
-                fn callback(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
-                    _ = l;
-                    _ = c;
-                    // std.log.info("asdasd", .{});
-                    const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
-                    connection.in.count += r.recvmsg catch unreachable;
-
-                    connection.client.consumeEvents() catch unreachable;
-
-                    if (connection.is_running) {
-                        if (connection.can_send()) connection.send() else connection.recv();
-                    }
-                    return .disarm;
-                }
-            }).callback,
+            .callback = recv_cb,
         };
+
         self.loop.add(&self.recv_c);
-        // self.loop.submit() catch unreachable;
-        // self.loop.run(.until_done) catch unreachable;
     }
 
+    fn recv_cb(ud: ?*anyopaque, _: *xev.Loop, _: *xev.Completion, r: xev.Result) xev.CallbackAction {
+        const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
+        connection.in.count += r.recvmsg catch |err| switch (err) {
+            error.Canceled => return .disarm,
+            else => unreachable,
+        };
+
+        connection.client.consumeEvents() catch unreachable;
+
+        if (connection.is_running) {
+            if (connection.can_send()) connection.send() else {}
+            connection.recv();
+        }
+        return .disarm;
+    }
     pub fn can_send(self: *Connection) bool {
+        if (self.send_c.state() == .active) return false;
         return !(self.out.count == 0 and self.fd_out.count == 0);
     }
     pub fn send(self: *Connection) void {
+        if (self.send_c.state() == .active) unreachable;
         if (self.out.count == 0 and self.fd_out.count == 0) return;
+        std.log.info("!!sending {}", .{self.out.count});
         self.send_iovecs = self.out.get_read_iovecs();
         self.send_cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
@@ -105,20 +128,22 @@ pub const Connection = struct {
                 },
             },
             .userdata = self,
-            .callback = (struct {
-                fn callback(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
-                    _ = l;
-                    _ = c;
-                    const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
-                    const ret = r.sendmsg catch unreachable;
-                    connection.out.count -= ret;
-
-                    connection.recv();
-                    return .disarm;
-                }
-            }).callback,
+            .callback = send_cb,
         };
         self.loop.add(&self.send_c);
+    }
+    fn send_cb(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
+        _ = l;
+        _ = c;
+        const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
+        const ret = r.sendmsg catch unreachable;
+        connection.out.count -= ret;
+
+        if (connection.can_send()) {
+            std.log.info("resending", .{});
+            connection.send();
+        }
+        return .disarm;
     }
 };
 
@@ -222,6 +247,7 @@ pub const Client = struct {
     }
     pub fn recvEvents(self: *const Client) !void {
         self.connection.send();
+        self.connection.recv();
         try self.connection.loop.run(.until_done);
     }
 
@@ -249,7 +275,6 @@ pub const Client = struct {
     ) void {
         const w = struct {
             fn l(display: *wl.Display, event: Event, data: T) void {
-                // const u: *Display = @ptrCast(display);
                 const u: *Client = display.proxy.client;
                 _listener(u, event, data);
             }
@@ -274,10 +299,7 @@ pub const Client = struct {
         try self.connection.loop.run(.until_done);
         while (!done) {
             self.connection.recv();
-            try self.connection.loop.run(.until_done);
-            // std.log.info("zzz {}", .{self.connection.state});
-            // if (!done and self.connection.state == .done) self.connection.tick();
-            // try self.recvEvents();
+            try self.connection.loop.run(.once);
         }
     }
 };

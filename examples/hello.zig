@@ -8,11 +8,8 @@ const xdg = wayland.xdg;
 
 const Buffer = wayland.shm.Buffer;
 
-// pub const main = wayland.my_main;
-
-
-pub const std_options = struct {
-    pub const log_level = .info;
+pub const std_options = std.Options{
+    .log_level = .info,
 };
 
 const Context = struct {
@@ -184,6 +181,8 @@ fn frameListener(cb: *wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) 
     switch (event) {
         .done => |done| {
             const time = done.callback_data;
+            defer surf.last_frame = time;
+
             const frame_cb = surf.wl_surface.frame() catch return;
             frame_cb.set_listener(*SurfaceCtx, frameListener, surf);
 
@@ -192,13 +191,11 @@ fn frameListener(cb: *wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) 
                 surf.offset += elapsed / 1000.0 * 24;
             }
 
-            const buf = Buffer.get(surf.ctx.shm.?, surf.width, surf.height) catch unreachable;
+            defer surf.wl_surface.commit();
+            const buf = Buffer.get(surf.ctx.shm.?, surf.width, surf.height) catch return;
             draw(buf.pool.mmap, surf.width, surf.height, surf.offset);
             surf.wl_surface.attach(buf.wl_buffer, 0, 0);
             surf.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
-            surf.wl_surface.commit();
-
-            surf.last_frame = time;
         },
     }
 }
