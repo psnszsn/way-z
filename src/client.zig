@@ -29,27 +29,6 @@ pub const Connection = struct {
 
     is_running: bool = true,
 
-    pub fn cancel_recv(self: *Connection) void {
-        if (self.recv_c.state() != .active) return;
-        std.log.info("cancel_recv", .{});
-        self.loop.cancel(
-            &self.recv_c,
-            &self.recv_cancel_c,
-            void,
-            null,
-            (struct {
-                fn callback(ud: ?*void, l: *xev.Loop, c: *xev.Completion, r: xev.CancelError!void) xev.CallbackAction {
-                    std.log.info("r: {!}", .{r});
-                    r catch unreachable;
-                    _ = c;
-                    _ = l;
-                    _ = ud;
-                    return .disarm;
-                }
-            }).callback,
-        );
-    }
-
     pub fn recv(self: *Connection) void {
         self.recv_iovecs = self.in.get_write_iovecs();
         self.recv_msghdr = std.os.msghdr{
@@ -131,9 +110,7 @@ pub const Connection = struct {
         };
         self.loop.add(&self.send_c);
     }
-    fn send_cb(ud: ?*anyopaque, l: *xev.Loop, c: *xev.Completion, r: xev.Result) xev.CallbackAction {
-        _ = l;
-        _ = c;
+    fn send_cb(ud: ?*anyopaque, _: *xev.Loop, _: *xev.Completion, r: xev.Result) xev.CallbackAction {
         const connection = @as(*Connection, @ptrCast(@alignCast(ud.?)));
         const ret = r.sendmsg catch unreachable;
         connection.out.count -= ret;
@@ -148,11 +125,10 @@ pub const Connection = struct {
 
 pub const Client = struct {
     wl_display: *wl.Display,
-    objects: std.ArrayList(?Proxy),
-    unused_oids: std.ArrayList(u32),
+    objects: std.ArrayListUnmanaged(?Proxy) = .{},
+    unused_oids: std.ArrayListUnmanaged(u32) = .{},
     connection: *Connection,
     allocator: std.mem.Allocator,
-    // reusable_oids: std.
 
     pub const Event = wl.Display.Event;
 
@@ -175,13 +151,12 @@ pub const Client = struct {
         var self = try allocator.create(Client);
         self.* = .{
             .wl_display = undefined,
-            .objects = try std.ArrayList(?Proxy).initCapacity(allocator, 1000),
-            .unused_oids = std.ArrayList(u32).init(allocator),
+            .objects = try std.ArrayListUnmanaged(?Proxy).initCapacity(allocator, 1000),
             .connection = undefined,
             .allocator = allocator,
         };
 
-        try self.objects.appendNTimes(null, 1000);
+        self.objects.appendNTimesAssumeCapacity(null, 1000);
 
         const next = self.next_object();
         next.* = Proxy{ .client = self, .interface = &wl.Display.interface, .id = 1 };
@@ -252,8 +227,8 @@ pub const Client = struct {
 
     pub fn deinit(self: *Client) void {
         std.os.close(self.connection.socket_fd);
-        self.objects.deinit();
-        self.unused_oids.deinit();
+        self.objects.deinit(self.allocator);
+        self.unused_oids.deinit(self.allocator);
         self.allocator.destroy(self.connection);
         self.allocator.destroy(self);
     }

@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const libxev = b.dependency("libxev", .{}).module("xev");
 
-    const wayland = b.createModule(.{
+    const wayland = b.addModule("way-z", .{
         .root_source_file = .{ .path = "./src/lib.zig" },
         .imports = &.{
             .{ .name = "xev", .module = libxev },
@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
         // docsStep.dependOn(&installDocs.step);
     }
 
-    inline for (.{ "globals", "seats", "hello", "bar" }) |example| {
+    inline for (.{ "globals", "seats", "hello" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },
