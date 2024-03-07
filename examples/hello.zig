@@ -12,7 +12,7 @@ pub const std_options = std.Options{
     .log_level = .info,
 };
 
-const Context = struct {
+const App = struct {
     shm: ?*wl.Shm,
     compositor: ?*wl.Compositor,
     wm_base: ?*xdg.WmBase,
@@ -20,7 +20,7 @@ const Context = struct {
 };
 
 const SurfaceCtx = struct {
-    ctx: *Context,
+    ctx: *App,
     wl_surface: *wl.Surface,
     xdg_surface: *xdg.Surface,
     xdg_toplevel: *xdg.Toplevel,
@@ -36,15 +36,15 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = try client.get_registry();
+    const registry = client.get_registry();
 
-    var context = Context{
+    var context = App{
         .shm = null,
         .compositor = null,
         .wm_base = null,
     };
 
-    registry.set_listener(*Context, registryListener, &context);
+    registry.set_listener(*App, registryListener, &context);
     try client.roundtrip();
 
     const shm = context.shm orelse return error.NoWlShm;
@@ -63,11 +63,11 @@ pub fn main() !void {
         .ctx = &context,
     };
 
-    surface.wl_surface = try compositor.create_surface();
+    surface.wl_surface = compositor.create_surface();
     defer surface.wl_surface.destroy();
-    surface.xdg_surface = try wm_base.get_xdg_surface(surface.wl_surface);
+    surface.xdg_surface = wm_base.get_xdg_surface(surface.wl_surface);
     defer surface.xdg_surface.destroy();
-    surface.xdg_toplevel = try surface.xdg_surface.get_toplevel();
+    surface.xdg_toplevel = surface.xdg_surface.get_toplevel();
     defer surface.xdg_toplevel.destroy();
 
     surface.xdg_surface.set_listener(*SurfaceCtx, xdgSurfaceListener, &surface);
@@ -82,7 +82,7 @@ pub fn main() !void {
     surface.wl_surface.commit();
     try client.roundtrip();
 
-    const frame_cb = try surface.wl_surface.frame();
+    const frame_cb = surface.wl_surface.frame();
     frame_cb.set_listener(*SurfaceCtx, frameListener, &surface);
     surface.wl_surface.commit();
 
@@ -91,15 +91,15 @@ pub fn main() !void {
     }
 }
 
-fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *Context) void {
+fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = registry.bind(global.name, wl.Compositor, 1) catch return;
+                context.compositor = registry.bind(global.name, wl.Compositor, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = registry.bind(global.name, wl.Shm, 1) catch return;
+                context.shm = registry.bind(global.name, wl.Shm, 1);
             } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = registry.bind(global.name, xdg.WmBase, 1) catch return;
+                context.wm_base = registry.bind(global.name, xdg.WmBase, 1);
             }
         },
         .global_remove => {},
@@ -183,7 +183,7 @@ fn frameListener(cb: *wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) 
             const time = done.callback_data;
             defer surf.last_frame = time;
 
-            const frame_cb = surf.wl_surface.frame() catch return;
+            const frame_cb = surf.wl_surface.frame();
             frame_cb.set_listener(*SurfaceCtx, frameListener, surf);
 
             if (surf.last_frame != 0) {

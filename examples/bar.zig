@@ -39,9 +39,9 @@ const Bar = struct {
     timer_c: xev.Completion = .{},
 
     fn init(self: *Bar, app: *App) !void {
-        const wl_surface = try app.compositor.?.create_surface();
+        const wl_surface = app.compositor.?.create_surface();
         errdefer wl_surface.destroy();
-        const layer_surface = try app.layer_shell.?.get_layer_surface(wl_surface, null, .top, "");
+        const layer_surface = app.layer_shell.?.get_layer_surface(wl_surface, null, .top, "");
         errdefer layer_surface.destroy();
         layer_surface.set_listener(*Bar, layer_suface_listener, self);
 
@@ -77,7 +77,7 @@ const Bar = struct {
             std.log.info("send queue {}", .{connection.out.count});
             return .disarm;
         }
-        const frame_cb = bar.wl_surface.frame() catch unreachable;
+        const frame_cb = bar.wl_surface.frame();
         frame_cb.set_listener(*Bar, frame_listener, bar);
         bar.wl_surface.commit();
         bar.frame_done = false;
@@ -147,7 +147,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = try client.get_registry();
+    const registry = client.get_registry();
 
     var context = App{
         .client = client,
@@ -184,15 +184,15 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = registry.bind(global.name, wl.Compositor, 1) catch return;
+                context.compositor = registry.bind(global.name, wl.Compositor, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = registry.bind(global.name, wl.Shm, 1) catch return;
+                context.shm = registry.bind(global.name, wl.Shm, 1);
             } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = registry.bind(global.name, xdg.WmBase, 1) catch return;
+                context.wm_base = registry.bind(global.name, xdg.WmBase, 1);
             } else if (mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                context.layer_shell = registry.bind(global.name, zwlr.LayerShellV1, 1) catch return;
+                context.layer_shell = registry.bind(global.name, zwlr.LayerShellV1, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
-                context.seat = registry.bind(global.name, wl.Seat, 1) catch return;
+                context.seat = registry.bind(global.name, wl.Seat, 1);
                 context.seat.?.set_listener(*App, seat_listener, context);
             }
         },
@@ -227,7 +227,7 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
 
             if (data.capabilities.pointer) {
                 if (app.pointer == null) {
-                    app.pointer = seat.get_pointer() catch unreachable;
+                    app.pointer = seat.get_pointer();
                     app.pointer.?.set_listener(*App, pointer_listener, app);
                 }
             }

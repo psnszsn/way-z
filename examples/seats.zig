@@ -2,15 +2,13 @@ const std = @import("std");
 const wayland = @import("wayland");
 const wl = wayland.wl;
 
-
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = try client.get_registry();
+    const registry = client.get_registry();
     registry.set_listener(?*anyopaque, listener, null);
     try client.roundtrip();
     try client.roundtrip();
@@ -22,7 +20,7 @@ fn listener(registry: *wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) vo
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
                 std.debug.print("global: {}\n", .{global});
-                const seat = registry.bind(global.name, wl.Seat, global.version) catch return;
+                const seat = registry.bind(global.name, wl.Seat, global.version);
                 seat.set_listener(?*anyopaque, seatListener, null);
             }
         },

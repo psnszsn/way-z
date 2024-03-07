@@ -120,11 +120,11 @@ pub const WmBase = struct {
     /// Create a positioner object. A positioner object is used to position
     /// surfaces relative to some parent surface. See the interface description
     /// and xdg_surface.get_popup for details.
-    pub fn create_positioner(self: *const WmBase) !*Positioner {
+    pub fn create_positioner(self: *const WmBase) *Positioner {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Positioner, 1, &_args);
+        return self.proxy.marshal_request_constructor(Positioner, 1, &_args) catch @panic("buffer full");
     }
 
     /// This creates an xdg_surface for the given surface. While xdg_surface
@@ -140,12 +140,12 @@ pub const WmBase = struct {
     ///
     /// See the documentation of xdg_surface for more details about what an
     /// xdg_surface is and how it is used.
-    pub fn get_xdg_surface(self: *const WmBase, _surface: *wl.Surface) !*Surface {
+    pub fn get_xdg_surface(self: *const WmBase, _surface: *wl.Surface) *Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
         };
-        return self.proxy.marshal_request_constructor(Surface, 2, &_args);
+        return self.proxy.marshal_request_constructor(Surface, 2, &_args) catch @panic("buffer full");
     }
 
     /// A client must respond to a ping event with a pong request or
@@ -506,11 +506,11 @@ pub const Surface = struct {
     ///
     /// See the documentation of xdg_toplevel for more details about what an
     /// xdg_toplevel is and how it is used.
-    pub fn get_toplevel(self: *const Surface) !*Toplevel {
+    pub fn get_toplevel(self: *const Surface) *Toplevel {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Toplevel, 1, &_args);
+        return self.proxy.marshal_request_constructor(Toplevel, 1, &_args) catch @panic("buffer full");
     }
 
     /// This creates an xdg_popup object for the given xdg_surface and gives
@@ -521,13 +521,13 @@ pub const Surface = struct {
     ///
     /// See the documentation of xdg_popup for more details about what an
     /// xdg_popup is and how it is used.
-    pub fn get_popup(self: *const Surface, _parent: ?*Surface, _positioner: *Positioner) !*Popup {
+    pub fn get_popup(self: *const Surface, _parent: ?*Surface, _positioner: *Positioner) *Popup {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = if (_parent) |arg| arg.proxy.id else 0 },
             .{ .object = _positioner.proxy.id },
         };
-        return self.proxy.marshal_request_constructor(Popup, 2, &_args);
+        return self.proxy.marshal_request_constructor(Popup, 2, &_args) catch @panic("buffer full");
     }
 
     /// The window geometry of a surface is its "visible bounds" from the
@@ -623,6 +623,10 @@ pub const Surface = struct {
 /// fullscreen, and minimize, set application-specific metadata like title and
 /// id, and well as trigger user interactive operations such as interactive
 /// resize and move.
+///
+/// A xdg_toplevel by default is responsible for providing the full intended
+/// visual representation of the toplevel, which depending on the window
+/// state, may mean things like a title bar, window controls and drop shadow.
 ///
 /// Unmapping an xdg_toplevel means that the surface cannot be shown
 /// by the compositor until it is explicitly mapped again.

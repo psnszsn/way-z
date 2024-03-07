@@ -80,7 +80,7 @@ pub const LayerShellV1 = struct {
     ///
     /// Clients can specify a namespace that defines the purpose of the layer
     /// surface.
-    pub fn get_layer_surface(self: *const LayerShellV1, _surface: *wl.Surface, _output: ?*wl.Output, _layer: Layer, _namespace: [:0]const u8) !*LayerSurfaceV1 {
+    pub fn get_layer_surface(self: *const LayerShellV1, _surface: *wl.Surface, _output: ?*wl.Output, _layer: Layer, _namespace: [:0]const u8) *LayerSurfaceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
@@ -88,7 +88,7 @@ pub const LayerShellV1 = struct {
             .{ .uint = @intCast(@intFromEnum(_layer)) },
             .{ .string = _namespace },
         };
-        return self.proxy.marshal_request_constructor(LayerSurfaceV1, 0, &_args);
+        return self.proxy.marshal_request_constructor(LayerSurfaceV1, 0, &_args) catch @panic("buffer full");
     }
 
     /// This request indicates that the client will not use the layer_shell

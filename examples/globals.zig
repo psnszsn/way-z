@@ -8,7 +8,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = try client.get_registry();
+    const registry = client.get_registry();
     var foo: u32 = 42;
     registry.set_listener(*u32, listener, &foo);
     try client.roundtrip();

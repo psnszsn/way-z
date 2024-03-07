@@ -66,10 +66,10 @@ pub const Buffer = struct {
         const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0);
         // os.munmap(data);
 
-        const pool = try shm.create_pool(fd, @intCast(size));
+        const pool = shm.create_pool(fd, @intCast(size));
         // defer pool.destroy();
 
-        const buffer = try pool.create_buffer(0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
+        const buffer = pool.create_buffer(0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
 
         return Buffer{
             .width = @intCast(width),
@@ -91,7 +91,7 @@ pub const Buffer = struct {
         try self.pool.resize(newsize);
         if (self.width != width or self.height != height) {
             self.wl_buffer.destroy();
-            self.wl_buffer = try self.pool.wl_pool.create_buffer(0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
+            self.wl_buffer = self.pool.wl_pool.create_buffer(0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
             self.wl_buffer.set_listener(*Buffer, bufferListener, self);
             self.width = width;
             self.height = height;

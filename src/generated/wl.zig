@@ -118,11 +118,11 @@ pub const Display = struct {
     /// attempt to use it after that point.
     ///
     /// The callback_data passed in the callback is the event serial.
-    pub fn sync(self: *const Display) !*Callback {
+    pub fn sync(self: *const Display) *Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Callback, 0, &_args);
+        return self.proxy.marshal_request_constructor(Callback, 0, &_args) catch @panic("buffer full");
     }
 
     /// This request creates a registry object that allows the client
@@ -134,11 +134,11 @@ pub const Display = struct {
     /// client disconnects, not when the client side proxy is destroyed.
     /// Therefore, clients should invoke get_registry as infrequently as
     /// possible to avoid wasting memory.
-    pub fn get_registry(self: *const Display) !*Registry {
+    pub fn get_registry(self: *const Display) *Registry {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Registry, 1, &_args);
+        return self.proxy.marshal_request_constructor(Registry, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -236,14 +236,14 @@ pub const Registry = struct {
 
     /// Binds a new, client-created object to the server using the
     /// specified name as the identifier.
-    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) !*T {
+    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) *T {
         var _args = [_]Argument{
             .{ .uint = _name },
             .{ .string = T.interface.name },
             .{ .uint = _version },
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(T, 0, &_args);
+        return self.proxy.marshal_request_constructor(T, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -310,19 +310,19 @@ pub const Compositor = struct {
         },
     };
     /// Ask the compositor to create a new surface.
-    pub fn create_surface(self: *const Compositor) !*Surface {
+    pub fn create_surface(self: *const Compositor) *Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Surface, 0, &_args);
+        return self.proxy.marshal_request_constructor(Surface, 0, &_args) catch @panic("buffer full");
     }
 
     /// Ask the compositor to create a new region.
-    pub fn create_region(self: *const Compositor) !*Region {
+    pub fn create_region(self: *const Compositor) *Region {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Region, 1, &_args);
+        return self.proxy.marshal_request_constructor(Region, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -355,7 +355,7 @@ pub const ShmPool = struct {
     /// A buffer will keep a reference to the pool it was created from
     /// so it is valid to destroy the pool immediately after creating
     /// a buffer from it.
-    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) !*Buffer {
+    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) *Buffer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .int = _offset },
@@ -364,7 +364,7 @@ pub const ShmPool = struct {
             .{ .int = _stride },
             .{ .uint = @intCast(@intFromEnum(_format)) },
         };
-        return self.proxy.marshal_request_constructor(Buffer, 0, &_args);
+        return self.proxy.marshal_request_constructor(Buffer, 0, &_args) catch @panic("buffer full");
     }
 
     /// Destroy the shared memory pool.
@@ -572,13 +572,13 @@ pub const Shm = struct {
     /// The pool can be used to create shared memory based buffer
     /// objects.  The server will mmap size bytes of the passed file
     /// descriptor, to use as backing memory for the pool.
-    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) !*ShmPool {
+    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) *ShmPool {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .fd = _fd },
             .{ .int = _size },
         };
-        return self.proxy.marshal_request_constructor(ShmPool, 0, &_args);
+        return self.proxy.marshal_request_constructor(ShmPool, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -1294,20 +1294,20 @@ pub const DataDeviceManager = struct {
     };
 
     /// Create a new data source.
-    pub fn create_data_source(self: *const DataDeviceManager) !*DataSource {
+    pub fn create_data_source(self: *const DataDeviceManager) *DataSource {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(DataSource, 0, &_args);
+        return self.proxy.marshal_request_constructor(DataSource, 0, &_args) catch @panic("buffer full");
     }
 
     /// Create a new data device for a given seat.
-    pub fn get_data_device(self: *const DataDeviceManager, _seat: *Seat) !*DataDevice {
+    pub fn get_data_device(self: *const DataDeviceManager, _seat: *Seat) *DataDevice {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _seat.proxy.id },
         };
-        return self.proxy.marshal_request_constructor(DataDevice, 1, &_args);
+        return self.proxy.marshal_request_constructor(DataDevice, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -1338,12 +1338,12 @@ pub const Shell = struct {
     /// already has another role, it raises a protocol error.
     ///
     /// Only one shell surface can be associated with a given surface.
-    pub fn get_shell_surface(self: *const Shell, _surface: *Surface) !*ShellSurface {
+    pub fn get_shell_surface(self: *const Shell, _surface: *Surface) *ShellSurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
         };
-        return self.proxy.marshal_request_constructor(ShellSurface, 0, &_args);
+        return self.proxy.marshal_request_constructor(ShellSurface, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -1943,11 +1943,11 @@ pub const Surface = struct {
     ///
     /// The callback_data passed in the callback is the current time, in
     /// milliseconds, with an undefined base.
-    pub fn frame(self: *const Surface) !*Callback {
+    pub fn frame(self: *const Surface) *Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Callback, 3, &_args);
+        return self.proxy.marshal_request_constructor(Callback, 3, &_args) catch @panic("buffer full");
     }
 
     /// This request sets the region of the surface that contains
@@ -2277,11 +2277,11 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the pointer capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_pointer(self: *const Seat) !*Pointer {
+    pub fn get_pointer(self: *const Seat) *Pointer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Pointer, 0, &_args);
+        return self.proxy.marshal_request_constructor(Pointer, 0, &_args) catch @panic("buffer full");
     }
 
     /// The ID provided will be initialized to the wl_keyboard interface
@@ -2292,11 +2292,11 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the keyboard capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_keyboard(self: *const Seat) !*Keyboard {
+    pub fn get_keyboard(self: *const Seat) *Keyboard {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Keyboard, 1, &_args);
+        return self.proxy.marshal_request_constructor(Keyboard, 1, &_args) catch @panic("buffer full");
     }
 
     /// The ID provided will be initialized to the wl_touch interface
@@ -2307,11 +2307,11 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the touch capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_touch(self: *const Seat) !*Touch {
+    pub fn get_touch(self: *const Seat) *Touch {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Touch, 2, &_args);
+        return self.proxy.marshal_request_constructor(Touch, 2, &_args) catch @panic("buffer full");
     }
 
     /// Using this request a client can tell the server that it is not going to
@@ -3477,13 +3477,13 @@ pub const Subcompositor = struct {
     ///
     /// This request modifies the behaviour of wl_surface.commit request on
     /// the sub-surface, see the documentation on wl_subsurface interface.
-    pub fn get_subsurface(self: *const Subcompositor, _surface: *Surface, _parent: *Surface) !*Subsurface {
+    pub fn get_subsurface(self: *const Subcompositor, _surface: *Surface, _parent: *Surface) *Subsurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
             .{ .object = _parent.proxy.id },
         };
-        return self.proxy.marshal_request_constructor(Subsurface, 1, &_args);
+        return self.proxy.marshal_request_constructor(Subsurface, 1, &_args) catch @panic("buffer full");
     }
 };
 

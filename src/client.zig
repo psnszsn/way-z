@@ -86,7 +86,7 @@ pub const Connection = struct {
         connection.client.consumeEvents() catch unreachable;
 
         if (connection.is_running) {
-            if (connection.can_send()) connection.send() else {}
+            if (connection.can_send()) connection.send();
             connection.recv();
         }
         return .disarm;
@@ -98,7 +98,6 @@ pub const Connection = struct {
     pub fn send(self: *Connection) void {
         if (self.send_c.state() == .active) unreachable;
         if (self.out.count == 0 and self.fd_out.count == 0) return;
-        std.log.info("!!sending {}", .{self.out.count});
         self.send_iovecs = self.out.get_read_iovecs();
         self.send_cmsg = Cmsghdr([5]std.os.fd_t).init(.{
             .level = std.os.SOL.SOCKET,
@@ -259,11 +258,11 @@ pub const Client = struct {
         self.allocator.destroy(self);
     }
 
-    pub inline fn get_registry(self: *Client) !*wl.Registry {
+    pub inline fn get_registry(self: *Client) *wl.Registry {
         return self.wl_display.get_registry();
     }
 
-    pub inline fn sync(self: *const Client) !*wl.Callback {
+    pub inline fn sync(self: *const Client) *wl.Callback {
         return self.wl_display.sync();
     }
 
@@ -290,7 +289,7 @@ pub const Client = struct {
                 // std.log.info("event: {}", .{event});
             }
         };
-        const callblack = try self.sync();
+        const callblack = self.sync();
         var done: bool = false;
         callblack.set_listener(*bool, w.cbListener, &done);
         self.connection.is_running = false;

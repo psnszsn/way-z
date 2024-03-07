@@ -165,9 +165,9 @@ class Request:
                 )
                 if creates_interface:
                     interface = self.interface.protocol.interfaces[creates_interface]
-                    fd.write(f"!*{title_case(interface.name)}")
+                    fd.write(f"*{title_case(interface.name)}")
                 else:
-                    fd.write("!*T")
+                    fd.write("*T")
             case _:
                 fd.write("void")
         fd.write("{\n")
@@ -206,7 +206,7 @@ class Request:
             case "constructor":
                 ret_t = interface.zig_type() if interface else "T"
                 fd.write(
-                    f"return self.proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args);\n"
+                    f"return self.proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args) catch @panic(\"buffer full\");\n"
                 )
             case _:
                 assert False, self
