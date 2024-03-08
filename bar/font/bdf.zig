@@ -2,15 +2,8 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = std.mem.Allocator;
 
-pub const default_font = blk: {
-    const fontData = @embedFile("./cozette.bdf");
-    @setEvalBranchQuota(10000000);
-    const f = Font.fromBdf(fontData) catch unreachable;
-    break :blk f;
-};
-
 pub const Glyph = struct {
-    rows: std.PackedIntArrayEndian(u1, .Big, 8 * 13) = undefined,
+    rows: std.PackedIntArrayEndian(u1, .big, 8 * 13) = undefined,
     width: u8 = 5,
     height: u8 = 10,
 
@@ -48,25 +41,6 @@ pub const Glyph = struct {
         return g;
     }
 };
-fn MultiArray(len: usize, T: type) type {
-    const MAR = std.MultiArrayList(T);
-    const size = MAR.capacityInBytes(len);
-    const alignT = @alignOf(MAR.Elem);
-    return struct {
-        const Self = @This();
-        data: [size]u8 align(alignT),
-        mar: MAR,
-        pub fn init() Self {
-            var c = Self{
-                .data = undefined,
-                .mar = .{},
-            };
-            c.mar.capacity = len;
-            c.mar.bytes = c.data.ptr;
-            return c;
-        }
-    };
-}
 
 pub const Range = struct {
     // data: MultiArray(256, Glyph),
@@ -164,28 +138,16 @@ pub const Font = struct {
         return f;
     }
 };
-// const glyph = Glyph{ .rows = &a };
-// std.debug.print("glyph: {any}\n", .{glyph});
 
-test "bytes as slice" {
-    // var z = [_]u8{
-    //     0xF0,
-    //     0x88,
-    //     0x88,
-    //     0xF0,
-    //     0x90,
-    //     0x88,
-    //     0x88,
-    //     0x88,
-    // };
+pub fn cozette(alloc: std.mem.Allocator) !*Font {
+    const font = try alloc.create(Font);
+    font.* = try Font.fromBdf(@embedFile("cozette.bdf"));
+    return font;
+}
 
-    // var g = Glyph.init(&z, 6);
-
-    // std.debug.print("g: {}\n", .{g});
-    const fontData = @embedFile("./cozette.bdf");
-    _ = Range;
-    @setEvalBranchQuota(5000000);
-    var f = comptime try Font.fromBdf(fontData);
-    const b = f.glyphBitmap('B');
+test cozette {
+    const font = try cozette(std.testing.allocator);
+    defer std.testing.allocator.destroy(font);
+    const b = font.glyphBitmap('R');
     std.debug.print("B {}\n", .{b});
 }

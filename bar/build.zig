@@ -3,8 +3,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const way_z = b.dependency("way-z", .{}).module("way-z");
-    const libxev = way_z.import_table.get("xev").?;
+    const way_z = b.dependency("way-z", .{});
+    const libxev = way_z.builder.dependency("libxev", .{});
 
     const exe = b.addExecutable(.{
         .name = "bar",
@@ -13,8 +13,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe.root_module.addImport("wayland", way_z);
-    exe.root_module.addImport("xev", libxev);
+    exe.root_module.addImport("wayland", way_z.module("way-z"));
+    exe.root_module.addImport("xev", libxev.module("xev"));
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

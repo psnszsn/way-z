@@ -8,6 +8,8 @@ const xdg = wayland.xdg;
 const zwlr = wayland.zwlr;
 const xev = @import("xev");
 
+const font = @import("font/bdf.zig");
+
 const Buffer = wayland.shm.Buffer;
 
 pub const std_options = std.Options{
@@ -23,6 +25,7 @@ const App = struct {
     seat: ?*wl.Seat = null,
     pointer: ?*wl.Pointer = null,
     running: bool = true,
+    font: *font.Font,
 };
 
 const Bar = struct {
@@ -128,7 +131,7 @@ const Bar = struct {
                 }
 
                 const buf = Buffer.get(bar.ctx.shm.?, bar.width, bar.height) catch unreachable;
-                draw(buf.pool.mmap, bar.width, bar.height, bar.offset);
+                draw(bar, buf.pool.mmap, bar.width, bar.height, bar.offset);
                 bar.wl_surface.attach(buf.wl_buffer, 0, 0);
                 bar.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
                 bar.wl_surface.commit();
@@ -154,6 +157,7 @@ pub fn main() !void {
         .shm = null,
         .compositor = null,
         .wm_base = null,
+        .font = try font.cozette(allocator),
     };
 
     registry.set_listener(*App, registryListener, &context);
@@ -168,7 +172,7 @@ pub fn main() !void {
     try bar.init(&context);
 
     const buf = try Buffer.get(bar.ctx.shm.?, bar.width, bar.height);
-    draw(buf.pool.mmap, bar.width, bar.height, 0);
+    draw(&bar, buf.pool.mmap, bar.width, bar.height, 0);
     bar.wl_surface.attach(buf.wl_buffer, 0, 0);
     bar.wl_surface.commit();
     try client.roundtrip();
@@ -202,18 +206,29 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
 
 const palette = [_]u32{ 0xff1a1c2c, 0xff5d275d, 0xffb13e53, 0xffef7d57, 0xffffcd75, 0xffa7f070, 0xff38b764, 0xff257179, 0xff29366f, 0xff3b5dc9, 0xff41a6f6, 0xff73eff7, 0xfff4f4f4, 0xff94b0c2, 0xff566c86, 0xff333c57 };
 
-fn draw(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
+fn draw(bar: *Bar, buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
+    _ = _offset; // autofix
     const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
 
-    const sin = std.math.sin;
-    for (0..height) |y| {
-        for (0..width) |x| {
-            const x_f: f32, const y_f: f32 = .{ @floatFromInt(x), @floatFromInt(y) };
-            const c = sin(x_f / 80) + sin(y_f / 80) + sin(_offset / 80);
-            const index: i64 = @intFromFloat(c * 4);
-            data_u32[y * width + x] = palette[@abs(index) % 16];
-        }
-    }
+    @memset(data_u32, 0xffffff);
+
+    const Color = @import("paint/Color.zig");
+    const paint_ctx = @import("paint.zig").PaintCtxU32{
+        .buffer = @ptrCast(data_u32),
+        .width = width,
+        .height = height,
+    };
+
+    paint_ctx.fill(.{});
+    paint_ctx.fill(.{ .color = Color.NamedColor.lime, .rect = .{
+        .x = 500,
+        .y = 10,
+        .width = 10,
+        .height = 10,
+    } });
+    var time_buf: [65]u8 = undefined;
+    const time_slice = std.fmt.bufPrint(&time_buf, "---- hello {}", .{std.time.timestamp()}) catch @panic("TODO");
+    paint_ctx.draw_text(time_slice, .{ .font = bar.ctx.font, .color = Color.NamedColor.black, .scale = 2 });
 }
 
 fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
