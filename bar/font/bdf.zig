@@ -80,12 +80,16 @@ pub const Font = struct {
     pub fn parseBdfChar(it: *mem.TokenIterator(u8, .any)) !?struct { Glyph, u21 } {
         var current = Glyph{};
         var encoding: ?u21 = undefined;
+        var offset_x: i8 = undefined;
+        var offset_y: i8 = undefined;
         while (it.next()) |line_| {
             if (mem.startsWith(u8, line_, "BBX")) {
                 const meta = parseBdfMeta(line_);
                 var bbx_it = mem.tokenize(u8, meta.v, " ");
                 current.width = try std.fmt.parseInt(u8, bbx_it.next().?, 0);
                 current.height = try std.fmt.parseInt(u8, bbx_it.next().?, 0);
+                offset_x = try std.fmt.parseInt(i8, bbx_it.next().?, 0);
+                offset_y = try std.fmt.parseInt(i8, bbx_it.next().?, 0);
             } else if (mem.startsWith(u8, line_, "ENCODING")) {
                 const meta = parseBdfMeta(line_);
                 // const enc = try splitNth(meta.v, " ", 1);
@@ -95,7 +99,12 @@ pub const Font = struct {
                     encoding = try std.fmt.parseInt(u21, meta.v, 0);
                 }
             } else if (mem.startsWith(u8, line_, "BITMAP")) {
-                for (0..current.height) |i| {
+                const top_offset: u8 = blk: {
+                    const temp: i8 = @intCast(13 - current.height);
+                    break :blk @intCast(temp - offset_y - 3);
+                };
+
+                for (top_offset..top_offset + current.height) |i| {
                     const s = it.next().?;
 
                     if (current.width / 9 + 1 > 1) {

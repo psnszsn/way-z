@@ -146,7 +146,7 @@ const Bar = struct {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
+    // defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
@@ -204,8 +204,6 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
     }
 }
 
-const palette = [_]u32{ 0xff1a1c2c, 0xff5d275d, 0xffb13e53, 0xffef7d57, 0xffffcd75, 0xffa7f070, 0xff38b764, 0xff257179, 0xff29366f, 0xff3b5dc9, 0xff41a6f6, 0xff73eff7, 0xfff4f4f4, 0xff94b0c2, 0xff566c86, 0xff333c57 };
-
 fn draw(bar: *Bar, buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
     _ = _offset; // autofix
     const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
@@ -222,12 +220,12 @@ fn draw(bar: *Bar, buf: []align(4096) u8, width: u32, height: u32, _offset: f32)
     paint_ctx.fill(.{});
     paint_ctx.fill(.{ .color = Color.NamedColor.lime, .rect = .{
         .x = 500,
-        .y = 10,
+        .y = 20,
         .width = 10,
         .height = 10,
     } });
     var time_buf: [65]u8 = undefined;
-    const time_slice = std.fmt.bufPrint(&time_buf, "---- hello {}", .{std.time.timestamp()}) catch @panic("TODO");
+    const time_slice = std.fmt.bufPrint(&time_buf, "---- Apa,  hello {}", .{std.time.timestamp()}) catch @panic("TODO");
     paint_ctx.draw_text(time_slice, .{ .font = bar.ctx.font, .color = Color.NamedColor.black, .scale = 2 });
 }
 
