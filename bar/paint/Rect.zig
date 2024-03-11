@@ -106,30 +106,29 @@ pub fn translated(self: Self, x: usize, y: usize) Self {
     };
 }
 
-// pub fn setSize(self: *Self, width: ) void {
+// pub fn setSize(self: *Self, size: Size) void {
 //     self.width = size.width;
 //     self.height = size.height;
 // }
-// pub fn setOrigin(self: *Self, point: Point) void {
-//     self.x = point.x;
-//     self.y = point.y;
-// }
-// pub fn getSize(self: *const Self) Size {
-//     return .{ .width = self.width, .height = self.height };
-// }
+pub fn setOrigin(self: *Self, point: Point) void {
+    self.x = point.x;
+    self.y = point.y;
+}
+pub fn getSize(self: *const Self) Size {
+    return .{ .width = self.width, .height = self.height };
+}
 
-// pub fn getPosition(self: Self) Point {
-//     return .{ .x = self.x, .y = self.y };
-// }
+pub fn getPosition(self: Self) Point {
+    return .{ .x = self.x, .y = self.y };
+}
 
-// pub fn getCenter(self: Self) Point {
-//     return .{ .x = self.x + self.width / 2, .y = self.y + self.height / 2 };
-// }
+pub fn getCenter(self: Self) Point {
+    return .{ .x = self.x + self.width / 2, .y = self.y + self.height / 2 };
+}
 
-const Point = struct {
-    x: usize,
-    y: usize,
-};
+const Point = @import("Point.zig");
+const Size = @import("Size.zig");
+
 pub fn borderIterator(self: *const Self) BorderIterator {
     return .{
         .rect = self,

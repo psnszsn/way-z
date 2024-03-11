@@ -11,6 +11,9 @@ const xev = @import("xev");
 const font = @import("font/bdf.zig");
 
 const Buffer = wayland.shm.Buffer;
+const PaintCtx = @import("paint.zig").PaintCtxU32;
+const Rect = @import("paint/Rect.zig");
+const Size = @import("paint/Size.zig");
 
 pub const std_options = std.Options{
     .log_level = .info,
@@ -26,6 +29,97 @@ const App = struct {
     pointer: ?*wl.Pointer = null,
     running: bool = true,
     font: *font.Font,
+    bar: *Bar = undefined,
+};
+
+pub const WidgetIdx = enum(u32) {
+    _,
+};
+
+const WidgetAttrs = struct {
+    type: WidgetType,
+    rect: Rect = Rect.ZERO,
+    flex: u8 = 0,
+    children: []const WidgetIdx = &.{},
+};
+
+const WidgetType = enum {
+    flex,
+    button,
+
+    pub fn Type(comptime self: WidgetType) type {
+        switch (self) {
+            .flex => return @import("widgets/Flex.zig"),
+            .button => return @import("widgets/Button.zig"),
+        }
+    }
+
+    const SizeFn = *const fn (*Layout, WidgetIdx, Size.Minmax) Size;
+    pub fn size(self: WidgetType) SizeFn {
+        switch (self) {
+            inline else => |wt| return wt.Type().size,
+        }
+    }
+    const DrawFn = *const fn (*Layout, WidgetIdx, Rect, PaintCtx) bool;
+    pub fn draw(self: WidgetType) DrawFn {
+        switch (self) {
+            inline else => |wt| return wt.Type().draw,
+        }
+    }
+    const EventFn = *const fn (*Layout, WidgetIdx, Event) void;
+    pub fn handle_event(self: WidgetType) EventFn {
+        switch (self) {
+            inline else => |wt| return wt.Type().handle_event,
+        }
+    }
+};
+
+pub const Layout = struct {
+    widgets: std.MultiArrayList(WidgetAttrs) = .{},
+    root: WidgetIdx = undefined,
+
+    pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
+        try self.widgets.ensureTotalCapacity(alloc, 100);
+    }
+    pub fn add(self: *Layout, widget: WidgetAttrs) WidgetIdx {
+        self.widgets.appendAssumeCapacity(widget);
+        return @enumFromInt(self.widgets.len - 1);
+    }
+    pub fn get(
+        self: *const Layout,
+        idx: WidgetIdx,
+        comptime item: std.meta.FieldEnum(WidgetAttrs),
+    ) std.meta.FieldType(WidgetAttrs, item) {
+        return self.widgets.items(item)[@intFromEnum(idx)];
+    }
+
+    pub fn set(
+        self: *const Layout,
+        idx: WidgetIdx,
+        comptime item: std.meta.FieldEnum(WidgetAttrs),
+        value: std.meta.FieldType(WidgetAttrs, item),
+    ) void {
+        self.widgets.items(item)[@intFromEnum(idx)] = value;
+    }
+
+    pub fn draw(layout: *Layout, ctx: PaintCtx) void {
+        std.log.info("CALLING DRAW  {}x{}\n", .{ ctx.width, ctx.height });
+        const size = Size.init(ctx.width, ctx.height);
+        const widget_size = layout.get(layout.root, .type).size()(
+            layout,
+            layout.root,
+            Size.Minmax.init(size, size),
+        );
+        std.log.info("size {}\n", .{size});
+        layout.widgets.items(.rect)[@intFromEnum(layout.root)] = .{
+            .x = 0,
+            .y = 0,
+            .width = widget_size.width,
+            .height = widget_size.height,
+        };
+
+        _ = layout.get(layout.root, .type).draw()(layout, layout.root, layout.get(layout.root, .rect), ctx);
+    }
 };
 
 const Bar = struct {
@@ -40,6 +134,8 @@ const Bar = struct {
 
     timer: xev.Timer,
     timer_c: xev.Completion = .{},
+
+    layout: Layout = .{},
 
     fn init(self: *Bar, app: *App) !void {
         const wl_surface = app.compositor.?.create_surface();
@@ -62,6 +158,16 @@ const Bar = struct {
             .offset = 0,
             .timer = try xev.Timer.init(),
         };
+        app.bar = self;
+
+        try self.layout.init(app.client.allocator);
+        const flex = self.layout.add(.{ .type = .flex });
+        const children = try app.client.allocator.alloc(WidgetIdx, 3);
+        children[0] = self.layout.add(.{ .type = .button });
+        children[1] = self.layout.add(.{ .type = .button, .flex = 1 });
+        children[2] = self.layout.add(.{ .type = .button });
+        self.layout.set(flex, .children, children);
+        self.layout.root = flex;
 
         wl_surface.commit();
         try app.client.roundtrip();
@@ -131,14 +237,19 @@ const Bar = struct {
                 }
 
                 const buf = Buffer.get(bar.ctx.shm.?, bar.width, bar.height) catch unreachable;
-                draw(bar, buf.pool.mmap, bar.width, bar.height, bar.offset);
+                const ctx = PaintCtx{
+                    .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
+                    .width = buf.width,
+                    .height = buf.height,
+                };
+                bar.layout.draw(ctx);
                 bar.wl_surface.attach(buf.wl_buffer, 0, 0);
                 bar.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
                 bar.wl_surface.commit();
 
                 bar.last_frame = time;
                 bar.frame_done = true;
-                bar.timer.run(&bar.ctx.client.connection.loop, &bar.timer_c, 20, Bar, bar, &timerCallback);
+                // bar.timer.run(&bar.ctx.client.connection.loop, &bar.timer_c, 200, Bar, bar, &timerCallback);
             },
         }
     }
@@ -172,7 +283,14 @@ pub fn main() !void {
     try bar.init(&context);
 
     const buf = try Buffer.get(bar.ctx.shm.?, bar.width, bar.height);
-    draw(&bar, buf.pool.mmap, bar.width, bar.height, 0);
+
+    const ctx = PaintCtx{
+        .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
+        .width = buf.width,
+        .height = buf.height,
+    };
+    bar.layout.draw(ctx);
+    // draw(&bar);
     bar.wl_surface.attach(buf.wl_buffer, 0, 0);
     bar.wl_surface.commit();
     try client.roundtrip();
@@ -204,18 +322,8 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
     }
 }
 
-fn draw(bar: *Bar, buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
-    _ = _offset; // autofix
-    const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
-
-    @memset(data_u32, 0xffffff);
-
+fn draw(bar: *Bar, paint_ctx: PaintCtx) void {
     const Color = @import("paint/Color.zig");
-    const paint_ctx = @import("paint.zig").PaintCtxU32{
-        .buffer = @ptrCast(data_u32),
-        .width = width,
-        .height = height,
-    };
 
     paint_ctx.fill(.{});
     paint_ctx.fill(.{ .color = Color.NamedColor.lime, .rect = .{
@@ -226,7 +334,7 @@ fn draw(bar: *Bar, buf: []align(4096) u8, width: u32, height: u32, _offset: f32)
     } });
     var time_buf: [65]u8 = undefined;
     const time_slice = std.fmt.bufPrint(&time_buf, "---- Apa,  hello {}", .{std.time.timestamp()}) catch @panic("TODO");
-    paint_ctx.draw_text(time_slice, .{ .font = bar.ctx.font, .color = Color.NamedColor.black, .scale = 2 });
+    paint_ctx.text(time_slice, .{ .font = bar.ctx.font, .color = Color.NamedColor.black, .scale = 2 });
 }
 
 fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
@@ -251,13 +359,17 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
     }
 }
 
-fn pointer_listener(pointer: *wl.Pointer, event: wl.Pointer.Event, app: *App) void {
-    _ = pointer; // autofix
-    _ = app; // autofix
+pub const Event = union(enum) {
+    pointer: wl.Pointer.Event,
+};
+
+fn pointer_listener(_: *wl.Pointer, event: wl.Pointer.Event, app: *App) void {
+    const bar = app.bar;
     switch (event) {
         // .button => |data| { },
         .motion => {},
         else => |d| {
+            bar.layout.get(bar.layout.root, .type).handle_event()(&bar.layout, bar.layout.root, Event{ .pointer = event });
             std.log.info("pointer event: {}", .{d});
         },
     }
