@@ -121,7 +121,7 @@ const Orientation = enum {
 //
 //
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
-    std.log.info("CALLING SIZE\n", .{});
+    // std.log.info("CALLING SIZE\n", .{});
     const self = g;
     var minor: usize = self.orientation.minorLen(constraints.min);
 
@@ -129,7 +129,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     var flex_factor_sum: usize = 0;
 
     const children = layout.get(idx, .children);
-    std.log.info("children {any}", .{children});
+    // std.log.info("children {any}", .{children});
     // Measure non-flex children
     for (children) |child_idx| {
         const child_flex = layout.get(child_idx, .flex);
@@ -153,10 +153,10 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     // Early return if there are no flex children
     const max_buffer_size_major = self.orientation.majorLen(constraints.max);
     const min_buffer_size_major = self.orientation.majorLen(constraints.min);
-    std.debug.print("constraints: {} {}\n", .{
-        @max(non_flex_major_sum, min_buffer_size_major),
-        minor,
-    });
+    // std.debug.print("constraints: {} {}\n", .{
+    //     @max(non_flex_major_sum, min_buffer_size_major),
+    //     minor,
+    // });
     // std.debug.print("asd {s}\n", .{self.children.items});
     if (non_flex_major_sum >= max_buffer_size_major or flex_factor_sum == 0) {
         return self.orientation.majorSize(
@@ -198,20 +198,23 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
 
     return self.orientation.majorSize(major, minor);
 }
+
 pub fn draw(layout: *Layout, idx: WidgetIdx, _: Rect, ctx: PaintCtx) bool {
     const children = layout.get(idx, .children);
     for (children) |child_idx| {
         const r = layout.get(child_idx, .rect);
-        std.log.info("child rect {}", .{r});
+        // std.log.info("child rect {}", .{r});
 
-        _ = layout.get(child_idx, .type).draw()(layout, layout.root, r, ctx);
+        _ = layout.get(child_idx, .type).draw()(layout, child_idx, r, ctx);
     }
     // _ = child.widget.draw(painter.buffer, child.rect.translated(painter.clip.getPosition()));
     return true;
 }
+
 pub fn handle_event(layout: *Layout, idx: WidgetIdx, _event: Event) void {
+    _ = idx; // autofix
     _ = layout; // autofix
-    std.log.info("handle_event {}", .{idx});
+    // std.log.info("handle_event {}", .{idx});
     switch (_event) {
         .pointer => |event| {
             _ = event; // autofix

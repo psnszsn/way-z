@@ -14,6 +14,7 @@ const Buffer = wayland.shm.Buffer;
 const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
+const Point = @import("paint/Point.zig");
 
 pub const std_options = std.Options{
     .log_level = .info,
@@ -40,6 +41,8 @@ const WidgetAttrs = struct {
     type: WidgetType,
     rect: Rect = Rect.ZERO,
     flex: u8 = 0,
+    hover: bool = false,
+    dirty: bool = false,
     children: []const WidgetIdx = &.{},
 };
 
@@ -77,6 +80,7 @@ const WidgetType = enum {
 pub const Layout = struct {
     widgets: std.MultiArrayList(WidgetAttrs) = .{},
     root: WidgetIdx = undefined,
+    pointer_position: Point = Point.ZERO,
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
         try self.widgets.ensureTotalCapacity(alloc, 100);
@@ -102,8 +106,17 @@ pub const Layout = struct {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
     }
 
+    pub fn request_draw(
+        self: *const Layout,
+        idx: WidgetIdx,
+    ) void {
+        self.set(idx, .dirty, true);
+        const bar = @constCast(@fieldParentPtr(Bar, "layout", self));
+        bar.schedule_redraw();
+    }
+
     pub fn draw(layout: *Layout, ctx: PaintCtx) void {
-        std.log.info("CALLING DRAW  {}x{}\n", .{ ctx.width, ctx.height });
+        // std.log.info("CALLING DRAW  {}x{}\n", .{ ctx.width, ctx.height });
         const size = Size.init(ctx.width, ctx.height);
         const widget_size = layout.get(layout.root, .type).size()(
             layout,
@@ -172,6 +185,15 @@ const Bar = struct {
         wl_surface.commit();
         try app.client.roundtrip();
     }
+    fn schedule_redraw(bar: *Bar) void {
+        // if (!bar.frame_done) std.log.warn("not done!!!!", .{});
+        if (!bar.frame_done) return;
+        const frame_cb = bar.wl_surface.frame();
+        frame_cb.set_listener(*Bar, frame_listener, bar);
+        bar.wl_surface.commit();
+        bar.frame_done = false;
+    }
+
     fn timerCallback(
         ud: ?*Bar,
         _: *xev.Loop,
@@ -186,10 +208,7 @@ const Bar = struct {
             std.log.info("send queue {}", .{connection.out.count});
             return .disarm;
         }
-        const frame_cb = bar.wl_surface.frame();
-        frame_cb.set_listener(*Bar, frame_listener, bar);
-        bar.wl_surface.commit();
-        bar.frame_done = false;
+        // bar.schedule_redraw();
 
         if (connection.send_c.state() == .dead) {
             connection.send();
@@ -367,10 +386,20 @@ fn pointer_listener(_: *wl.Pointer, event: wl.Pointer.Event, app: *App) void {
     const bar = app.bar;
     switch (event) {
         // .button => |data| { },
-        .motion => {},
+        .motion => |ev| {
+            bar.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
+        },
         else => |d| {
-            bar.layout.get(bar.layout.root, .type).handle_event()(&bar.layout, bar.layout.root, Event{ .pointer = event });
+            // bar.layout.get(bar.layout.root, .type).handle_event()(&bar.layout, bar.layout.root, Event{ .pointer = event });
             std.log.info("pointer event: {}", .{d});
         },
+    }
+    for (bar.layout.widgets.items(.rect), 0..) |rect, i| {
+        if (rect.contains_point(bar.layout.pointer_position)) {
+            bar.layout.get(@enumFromInt(i), .type).handle_event()(&bar.layout, @enumFromInt(i), Event{ .pointer = event });
+            bar.layout.set(@enumFromInt(i), .hover, true);
+        } else {
+            bar.layout.set(@enumFromInt(i), .hover, false);
+        }
     }
 }

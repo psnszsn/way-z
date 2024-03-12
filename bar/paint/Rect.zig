@@ -62,6 +62,13 @@ pub fn contains(self: Self, x: usize, y: usize) bool {
         y < self.y + self.height;
 }
 
+pub fn contains_point(self: Self, point: Point) bool {
+    return point.x >= self.x and
+        point.x < self.x + self.width and
+        point.y >= self.y and
+        point.y < self.y + self.height;
+}
+
 pub fn shrink(self: *Self, top_: usize, right_: usize, bottom_: usize, left_: usize) void {
     // std.debug.print("self: {} \n", .{self});
     self.x += left_;

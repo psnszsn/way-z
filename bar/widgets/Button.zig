@@ -1,4 +1,4 @@
-const Self = @This();
+const Button = @This();
 const std = @import("std");
 const Layout = @import("../bar.zig").Layout;
 
@@ -12,12 +12,12 @@ const Color = @import("../paint/Color.zig");
 is_active: bool = false,
 is_hover: bool = false,
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
-    _ = layout; // autofix
-    _ = idx; // autofix
+var g = Button{};
 
+pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
+    const hover = layout.get(idx, .hover);
     // paint_ctx.fill(.{ .color = Color.NamedColor.orange, .rect = rect });
-    paint_ctx.panel(.{ .rect = rect });
+    paint_ctx.panel(.{ .rect = rect, .hover = hover });
 
     // std.debug.print("BTN CLIP{}\n", .{painter.clip});
 
@@ -31,8 +31,11 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bo
     return true;
 }
 
-pub fn handle_event(_: *Layout, idx: WidgetIdx, _: Event) void {
-    _ = idx; // autofix
+pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {
+    layout.request_draw(idx);
+    switch (event.pointer) {
+        else => {},
+    }
 }
 
 pub fn size(_: *Layout, _: WidgetIdx, _: Size.Minmax) Size {

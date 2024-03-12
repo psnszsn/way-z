@@ -222,6 +222,7 @@ pub fn PaintCtx(comptime Color: type) type {
                 color_light = Color.theme.shadow;
             } else if (opts.hover) {
                 color_bg = Color.fromRGBsep(240, 240, 240);
+                // color_bg = Color.NamedColor.teal;
             }
 
             // background
