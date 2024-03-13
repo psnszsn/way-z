@@ -42,6 +42,7 @@ const WidgetAttrs = struct {
     rect: Rect = Rect.ZERO,
     flex: u8 = 0,
     hover: bool = false,
+    pressed: bool = false,
     dirty: bool = false,
     children: []const WidgetIdx = &.{},
 };
@@ -309,7 +310,6 @@ pub fn main() !void {
         .height = buf.height,
     };
     bar.layout.draw(ctx);
-    // draw(&bar);
     bar.wl_surface.attach(buf.wl_buffer, 0, 0);
     bar.wl_surface.commit();
     try client.roundtrip();
@@ -377,29 +377,50 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
         },
     }
 }
-
+const PointerEvent = @import("event.zig").PointerEvent;
 pub const Event = union(enum) {
-    pointer: wl.Pointer.Event,
+    pointer: PointerEvent,
 };
 
-fn pointer_listener(_: *wl.Pointer, event: wl.Pointer.Event, app: *App) void {
+fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const bar = app.bar;
-    switch (event) {
-        // .button => |data| { },
-        .motion => |ev| {
+    const event: ?PointerEvent = switch (_event) {
+        inline .motion, .enter => |ev| blk: {
             bar.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
+            break :blk null;
         },
-        else => |d| {
-            // bar.layout.get(bar.layout.root, .type).handle_event()(&bar.layout, bar.layout.root, Event{ .pointer = event });
+        .leave => blk: {
+            bar.layout.pointer_position = Point.INF;
+            @memset(bar.layout.widgets.items(.pressed), false);
+            break :blk PointerEvent{ .leave = {} };
+        },
+        .button => |ev| blk: {
+            break :blk PointerEvent{ .button = .{ .button = @enumFromInt(ev.button), .state = ev.state } };
+        },
+        else => |d| blk: {
             std.log.info("pointer event: {}", .{d});
+            break :blk null;
         },
-    }
+    };
     for (bar.layout.widgets.items(.rect), 0..) |rect, i| {
-        if (rect.contains_point(bar.layout.pointer_position)) {
-            bar.layout.get(@enumFromInt(i), .type).handle_event()(&bar.layout, @enumFromInt(i), Event{ .pointer = event });
-            bar.layout.set(@enumFromInt(i), .hover, true);
-        } else {
-            bar.layout.set(@enumFromInt(i), .hover, false);
+        const idx: WidgetIdx = @enumFromInt(i);
+        const was_pressed = bar.layout.get(idx, .pressed);
+        const was_hover = bar.layout.get(idx, .hover);
+        const is_hover = rect.contains_point(bar.layout.pointer_position);
+
+        if (is_hover != was_hover) {
+            bar.layout.set(idx, .hover, is_hover);
+            const ev = Event{ .pointer = if (is_hover) PointerEvent{ .enter = {} } else PointerEvent{ .leave = {} } };
+            bar.layout.get(idx, .type).handle_event()(&bar.layout, idx, ev);
+        }
+
+        if (event) |ev| {
+            if (is_hover or was_pressed) {
+                if (ev == .button) {
+                    bar.layout.set(idx, .pressed, ev.button.state == .pressed);
+                }
+                bar.layout.get(idx, .type).handle_event()(&bar.layout, idx, Event{ .pointer = ev });
+            }
         }
     }
 }

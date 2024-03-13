@@ -16,8 +16,9 @@ var g = Button{};
 
 pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
     const hover = layout.get(idx, .hover);
+    const pressed = layout.get(idx, .pressed);
     // paint_ctx.fill(.{ .color = Color.NamedColor.orange, .rect = rect });
-    paint_ctx.panel(.{ .rect = rect, .hover = hover });
+    paint_ctx.panel(.{ .rect = rect, .hover = hover , .press = pressed});
 
     // std.debug.print("BTN CLIP{}\n", .{painter.clip});
 

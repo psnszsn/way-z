@@ -1,4 +1,5 @@
 const Self = @This();
+const std = @import("std");
 
 x: usize,
 y: usize,
@@ -6,6 +7,10 @@ y: usize,
 pub const ZERO = Self{
     .x = 0,
     .y = 0,
+};
+pub const INF = Self{
+    .x = std.math.maxInt(usize),
+    .y = std.math.maxInt(usize),
 };
 
 pub fn init(x: usize, y: usize) Self {

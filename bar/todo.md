@@ -1,0 +1,4 @@
+- [ ] DrawCtx, EventCtx, etc.
+- [ ] track damage
+- [x] enter/leave event
+- [ ] timer

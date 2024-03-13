@@ -12,7 +12,7 @@ pub const MouseButton = enum(u32) {
     TASK = 0x117,
 };
 
-pub const PointerEvent = union {
+pub const PointerEvent = union(enum) {
     enter: void,
     leave: void,
     motion: Point,
