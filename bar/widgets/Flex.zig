@@ -1,13 +1,15 @@
 const Flex = @This();
 const std = @import("std");
-const Layout = @import("../bar.zig").Layout;
 
 const PaintCtx = @import("../paint.zig").PaintCtxU32;
-const WidgetIdx = @import("../bar.zig").WidgetIdx;
-const Event = @import("../bar.zig").Event;
+const Event = @import("../event.zig").Event;
 const Rect = @import("../paint/Rect.zig");
 const Size = @import("../paint/Size.zig");
 const Point = @import("../paint/Point.zig");
+
+const w = @import("../widget.zig");
+const Layout = w.Layout;
+const WidgetIdx = w.WidgetIdx;
 
 // const waq = @import("../lib.zig");
 // const Widget = waq.Widget;
@@ -194,7 +196,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
         // std.debug.print("size child: {s}\n", .{child.rect});
     }
 
-    std.debug.print("constraints: {} {}\n", .{ major, minor });
+    // std.debug.print("constraints: {} {}\n", .{ major, minor });
 
     return self.orientation.majorSize(major, minor);
 }

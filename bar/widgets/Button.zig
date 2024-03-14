@@ -1,10 +1,11 @@
 const Button = @This();
 const std = @import("std");
-const Layout = @import("../bar.zig").Layout;
+const w = @import("../widget.zig");
+const Layout = w.Layout;
+const WidgetIdx = w.WidgetIdx;
 
 const PaintCtx = @import("../paint.zig").PaintCtxU32;
-const WidgetIdx = @import("../bar.zig").WidgetIdx;
-const Event = @import("../bar.zig").Event;
+const Event = @import("../event.zig").Event;
 const Rect = @import("../paint/Rect.zig");
 const Size = @import("../paint/Size.zig");
 const Color = @import("../paint/Color.zig");
@@ -18,7 +19,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bo
     const hover = layout.get(idx, .hover);
     const pressed = layout.get(idx, .pressed);
     // paint_ctx.fill(.{ .color = Color.NamedColor.orange, .rect = rect });
-    paint_ctx.panel(.{ .rect = rect, .hover = hover , .press = pressed});
+    paint_ctx.panel(.{ .rect = rect, .hover = hover, .press = pressed });
 
     // std.debug.print("BTN CLIP{}\n", .{painter.clip});
 

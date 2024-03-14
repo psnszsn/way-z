@@ -14,7 +14,6 @@ pub const Interface = struct {
     request_names: []const []const u8 = &.{},
 };
 
-
 pub const Proxy = struct {
     id: u32 = 0,
     client: *Client,
@@ -43,7 +42,7 @@ pub const Proxy = struct {
 
     pub fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
         const next_id = self.client.next_id();
-        std.log.info("next id {}", .{next_id});
+        // std.log.info("next id {}", .{next_id});
         const next = &self.client.objects.items[next_id];
         next.* = Proxy{
             .client = self.client,
@@ -116,4 +115,3 @@ pub const Proxy = struct {
         return r;
     }
 };
-

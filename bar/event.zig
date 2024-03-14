@@ -1,6 +1,21 @@
 const Point = @import("paint/Point.zig");
 const wl = @import("wayland").wl;
 
+pub const Event = union(enum) {
+    pointer: PointerEvent,
+
+    pub const PointerEvent = union(enum) {
+        enter: void,
+        leave: void,
+        motion: Point,
+        button: struct {
+            button: MouseButton, // button that produced the event
+            state: wl.Pointer.ButtonState, // physical state of the button
+
+        },
+    };
+};
+
 pub const MouseButton = enum(u32) {
     LEFT = 0x110,
     RIGHT = 0x111,
@@ -10,15 +25,4 @@ pub const MouseButton = enum(u32) {
     FORWARD = 0x115,
     BACK = 0x116,
     TASK = 0x117,
-};
-
-pub const PointerEvent = union(enum) {
-    enter: void,
-    leave: void,
-    motion: Point,
-    button: struct {
-        button: MouseButton, // button that produced the event
-        state: wl.Pointer.ButtonState, // physical state of the button
-
-    },
 };

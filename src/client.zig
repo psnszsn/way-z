@@ -285,7 +285,6 @@ fn displayListener(display: *Client, event: wl.Display.Event, _: ?*anyopaque) vo
         },
         .delete_id => |del| {
             std.debug.assert(display.objects.items[del.id] != null);
-            std.log.info("deleted id: {}", .{del.id});
             display.objects.items[del.id] = null;
         },
     }
