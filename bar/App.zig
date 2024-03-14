@@ -83,15 +83,6 @@ pub fn new_window(app: *App) !*Window {
 
     app.window = window;
 
-    try window.layout.init(app.client.allocator);
-    const flex = window.layout.add(.{ .type = .flex });
-    const children = try app.client.allocator.alloc(WidgetIdx, 3);
-    children[0] = window.layout.add(.{ .type = .button });
-    children[1] = window.layout.add(.{ .type = .button, .flex = 1 });
-    children[2] = window.layout.add(.{ .type = .button });
-    window.layout.set(flex, .children, children);
-    window.layout.root = flex;
-
     wl_surface.commit();
     try app.client.roundtrip();
     return window;
@@ -120,24 +111,37 @@ pub const Window = struct {
 
     layout: Layout = .{},
 
-    pub fn schedule_redraw(bar: *Window) void {
+    pub fn schedule_redraw(self: *Window) void {
         // if (!bar.frame_done) std.log.warn("not done!!!!", .{});
-        if (!bar.frame_done) return;
-        const frame_cb = bar.wl_surface.frame();
-        frame_cb.set_listener(*Window, frame_listener, bar);
-        bar.wl_surface.commit();
-        bar.frame_done = false;
+        if (!self.frame_done) return;
+        const frame_cb = self.wl_surface.frame();
+        frame_cb.set_listener(*Window, frame_listener, self);
+        self.wl_surface.commit();
+        self.frame_done = false;
     }
 
-    fn layer_suface_listener(layer_suface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, bar: *Window) void {
+    pub fn draw(self: *Window) void {
+        const buf = Buffer.get(self.ctx.shm.?, self.width, self.height) catch unreachable;
+        const ctx = PaintCtx{
+            .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
+            .width = buf.width,
+            .height = buf.height,
+        };
+        self.layout.draw(ctx);
+        self.wl_surface.attach(buf.wl_buffer, 0, 0);
+        self.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
+        self.wl_surface.commit();
+    }
+
+    fn layer_suface_listener(layer_suface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
         switch (event) {
             .configure => |configure| {
                 layer_suface.ack_configure(configure.serial);
 
-                bar.width = configure.width;
-                bar.height = configure.height;
+                window.width = configure.width;
+                window.height = configure.height;
 
-                std.log.info("w: {} h: {}", .{ bar.width, bar.height });
+                std.log.info("w: {} h: {}", .{ window.width, window.height });
 
                 // if (self.anchor.top and self.anchor.bottom) {
                 //     self.size.height = @as(usize, @intCast(configure.height));
@@ -154,26 +158,13 @@ pub const Window = struct {
         }
     }
 
-    fn frame_listener(cb: *wl.Callback, event: wl.Callback.Event, bar: *Window) void {
+    fn frame_listener(cb: *wl.Callback, event: wl.Callback.Event, window: *Window) void {
         _ = cb;
         switch (event) {
             .done => |done| {
-                const time = done.callback_data;
-
-                const buf = Buffer.get(bar.ctx.shm.?, bar.width, bar.height) catch unreachable;
-                const ctx = PaintCtx{
-                    .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
-                    .width = buf.width,
-                    .height = buf.height,
-                };
-                bar.layout.draw(ctx);
-                bar.wl_surface.attach(buf.wl_buffer, 0, 0);
-                bar.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
-                bar.wl_surface.commit();
-
-                bar.last_frame = time;
-                bar.frame_done = true;
-                // bar.timer.run(&bar.ctx.client.connection.loop, &bar.timer_c, 200, Bar, bar, &timerCallback);
+                window.draw();
+                window.last_frame = done.callback_data;
+                window.frame_done = true;
             },
         }
     }
