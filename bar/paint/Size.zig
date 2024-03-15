@@ -8,12 +8,6 @@ pub const ZERO = Size{
     .width = 0,
     .height = 0,
 };
-pub fn init(width: usize, height: usize) Size {
-    return .{
-        .width = width,
-        .height = height,
-    };
-}
 
 pub fn toRect(self: Size) Rect {
     return .{
@@ -33,27 +27,25 @@ pub fn containsRect(self: Size, rect: Rect) bool {
         self.height >= rect.bottom();
 }
 
-pub fn toMinmaxTight(self: Size) Minmax {
-    return Minmax{
-        .min = self,
-        .max = self,
-    };
-}
-
 pub const Minmax = struct {
     min: Size,
     max: Size,
 
-    pub fn init(min: Size, max: Size) Minmax {
+    pub const ZERO = Minmax{
+        .min = Size.ZERO,
+        .max = Size.ZERO,
+    };
+
+    pub fn tight(size: Size) Minmax {
         return .{
-            .min = min,
-            .max = max,
+            .min = size,
+            .max = size,
         };
     }
 
     pub fn loose(max: Size) Minmax {
         return Minmax{
-            .min = ZERO,
+            .min = Size.ZERO,
             .max = max,
         };
     }

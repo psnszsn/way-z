@@ -136,7 +136,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     for (children) |child_idx| {
         const child_flex = layout.get(child_idx, .flex);
         if (child_flex == 0) {
-            const child_size = layout.get(child_idx, .type).size()(layout, child_idx, Size.Minmax.loose(constraints.max));
+            const child_size = layout.call(child_idx, .size, .{Size.Minmax.loose(constraints.max)});
             // child.rect.setSize(child_size);
             const origin = self.orientation.pack(non_flex_major_sum, 0);
             layout.set(child_idx, .rect, Rect{
@@ -155,19 +155,14 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     // Early return if there are no flex children
     const max_buffer_size_major = self.orientation.majorLen(constraints.max);
     const min_buffer_size_major = self.orientation.majorLen(constraints.min);
+    _ = min_buffer_size_major; // autofix
     // std.debug.print("constraints: {} {}\n", .{
     //     @max(non_flex_major_sum, min_buffer_size_major),
     //     minor,
     // });
     // std.debug.print("asd {s}\n", .{self.children.items});
-    if (non_flex_major_sum >= max_buffer_size_major or flex_factor_sum == 0) {
-        return self.orientation.majorSize(
-            @max(non_flex_major_sum, min_buffer_size_major),
-            minor,
-        );
-    }
 
-    const remaining = max_buffer_size_major - non_flex_major_sum;
+    const remaining = max_buffer_size_major -| non_flex_major_sum;
     const px_per_flex = remaining / flex_factor_sum;
 
     // Measure flex children
@@ -179,11 +174,21 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
                 px_per_flex * child_flex,
                 self.orientation.minorLen(constraints.min),
             );
-            // const child_size = child.widget.size(child_max.toMinmaxTight());
-            // std.debug.print("cs: {} \n", .{ child_size });
-            layout.set(child_idx, .rect, .{ .width = child_max.width, .height = child_max.height });
+            const child_min = layout.call(child_idx, .size, .{Size.Minmax.ZERO});
+
+            layout.set(child_idx, .rect, .{
+                .width = @max(child_min.width, child_max.width),
+                .height = @max(child_min.height, child_max.height),
+            });
         }
     }
+
+    // if (non_flex_major_sum >= max_buffer_size_major or flex_factor_sum == 0) {
+    //     return self.orientation.majorSize(
+    //         @max(non_flex_major_sum, min_buffer_size_major),
+    //         minor,
+    //     );
+    // }
 
     // std.debug.print("constraints: {s}\n", .{constraints});
     var major: usize = 0;
@@ -198,6 +203,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
 
     // std.debug.print("constraints: {} {}\n", .{ major, minor });
 
+    std.log.info("ZZZZZZZZ {}", .{self.orientation.majorSize(major, minor)});
     return self.orientation.majorSize(major, minor);
 }
 
@@ -207,7 +213,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, _: Rect, ctx: PaintCtx) bool {
         const r = layout.get(child_idx, .rect);
         // std.log.info("child rect {}", .{r});
 
-        _ = layout.get(child_idx, .type).draw()(layout, child_idx, r, ctx);
+        _ = layout.call(child_idx, .draw, .{ r, ctx });
     }
     // _ = child.widget.draw(painter.buffer, child.rect.translated(painter.clip.getPosition()));
     return true;

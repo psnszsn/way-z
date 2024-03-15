@@ -41,5 +41,5 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {
 }
 
 pub fn size(_: *Layout, _: WidgetIdx, _: Size.Minmax) Size {
-    return Size{ .width = 100, .height = 20 };
+    return Size{ .width = 60, .height = 20 };
 }

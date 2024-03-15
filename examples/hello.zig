@@ -86,9 +86,7 @@ pub fn main() !void {
     frame_cb.set_listener(*SurfaceCtx, frameListener, &surface);
     surface.wl_surface.commit();
 
-    while (context.running) {
-        try client.recvEvents();
-    }
+    try client.recvEvents();
 }
 
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *App) void {

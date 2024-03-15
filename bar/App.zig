@@ -58,33 +58,51 @@ pub fn new(alloc: std.mem.Allocator) !*App {
     return app;
 }
 
-pub fn new_window(app: *App) !*Window {
+pub fn new_window(app: *App, shell: WindowType) !*Window {
     const wl_surface = app.compositor.?.create_surface();
     errdefer wl_surface.destroy();
-    const layer_surface = app.layer_shell.?.get_layer_surface(wl_surface, null, .top, "");
-    errdefer layer_surface.destroy();
-
-    layer_surface.set_size(0, 30);
-    layer_surface.set_anchor(.{ .top = true, .left = true, .right = true });
-    layer_surface.set_exclusive_zone(35);
 
     // TODO: remove allocation
     const window = try app.client.allocator.create(Window);
-    window.* = .{
-        .ctx = app,
-        .wl_surface = wl_surface,
-        .wl = .{ .wlr_layer_shell = layer_surface },
-        .width = 0,
-        .height = 0,
-        .last_frame = 0,
+
+    const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
+        const layer_surface = app.layer_shell.?.get_layer_surface(wl_surface, null, .top, "");
+        errdefer layer_surface.destroy();
+        layer_surface.set_size(0, 30);
+        layer_surface.set_anchor(.{ .top = true, .left = true, .right = true });
+        layer_surface.set_exclusive_zone(35);
+        layer_surface.set_listener(*Window, Window.layer_suface_listener, window);
+        break :b .{ .wlr_layer_shell = layer_surface };
+    } else b: {
+        const xdg_surface = app.wm_base.?.get_xdg_surface(wl_surface);
+        errdefer xdg_surface.destroy();
+        const xdg_toplevel = xdg_surface.get_toplevel();
+        errdefer xdg_toplevel.destroy();
+
+        xdg_surface.set_listener(*Window, Window.xdg_surface_listener, window);
+        xdg_toplevel.set_listener(*Window, Window.xdg_toplevel_listener, window);
+        xdg_toplevel.set_title("Demo");
+
+        break :b .{ .xdg_shell = .{
+            .xdg_surface = xdg_surface,
+            .xdg_toplevel = xdg_toplevel,
+        } };
     };
 
-    layer_surface.set_listener(*Window, Window.layer_suface_listener, window);
+    window.* = .{
+        .app = app,
+        .wl_surface = wl_surface,
+        .wl = wl_if,
+        .width = 300,
+        .height = 300,
+        .last_frame = 0,
+    };
 
     app.window = window;
 
     wl_surface.commit();
     try app.client.roundtrip();
+
     return window;
 }
 
@@ -94,7 +112,7 @@ const WindowType = enum {
 };
 
 pub const Window = struct {
-    ctx: *App,
+    app: *App,
 
     wl_surface: *wl.Surface,
     wl: union(WindowType) {
@@ -111,6 +129,16 @@ pub const Window = struct {
 
     layout: Layout = .{},
 
+    pub fn set_root_widget(self: *Window, idx: WidgetIdx) void {
+        const min_size = Size{ .width = 10, .height = 10 };
+        std.log.info("idx {}", .{idx});
+        const size = self.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
+
+        std.log.info("min size {}", .{size});
+        self.wl.xdg_shell.xdg_toplevel.set_min_size(@intCast(size.width), @intCast(size.height));
+        self.wl_surface.commit();
+        self.layout.root = idx;
+    }
     pub fn schedule_redraw(self: *Window) void {
         // if (!bar.frame_done) std.log.warn("not done!!!!", .{});
         if (!self.frame_done) return;
@@ -121,12 +149,17 @@ pub const Window = struct {
     }
 
     pub fn draw(self: *Window) void {
-        const buf = Buffer.get(self.ctx.shm.?, self.width, self.height) catch unreachable;
+        std.log.info("draw", .{});
+        if (self.width == 0) return;
+        if (self.height == 0) return;
+        const buf = Buffer.get(self.app.shm.?, self.width, self.height) catch unreachable;
         const ctx = PaintCtx{
             .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
             .width = buf.width,
             .height = buf.height,
         };
+        // @memset(buf.pool.mmap, 55);
+        @memset(buf.pool.mmap, 155);
         self.layout.draw(ctx);
         self.wl_surface.attach(buf.wl_buffer, 0, 0);
         self.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
@@ -165,7 +198,45 @@ pub const Window = struct {
                 window.draw();
                 window.last_frame = done.callback_data;
                 window.frame_done = true;
+                // window.schedule_redraw();
             },
+        }
+    }
+
+    fn xdg_surface_listener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, win: *Window) void {
+        _ = win; // autofix
+        switch (event) {
+            .configure => |configure| {
+                xdg_surface.ack_configure(configure.serial);
+            },
+        }
+    }
+    fn xdg_toplevel_listener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
+        switch (event) {
+            .configure => |configure| {
+                if (configure.width == 0) return;
+                if (configure.height == 0) return;
+
+                if (win.width == configure.width and
+                    win.height == configure.height) return;
+
+                std.log.warn("configure event {}", .{configure});
+
+                win.width = @intCast(configure.width);
+                win.height = @intCast(configure.height);
+
+                win.schedule_redraw();
+
+                const widget_size = win.layout.call(win.layout.root, .size, .{
+                    Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
+                });
+                _ = widget_size; // autofix
+                std.log.info("w: {} h: {}", .{ win.width, win.height });
+            },
+            .close => {
+                win.app.running = false;
+            },
+            else => {},
         }
     }
 };
@@ -214,7 +285,6 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
 
 fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const win = app.window;
-    std.log.info("w: {}", .{win.width});
     const event: ?Event.PointerEvent = switch (_event) {
         inline .motion, .enter => |ev| blk: {
             win.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
@@ -242,7 +312,7 @@ fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
         if (is_hover != was_hover) {
             win.layout.set(idx, .hover, is_hover);
             const ev = Event{ .pointer = if (is_hover) .{ .enter = {} } else .{ .leave = {} } };
-            win.layout.get(idx, .type).handle_event()(&win.layout, idx, ev);
+            win.layout.call(idx, .handle_event, .{ev});
         }
 
         if (event) |ev| {
@@ -250,7 +320,7 @@ fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
                 if (ev == .button) {
                     win.layout.set(idx, .pressed, ev.button.state == .pressed);
                 }
-                win.layout.get(idx, .type).handle_event()(&win.layout, idx, Event{ .pointer = ev });
+                win.layout.call(idx, .handle_event, .{Event{ .pointer = ev }});
             }
         }
     }

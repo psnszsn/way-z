@@ -36,29 +36,27 @@ const WidgetType = enum {
     flex,
     button,
 
+    pub const WidgetFn = enum {
+        size,
+        draw,
+        handle_event,
+
+        pub fn Signature(comptime self: WidgetFn) type {
+            return switch (self) {
+                .size => fn (*Layout, WidgetIdx, Size.Minmax) Size,
+                .draw => fn (*Layout, WidgetIdx, Rect, PaintCtx) bool,
+                .handle_event => fn (*Layout, WidgetIdx, Event) void,
+            };
+        }
+        pub fn ReturnType(comptime self: WidgetFn) type {
+            return @typeInfo(Signature(self)).Fn.return_type orelse void;
+        }
+    };
+
     pub fn Type(comptime self: WidgetType) type {
         switch (self) {
             .flex => return @import("widgets/Flex.zig"),
             .button => return @import("widgets/Button.zig"),
-        }
-    }
-
-    const SizeFn = *const fn (*Layout, WidgetIdx, Size.Minmax) Size;
-    pub fn size(self: WidgetType) SizeFn {
-        switch (self) {
-            inline else => |wt| return wt.Type().size,
-        }
-    }
-    const DrawFn = *const fn (*Layout, WidgetIdx, Rect, PaintCtx) bool;
-    pub fn draw(self: WidgetType) DrawFn {
-        switch (self) {
-            inline else => |wt| return wt.Type().draw,
-        }
-    }
-    const EventFn = *const fn (*Layout, WidgetIdx, Event) void;
-    pub fn handle_event(self: WidgetType) EventFn {
-        switch (self) {
-            inline else => |wt| return wt.Type().handle_event,
         }
     }
 };
@@ -92,6 +90,22 @@ pub const Layout = struct {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
     }
 
+    pub fn call(
+        self: *Layout,
+        idx: WidgetIdx,
+        comptime func: WidgetType.WidgetFn,
+        args: anytype,
+    ) WidgetType.WidgetFn.ReturnType(func) {
+        const t = self.get(idx, .type);
+
+        switch (t) {
+            inline else => |wt| {
+                const f = @field(wt.Type(), @tagName(func));
+                return @call(.auto, f, .{ self, idx } ++ args);
+            },
+        }
+    }
+
     pub fn request_draw(
         self: *const Layout,
         idx: WidgetIdx,
@@ -104,19 +118,23 @@ pub const Layout = struct {
 
     pub fn draw(layout: *Layout, ctx: PaintCtx) void {
         // std.log.info("CALLING DRAW  {}x{}\n", .{ ctx.width, ctx.height });
-        const size = Size.init(ctx.width, ctx.height);
-        const widget_size = layout.get(layout.root, .type).size()(
-            layout,
-            layout.root,
-            Size.Minmax.init(size, size),
-        );
+        // const size = Size.init(ctx.width, ctx.height);
+        // _ = size; // autofix
+        // const widget_size = layout.get(layout.root, .type).size()(
+        //     layout,
+        //     layout.root,
+        //     Size.Minmax.init(size, size),
+        // );
+        // const widget_size = layout.call(layout.root, .size, .{
+        //     Size.Minmax.init(size, size),
+        // });
         layout.widgets.items(.rect)[@intFromEnum(layout.root)] = .{
             .x = 0,
             .y = 0,
-            .width = widget_size.width,
-            .height = widget_size.height,
+            .width = ctx.width,
+            .height = ctx.height,
         };
 
-        _ = layout.get(layout.root, .type).draw()(layout, layout.root, layout.get(layout.root, .rect), ctx);
+        _ = layout.call(layout.root, .draw, .{ layout.get(layout.root, .rect), ctx });
     }
 };
