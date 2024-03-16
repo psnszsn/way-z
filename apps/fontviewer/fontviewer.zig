@@ -8,7 +8,6 @@ pub const std_options = std.Options{
 };
 
 pub const FontView = struct {
-    const Self = @This();
     const scale = 10;
     font: *Font,
     code_point: u21,
@@ -46,7 +45,6 @@ pub const FontView = struct {
     }
 };
 pub const FontMap = struct {
-    const Self = @This();
     const letter_padding = 2;
     columns: usize,
     selected_code_point: u21,
@@ -150,17 +148,18 @@ pub fn main() !void {
 
 const std = @import("std");
 const wayland = @import("wayland");
-const Buffer = wayland.shm.Buffer;
-const PaintCtx = @import("paint.zig").PaintCtxU32;
-const App = @import("App.zig");
-const widget = @import("widget.zig");
-const Font = @import("./font/bdf.zig").Font;
 
-const w = @import("widget.zig");
-const Layout = w.Layout;
-const WidgetIdx = w.WidgetIdx;
+const tk = @import("toolkit");
+const PaintCtx = tk.PaintCtx;
+const App = tk.App;
+const widget = tk.widget;
+const Font = tk.Font;
 
-const Event = @import("event.zig").Event;
-const Rect = @import("paint/Rect.zig");
-const Size = @import("paint/Size.zig");
-const Color = @import("paint/Color.zig");
+const Layout = widget.Layout;
+const WidgetIdx = widget.WidgetIdx;
+
+const Event = tk.Event;
+const Rect = tk.Rect;
+const Size = tk.Size;
+const Color = tk.Color;
+const xx = tk.Color;

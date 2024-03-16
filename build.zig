@@ -6,34 +6,21 @@ pub fn build(b: *std.Build) void {
 
     const libxev = b.dependency("libxev", .{}).module("xev");
 
-    const wayland = b.addModule("way-z", .{
+    const wayland = b.addModule("wayland", .{
         .root_source_file = .{ .path = "./src/lib.zig" },
         .imports = &.{
             .{ .name = "xev", .module = libxev },
         },
     });
 
-    {
-        // const unit_tests = b.addTest(.{
-        //     .root_source_file = .{ .path = "src/main.zig" },
-        //     .target = target,
-        //     .optimize = optimize,
-        // });
-        // unit_tests.addModule("libcoro", libcoro);
-        // const run_unit_tests = b.addRunArtifact(unit_tests);
-        //
-        // const test_step = b.step("test", "Run unit tests");
-        // test_step.dependOn(&run_unit_tests.step);
-
-        // const installDocs = b.addInstallDirectory(.{
-        //     .source_dir = exe.getEmittedDocs(),
-        //     .install_dir = .prefix,
-        //     .install_subdir = "docs",
-        // });
-        //
-        // const docsStep = b.step("docs", "Generate documentation");
-        // docsStep.dependOn(&installDocs.step);
-    }
+    const toolkit = b.addModule("toolkit", .{
+        .root_source_file = .{ .path = "./toolkit/toolkit.zig" },
+        .imports = &.{
+            .{ .name = "xev", .module = libxev },
+            .{ .name = "wayland", .module = wayland },
+        },
+    });
+    _ = toolkit; // autofix
 
     inline for (.{ "globals", "seats", "hello" }) |example| {
         const exe = b.addExecutable(.{

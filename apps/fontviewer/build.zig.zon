@@ -1,10 +1,10 @@
 .{
-    .name = "bar",
+    .name = "fontviewer",
     .version = "0.0.0",
 
     .dependencies = .{
         .@"way-z" = .{
-            .path = "..",
+            .path = "../..",
         },
     },
 
