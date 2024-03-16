@@ -1,7 +1,5 @@
 const Rect = @This();
 const std = @import("std");
-// const Point = @import("Point.zig");
-// const Size = @import("Size.zig");
 
 x: usize = 0,
 y: usize = 0,

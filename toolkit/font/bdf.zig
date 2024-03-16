@@ -42,12 +42,10 @@ pub const Glyph = struct {
 };
 
 pub const Range = struct {
-    // data: MultiArray(256, Glyph),
     data: [256]Glyph = undefined,
 };
 
 pub const Font = struct {
-    // glyphs: std.AutoHashMap(u21, Glyph),
     range0: Range = .{},
     glyph_spacing: u8 = 2,
     glyph_height: u8 = 13,

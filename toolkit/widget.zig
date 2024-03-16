@@ -1,7 +1,5 @@
 const std = @import("std");
 
-
-
 const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
@@ -141,17 +139,6 @@ pub const Layout = struct {
     }
 
     pub fn draw(layout: *Layout, ctx: PaintCtx) void {
-        // std.log.info("CALLING DRAW  {}x{}\n", .{ ctx.width, ctx.height });
-        // const size = Size.init(ctx.width, ctx.height);
-        // _ = size; // autofix
-        // const widget_size = layout.get(layout.root, .type).size()(
-        //     layout,
-        //     layout.root,
-        //     Size.Minmax.init(size, size),
-        // );
-        // const widget_size = layout.call(layout.root, .size, .{
-        //     Size.Minmax.init(size, size),
-        // });
         layout.widgets.items(.rect)[@intFromEnum(layout.root)] = .{
             .x = 0,
             .y = 0,

@@ -134,12 +134,13 @@ pub const Window = struct {
         self.height = @intCast(size.height);
 
         std.log.info("min size {}", .{size});
-        self.wl.xdg_shell.xdg_toplevel.set_min_size(@intCast(size.width), @intCast(size.height));
+        if (self.wl == .xdg_shell) {
+            self.wl.xdg_shell.xdg_toplevel.set_min_size(@intCast(size.width), @intCast(size.height));
+        }
         self.wl_surface.commit();
         self.layout.root = idx;
     }
     pub fn schedule_redraw(self: *Window) void {
-        // if (!bar.frame_done) std.log.warn("not done!!!!", .{});
         if (!self.frame_done) return;
         const frame_cb = self.wl_surface.frame();
         frame_cb.set_listener(*Window, frame_listener, self);
@@ -157,7 +158,6 @@ pub const Window = struct {
             .width = buf.width,
             .height = buf.height,
         };
-        // @memset(buf.pool.mmap, 55);
         @memset(buf.pool.mmap, 155);
         self.layout.draw(ctx);
         self.wl_surface.attach(buf.wl_buffer, 0, 0);
@@ -197,13 +197,11 @@ pub const Window = struct {
                 window.draw();
                 window.last_frame = done.callback_data;
                 window.frame_done = true;
-                // window.schedule_redraw();
             },
         }
     }
 
-    fn xdg_surface_listener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, win: *Window) void {
-        _ = win; // autofix
+    fn xdg_surface_listener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
         switch (event) {
             .configure => |configure| {
                 xdg_surface.ack_configure(configure.serial);
@@ -226,10 +224,9 @@ pub const Window = struct {
 
                 win.schedule_redraw();
 
-                const widget_size = win.layout.call(win.layout.root, .size, .{
+                _ = win.layout.call(win.layout.root, .size, .{
                     Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
                 });
-                _ = widget_size; // autofix
                 std.log.info("w: {} h: {}", .{ win.width, win.height });
             },
             .close => {

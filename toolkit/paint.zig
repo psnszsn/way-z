@@ -62,12 +62,10 @@ pub fn PaintCtx(comptime Color: type) type {
             const font = opts.font.?;
             const bitmap = font.glyphBitmap(code_point);
 
-            // const offset = font.glyph_height - bitmap.height;
-            const offset = 0;
             for (0..font.glyph_height) |y| {
                 for (0..bitmap.width) |x| {
                     if (bitmap.bitAt(x, y)) {
-                        self.pixel(x, y + offset, .{ .rect = opts.rect, .color = opts.color, .scale = opts.scale });
+                        self.pixel(x, y, .{ .rect = opts.rect, .color = opts.color, .scale = opts.scale });
                     }
                 }
             }
@@ -101,7 +99,6 @@ pub fn PaintCtx(comptime Color: type) type {
                     std.mem.swap(Point, &p1, &p2);
                 var y: usize = p1.y;
                 while (y < p2.y) : (y += thickness) {
-                    // print("y value: {}\n", .{y});
                     self.pixel(p1.x, y, .{ .scale = thickness, .color = color });
                 }
                 self.pixel(p1.x, p2.y, .{ .scale = thickness, .color = color });
