@@ -1,6 +1,5 @@
 const std = @import("std");
 const mem = std.mem;
-const os = std.os;
 
 const wayland = @import("wayland");
 const wl = wayland.wl;

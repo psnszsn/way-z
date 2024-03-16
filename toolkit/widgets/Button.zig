@@ -1,5 +1,4 @@
 const Button = @This();
-const std = @import("std");
 const w = @import("../widget.zig");
 const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;
@@ -8,7 +7,6 @@ const PaintCtx = @import("../paint.zig").PaintCtxU32;
 const Event = @import("../event.zig").Event;
 const Rect = @import("../paint/Rect.zig");
 const Size = @import("../paint/Size.zig");
-const Color = @import("../paint/Color.zig");
 
 is_active: bool = false,
 is_hover: bool = false,

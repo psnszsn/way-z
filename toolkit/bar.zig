@@ -1,7 +1,4 @@
 const std = @import("std");
-const wayland = @import("wayland");
-const Buffer = wayland.shm.Buffer;
-const PaintCtx = @import("paint.zig").PaintCtxU32;
 const App = @import("App.zig");
 const widget = @import("widget.zig");
 

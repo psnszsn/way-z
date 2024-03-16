@@ -2,9 +2,7 @@ const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
 const xev = @import("xev");
-const IO = @import("lib.zig").IO;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
-const Argument = @import("argument.zig").Argument;
 const wl = @import("generated/wl.zig");
 const Cmsghdr = @import("cmsghdr.zig").Cmsghdr;
 

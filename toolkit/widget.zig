@@ -1,16 +1,7 @@
 const std = @import("std");
-const mem = std.mem;
-const os = std.os;
 
-const wayland = @import("wayland");
-const wl = wayland.wl;
-const xdg = wayland.xdg;
-const zwlr = wayland.zwlr;
-const xev = @import("xev");
 
-const font = @import("font/bdf.zig");
 
-const Buffer = wayland.shm.Buffer;
 const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");

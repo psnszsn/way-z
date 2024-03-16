@@ -1,6 +1,5 @@
 const std = @import("std");
 const testing = std.testing;
-const linux = std.os.linux;
 
 pub fn RingBuffer(comptime _size: comptime_int) type {
     return struct {

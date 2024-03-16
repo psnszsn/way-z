@@ -1,6 +1,5 @@
 const std = @import("std");
 const mem = std.mem;
-const Allocator = std.mem.Allocator;
 
 pub const Glyph = struct {
     rows: std.PackedIntArrayEndian(u1, .big, 8 * 13) = undefined,

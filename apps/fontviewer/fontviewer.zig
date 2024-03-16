@@ -147,19 +147,16 @@ pub fn main() !void {
 }
 
 const std = @import("std");
-const wayland = @import("wayland");
 
 const tk = @import("toolkit");
 const PaintCtx = tk.PaintCtx;
-const App = tk.App;
 const widget = tk.widget;
-const Font = tk.Font;
-
 const Layout = widget.Layout;
 const WidgetIdx = widget.WidgetIdx;
 
+const App = tk.App;
+const Font = tk.Font;
 const Event = tk.Event;
 const Rect = tk.Rect;
 const Size = tk.Size;
 const Color = tk.Color;
-const xx = tk.Color;

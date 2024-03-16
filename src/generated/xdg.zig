@@ -24,11 +24,9 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 const std = @import("std");
-const os = std.os;
 const Proxy = @import("../proxy.zig").Proxy;
 const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
 
 const wl = @import("wl.zig");
 

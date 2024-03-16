@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const native_endian = @import("builtin").cpu.arch.endian();
 
 pub const Fixed = enum(i32) {
     _,
