@@ -32,40 +32,60 @@ const WidgetAttrs = struct {
     children: []const WidgetIdx = &.{},
 };
 
+const root = @import("root");
+pub const root_w_types = if (@hasDecl(root, "widget_types")) root.widget_types else .{};
+const common_w_types = .{
+    .flex = @import("widgets/Flex.zig"),
+    .button = @import("widgets/Button.zig"),
+};
+const widget_names = std.meta.fieldNames(@TypeOf(root_w_types)) ++ std.meta.fieldNames(@TypeOf(common_w_types));
+
 /// A widget type has to implement the following functions:
 /// pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {}
 /// pub fn size(_: *Layout, _: WidgetIdx, _: Size.Minmax) Size {}
 /// pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {}
-const WidgetType = enum {
-    flex,
-    button,
-    font_map,
-    font_view,
+const WidgetType = b: {
+    var enumFields: [widget_names.len]std.builtin.Type.EnumField = undefined;
+    for (widget_names, 0..) |name, i| {
+        enumFields[i] = .{
+            .name = name,
+            .value = i,
+        };
+    }
+    break :b @Type(.{
+        .Enum = .{
+            .tag_type = u8,
+            .fields = &enumFields,
+            .decls = &.{},
+            .is_exhaustive = true,
+        },
+    });
+};
 
-    pub const WidgetFn = enum {
-        size,
-        draw,
-        handle_event,
+pub fn WidgetData(comptime self: WidgetType) type {
+    const tag_name = @tagName(self);
+    if (@hasField(@TypeOf(common_w_types), tag_name)) {
+        return @field(common_w_types, tag_name);
+    }
+    if (@hasField(@TypeOf(root_w_types), tag_name)) {
+        return @field(root_w_types, tag_name);
+    }
+}
 
-        pub fn Signature(comptime self: WidgetFn) type {
-            return switch (self) {
-                .size => fn (*Layout, WidgetIdx, Size.Minmax) Size,
-                .draw => fn (*Layout, WidgetIdx, Rect, PaintCtx) bool,
-                .handle_event => fn (*Layout, WidgetIdx, Event) void,
-            };
-        }
-        pub fn ReturnType(comptime self: WidgetFn) type {
-            return @typeInfo(Signature(self)).Fn.return_type orelse void;
-        }
-    };
+pub const WidgetFn = enum {
+    size,
+    draw,
+    handle_event,
 
-    pub fn Type(comptime self: WidgetType) type {
-        switch (self) {
-            .flex => return @import("widgets/Flex.zig"),
-            .button => return @import("widgets/Button.zig"),
-            .font_map => return @import("fontviewer.zig").FontMap,
-            .font_view => return @import("fontviewer.zig").FontView,
-        }
+    pub fn Signature(comptime self: WidgetFn) type {
+        return switch (self) {
+            .size => fn (*Layout, WidgetIdx, Size.Minmax) Size,
+            .draw => fn (*Layout, WidgetIdx, Rect, PaintCtx) bool,
+            .handle_event => fn (*Layout, WidgetIdx, Event) void,
+        };
+    }
+    pub fn ReturnType(comptime self: WidgetFn) type {
+        return @typeInfo(Signature(self)).Fn.return_type orelse void;
     }
 };
 
@@ -101,14 +121,14 @@ pub const Layout = struct {
     pub fn call(
         self: *Layout,
         idx: WidgetIdx,
-        comptime func: WidgetType.WidgetFn,
+        comptime func: WidgetFn,
         args: anytype,
-    ) WidgetType.WidgetFn.ReturnType(func) {
+    ) WidgetFn.ReturnType(func) {
         const t = self.get(idx, .type);
 
         switch (t) {
             inline else => |wt| {
-                const f = @field(wt.Type(), @tagName(func));
+                const f = @field(WidgetData(wt), @tagName(func));
                 return @call(.auto, f, .{ self, idx } ++ args);
             },
         }

@@ -1,5 +1,6 @@
-pub const extra_w = .{
-    .log_level = FontView,
+pub const widget_types = .{
+    .font_view = FontView,
+    .font_map = FontMap,
 };
 
 pub const std_options = std.Options{
