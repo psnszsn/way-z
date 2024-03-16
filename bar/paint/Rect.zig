@@ -1,4 +1,4 @@
-const Self = @This();
+const Rect = @This();
 const std = @import("std");
 // const Point = @import("Point.zig");
 // const Size = @import("Size.zig");
@@ -8,37 +8,37 @@ y: usize = 0,
 width: usize,
 height: usize,
 
-pub const ZERO = Self{
+pub const ZERO = Rect{
     .width = 0,
     .height = 0,
 };
 
-pub const MAX = Self{
+pub const MAX = Rect{
     .width = std.math.maxInt(usize),
     .height = std.math.maxInt(usize),
 };
 
-pub inline fn left(self: *const Self) usize {
+pub inline fn left(self: *const Rect) usize {
     return self.x;
 }
-pub inline fn right(self: *const Self) usize {
+pub inline fn right(self: *const Rect) usize {
     return self.x + self.width - 1;
 }
-pub inline fn top(self: *const Self) usize {
+pub inline fn top(self: *const Rect) usize {
     return self.y;
 }
-pub inline fn bottom(self: *const Self) usize {
+pub inline fn bottom(self: *const Rect) usize {
     return self.y + self.height - 1;
 }
 
-pub fn contains_rect(self: Self, other: Self) bool {
+pub fn contains_rect(self: Rect, other: Rect) bool {
     return self.left() <= other.left() and
         self.right() >= other.right() and
         self.top() <= other.top() and
         self.bottom() >= other.bottom();
 }
 
-pub fn intersect(self: *Self, other: Self) void {
+pub fn intersect(self: *Rect, other: Rect) void {
     const l = @max(self.left(), other.left());
     const r = @min(self.right(), other.right());
     const t = @max(self.top(), other.top());
@@ -55,21 +55,21 @@ pub fn intersect(self: *Self, other: Self) void {
     self.height = (b - t) + 1;
 }
 
-pub fn contains(self: Self, x: usize, y: usize) bool {
+pub fn contains(self: Rect, x: usize, y: usize) bool {
     return x >= self.x and
         x < self.x + self.width and
         y >= self.y and
         y < self.y + self.height;
 }
 
-pub fn contains_point(self: Self, point: Point) bool {
+pub fn contains_point(self: Rect, point: Point) bool {
     return point.x >= self.x and
         point.x < self.x + self.width and
         point.y >= self.y and
         point.y < self.y + self.height;
 }
 
-pub fn shrink(self: *Self, top_: usize, right_: usize, bottom_: usize, left_: usize) void {
+pub fn shrink(self: *Rect, top_: usize, right_: usize, bottom_: usize, left_: usize) void {
     // std.debug.print("self: {} \n", .{self});
     self.x += left_;
     self.y += top_;
@@ -79,21 +79,21 @@ pub fn shrink(self: *Self, top_: usize, right_: usize, bottom_: usize, left_: us
     self.height -= top_ + bottom_;
 }
 
-pub fn shrinkUniform(self: *Self, s: usize) void {
+pub fn shrinkUniform(self: *Rect, s: usize) void {
     self.shrink(s, s, s, s);
 }
 
-pub fn shrunken(self: Self, t: usize, r: usize, b: usize, l: usize) Self {
+pub fn shrunken(self: Rect, t: usize, r: usize, b: usize, l: usize) Rect {
     var rect = self;
     rect.shrink(t, r, b, l);
     return rect;
 }
 
-pub fn shrunken_uniform(self: Self, s: usize) Self {
+pub fn shrunken_uniform(self: Rect, s: usize) Rect {
     return self.shrunken(s, s, s, s);
 }
 
-pub fn translate_by(self: *Self, x: usize, y: usize) void {
+pub fn translate_by(self: *Rect, x: usize, y: usize) void {
     self.x += x;
     self.y += y;
     // _ = y;
@@ -104,7 +104,7 @@ pub fn translate_by(self: *Self, x: usize, y: usize) void {
     // std.debug.assert(self.y <= self.height);
 }
 
-pub fn translated(self: Self, x: usize, y: usize) Self {
+pub fn translated(self: Rect, x: usize, y: usize) Rect {
     return .{
         .x = self.x + x,
         .y = self.y + y,
@@ -113,30 +113,36 @@ pub fn translated(self: Self, x: usize, y: usize) Self {
     };
 }
 
+pub fn relative_to(self: Rect, parent: Rect) Rect {
+    const t = self.translated(parent.x, parent.y);
+    std.debug.assert(parent.contains_rect(t));
+    return t;
+}
+
 // pub fn setSize(self: *Self, size: Size) void {
 //     self.width = size.width;
 //     self.height = size.height;
 // }
-pub fn setOrigin(self: *Self, point: Point) void {
+pub fn setOrigin(self: *Rect, point: Point) void {
     self.x = point.x;
     self.y = point.y;
 }
-pub fn getSize(self: *const Self) Size {
+pub fn getSize(self: *const Rect) Size {
     return .{ .width = self.width, .height = self.height };
 }
 
-pub fn getPosition(self: Self) Point {
+pub fn getPosition(self: Rect) Point {
     return .{ .x = self.x, .y = self.y };
 }
 
-pub fn getCenter(self: Self) Point {
+pub fn getCenter(self: Rect) Point {
     return .{ .x = self.x + self.width / 2, .y = self.y + self.height / 2 };
 }
 
 const Point = @import("Point.zig");
 const Size = @import("Size.zig");
 
-pub fn borderIterator(self: *const Self) BorderIterator {
+pub fn borderIterator(self: *const Rect) BorderIterator {
     return .{
         .rect = self,
         .current = Point.init(self.x, self.y),
@@ -144,7 +150,7 @@ pub fn borderIterator(self: *const Self) BorderIterator {
 }
 
 pub const BorderIterator = struct {
-    rect: *const Self,
+    rect: *const Rect,
     current: Point,
     done: bool = false,
 

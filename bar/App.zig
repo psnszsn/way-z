@@ -133,6 +133,8 @@ pub const Window = struct {
         const min_size = Size{ .width = 10, .height = 10 };
         std.log.info("idx {}", .{idx});
         const size = self.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
+        self.width = @intCast(size.width);
+        self.height = @intCast(size.height);
 
         std.log.info("min size {}", .{size});
         self.wl.xdg_shell.xdg_toplevel.set_min_size(@intCast(size.width), @intCast(size.height));

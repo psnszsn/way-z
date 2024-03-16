@@ -32,9 +32,15 @@ const WidgetAttrs = struct {
     children: []const WidgetIdx = &.{},
 };
 
+/// A widget type has to implement the following functions:
+/// pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {}
+/// pub fn size(_: *Layout, _: WidgetIdx, _: Size.Minmax) Size {}
+/// pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {}
 const WidgetType = enum {
     flex,
     button,
+    font_map,
+    font_view,
 
     pub const WidgetFn = enum {
         size,
@@ -57,6 +63,8 @@ const WidgetType = enum {
         switch (self) {
             .flex => return @import("widgets/Flex.zig"),
             .button => return @import("widgets/Button.zig"),
+            .font_map => return @import("fontviewer.zig").FontMap,
+            .font_view => return @import("fontviewer.zig").FontView,
         }
     }
 };
@@ -106,14 +114,19 @@ pub const Layout = struct {
         }
     }
 
+    const Window = @import("App.zig").Window;
+    pub fn get_window(
+        self: *const Layout,
+    ) *Window {
+        return @constCast(@fieldParentPtr(Window, "layout", self));
+    }
+
     pub fn request_draw(
         self: *const Layout,
         idx: WidgetIdx,
     ) void {
         self.set(idx, .dirty, true);
-        const Window = @import("App.zig").Window;
-        const bar = @constCast(@fieldParentPtr(Window, "layout", self));
-        bar.schedule_redraw();
+        self.get_window().schedule_redraw();
     }
 
     pub fn draw(layout: *Layout, ctx: PaintCtx) void {

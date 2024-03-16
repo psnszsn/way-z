@@ -36,7 +36,7 @@ const WidgetIdx = w.WidgetIdx;
 orientation: Orientation,
 
 var g = Flex{
-    .orientation = .Horizontal,
+    .orientation = .Vertical,
 };
 
 const Orientation = enum {
@@ -162,27 +162,28 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     // });
     // std.debug.print("asd {s}\n", .{self.children.items});
 
-    const remaining = max_buffer_size_major -| non_flex_major_sum;
-    const px_per_flex = remaining / flex_factor_sum;
+    if (flex_factor_sum != 0) {
+        const remaining = max_buffer_size_major -| non_flex_major_sum;
+        const px_per_flex = remaining / flex_factor_sum;
 
-    // Measure flex children
-    for (children) |child_idx| {
-        const child_flex = layout.get(child_idx, .flex);
-        if (child_flex > 0) {
-            // const child_mm = self.orientation.constraints(constraints.loose(), 0, px_per_flex);
-            const child_max = self.orientation.majorSize(
-                px_per_flex * child_flex,
-                self.orientation.minorLen(constraints.min),
-            );
-            const child_min = layout.call(child_idx, .size, .{Size.Minmax.ZERO});
+        // Measure flex children
+        for (children) |child_idx| {
+            const child_flex = layout.get(child_idx, .flex);
+            if (child_flex > 0) {
+                // const child_mm = self.orientation.constraints(constraints.loose(), 0, px_per_flex);
+                const child_max = self.orientation.majorSize(
+                    px_per_flex * child_flex,
+                    self.orientation.minorLen(constraints.min),
+                );
+                const child_min = layout.call(child_idx, .size, .{Size.Minmax.ZERO});
 
-            layout.set(child_idx, .rect, .{
-                .width = @max(child_min.width, child_max.width),
-                .height = @max(child_min.height, child_max.height),
-            });
+                layout.set(child_idx, .rect, .{
+                    .width = @max(child_min.width, child_max.width),
+                    .height = @max(child_min.height, child_max.height),
+                });
+            }
         }
     }
-
     // if (non_flex_major_sum >= max_buffer_size_major or flex_factor_sum == 0) {
     //     return self.orientation.majorSize(
     //         @max(non_flex_major_sum, min_buffer_size_major),
