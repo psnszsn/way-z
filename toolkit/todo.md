@@ -2,3 +2,5 @@
 - [ ] track damage
 - [x] enter/leave event
 - [ ] timer
+- [ ] menu bar
+- [ ] coursor

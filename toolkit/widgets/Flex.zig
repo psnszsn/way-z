@@ -1,5 +1,4 @@
 const Flex = @This();
-const std = @import("std");
 
 const PaintCtx = @import("../paint.zig").PaintCtxU32;
 const Event = @import("../event.zig").Event;
@@ -11,11 +10,7 @@ const w = @import("../widget.zig");
 const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;
 
-orientation: Orientation,
-
-var g = Flex{
-    .orientation = .horizontal,
-};
+orientation: Orientation = .horizontal,
 
 const Orientation = enum {
     vertical,
@@ -90,7 +85,7 @@ const Orientation = enum {
 
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     const children = layout.get(idx, .children);
-    const self = g;
+    const self = layout.data(idx, Flex);
     var minor: usize = self.orientation.minorLen(constraints.min);
 
     var non_flex_major_sum: usize = 0;

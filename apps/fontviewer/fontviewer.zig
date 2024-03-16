@@ -133,7 +133,7 @@ pub fn main() !void {
     _ = &bar; // autofix
 
     try bar.layout.init(app.client.allocator);
-    const flex = bar.layout.add(.{ .type = .flex });
+    const flex = bar.layout.add2(.flex, .{ .orientation = .vertical });
     const btn = bar.layout.add(.{ .type = .button });
     const font_map = bar.layout.add(.{ .type = .font_map });
     const font_view = bar.layout.add(.{ .type = .font_view });

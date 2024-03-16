@@ -1,4 +1,3 @@
-const Button = @This();
 const w = @import("../widget.zig");
 const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;

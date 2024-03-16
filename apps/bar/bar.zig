@@ -11,7 +11,7 @@ pub fn main() !void {
     var bar = try app.new_window(.wlr_layer_shell);
 
     try bar.layout.init(app.client.allocator);
-    const flex = bar.layout.add(.{ .type = .flex });
+    const flex = bar.layout.add2(.flex, .{});
     const children = try app.client.allocator.alloc(widget.WidgetIdx, 3);
     children[0] = bar.layout.add(.{ .type = .button });
     children[1] = bar.layout.add(.{ .type = .button, .flex = 1 });

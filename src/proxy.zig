@@ -2,7 +2,6 @@ const std = @import("std");
 const argm = @import("argument.zig");
 const Argument = argm.Argument;
 const Client = @import("client.zig").Client;
-const wayland = @import("lib.zig");
 const log = std.log.scoped(.wl);
 
 pub const Interface = struct {

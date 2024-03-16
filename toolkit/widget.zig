@@ -19,6 +19,7 @@ const WidgetAttrs = struct {
     pressed: bool = false,
     dirty: bool = false,
     children: []const WidgetIdx = &.{},
+    data: usize = undefined,
 };
 
 const root = @import("root");
@@ -80,16 +81,42 @@ pub const WidgetFn = enum {
 
 pub const Layout = struct {
     widgets: std.MultiArrayList(WidgetAttrs) = .{},
+    widget_alloc: std.heap.FixedBufferAllocator = undefined,
     root: WidgetIdx = undefined,
     pointer_position: Point = Point.ZERO,
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
         try self.widgets.ensureTotalCapacity(alloc, 100);
+        const widget_data = try alloc.alloc(u8, 1);
+        self.widget_alloc = std.heap.FixedBufferAllocator.init(widget_data);
     }
+
+    pub fn add2(self: *Layout, comptime t: WidgetType, wdata: WidgetData(t)) WidgetIdx {
+        const idx = self.add(.{ .type = t });
+        const w_data = if (@sizeOf(WidgetData(t)) <= @sizeOf(usize)) b: {
+            break :b self.data(idx, WidgetData(t));
+        } else b: {
+            const w_data = self.widget_alloc.allocator().create(WidgetData(t)) catch @panic("TODO");
+            self.set(idx, .data, @intFromPtr(w_data));
+            break :b w_data;
+        };
+        w_data.* = wdata;
+        return idx;
+    }
+
     pub fn add(self: *Layout, widget: WidgetAttrs) WidgetIdx {
         self.widgets.appendAssumeCapacity(widget);
         return @enumFromInt(self.widgets.len - 1);
     }
+
+    pub fn data(self: *const Layout, idx: WidgetIdx, T: type) *T {
+        if (@sizeOf(T) <= @sizeOf(usize)) {
+            return @ptrCast(&self.widgets.items(.data)[@intFromEnum(idx)]);
+        } else {
+            return @ptrFromInt(self.get(idx, .data));
+        }
+    }
+
     pub fn get(
         self: *const Layout,
         idx: WidgetIdx,
