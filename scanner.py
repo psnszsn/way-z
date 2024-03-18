@@ -587,6 +587,8 @@ def main():
         "/usr/share/wayland/wayland.xml",
         "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml",
         "./protocols/wlr-layer-shell-unstable-v1.xml",
+        "/usr/share/wayland-protocols/unstable/tablet/tablet-unstable-v2.xml",
+        "/usr/share/wayland-protocols/staging/cursor-shape/cursor-shape-v1.xml",
         # "/usr/share/wayland-protocols/stable/presentation-time/presentation-time.xml",
         # "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml",
     ]

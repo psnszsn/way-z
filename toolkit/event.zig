@@ -1,8 +1,17 @@
 const Point = @import("paint/Point.zig");
 const wl = @import("wayland").wl;
+const WidgetIdx = @import("widget.zig").WidgetIdx;
 
 pub const Event = union(enum) {
     pointer: PointerEvent,
+    custom: struct {
+        emitter: WidgetIdx,
+        data: [4]u8,
+    },
+    command: struct {
+        num: u32,
+        data: [4]u8,
+    },
 
     pub const PointerEvent = union(enum) {
         enter: void,

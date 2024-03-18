@@ -5,6 +5,7 @@ const wayland = @import("wayland");
 const wl = wayland.wl;
 const xdg = wayland.xdg;
 const zwlr = wayland.zwlr;
+const wp = wayland.wp;
 const App = @This();
 
 const font = @import("font/bdf.zig");
@@ -23,7 +24,11 @@ shm: ?*wl.Shm = null,
 compositor: ?*wl.Compositor = null,
 wm_base: ?*xdg.WmBase = null,
 layer_shell: ?*zwlr.LayerShellV1 = null,
+cursor_shape_manager: ?*wp.CursorShapeManagerV1 = null,
 seat: ?*wl.Seat = null,
+cursor_shape_device: ?*wp.CursorShapeDeviceV1 = null,
+cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
+pointer_enter_serial: u32 = 0,
 pointer: ?*wl.Pointer = null,
 
 font: *font.Font,
@@ -248,6 +253,8 @@ pub fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, contex
                 context.wm_base = registry.bind(global.name, xdg.WmBase, 1);
             } else if (mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
                 context.layer_shell = registry.bind(global.name, zwlr.LayerShellV1, 1);
+            } else if (mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
+                context.cursor_shape_manager = registry.bind(global.name, wp.CursorShapeManagerV1, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
                 context.seat = registry.bind(global.name, wl.Seat, 1);
                 context.seat.?.set_listener(*App, seat_listener, context);
@@ -270,6 +277,9 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
                 if (app.pointer == null) {
                     app.pointer = seat.get_pointer();
                     app.pointer.?.set_listener(*App, pointer_listener, app);
+                    if (app.cursor_shape_manager) |csm| {
+                        app.cursor_shape_device = csm.get_pointer(app.pointer.?);
+                    }
                 }
             }
         },
@@ -282,7 +292,12 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
 fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const win = app.window;
     const event: ?Event.PointerEvent = switch (_event) {
-        inline .motion, .enter => |ev| blk: {
+        .enter => |ev| blk: {
+            win.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
+            app.pointer_enter_serial = ev.serial;
+            break :blk null;
+        },
+        .motion => |ev| blk: {
             win.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
             break :blk null;
         },
@@ -299,6 +314,8 @@ fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
             break :blk null;
         },
     };
+    const old_shape = app.cursor_shape;
+
     for (win.layout.widgets.items(.rect), 0..) |rect, i| {
         const idx: WidgetIdx = @enumFromInt(i);
         const was_pressed = win.layout.get(idx, .pressed);
@@ -306,8 +323,10 @@ fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
         const is_hover = rect.contains_point(win.layout.pointer_position);
 
         if (is_hover != was_hover) {
+            // TODO: root widget is always hovered
             win.layout.set(idx, .hover, is_hover);
             const ev = Event{ .pointer = if (is_hover) .{ .enter = {} } else .{ .leave = {} } };
+            if (is_hover) win.layout.set_cursor_shape(.default);
             win.layout.call(idx, .handle_event, .{ev});
         }
 
@@ -320,4 +339,5 @@ fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
             }
         }
     }
+    if (old_shape != app.cursor_shape) app.cursor_shape_device.?.set_shape(app.pointer_enter_serial, app.cursor_shape);
 }

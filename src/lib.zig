@@ -6,3 +6,5 @@ pub const shm = @import("shm.zig");
 pub const wl = @import("generated/wl.zig");
 pub const xdg = @import("generated/xdg.zig");
 pub const zwlr = @import("generated/zwlr.zig");
+pub const wp = @import("generated/wp.zig");
+pub const zwp = @import("generated/zwp.zig");

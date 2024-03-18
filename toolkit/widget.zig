@@ -1,12 +1,3 @@
-const std = @import("std");
-
-const PaintCtx = @import("paint.zig").PaintCtxU32;
-const Rect = @import("paint/Rect.zig");
-const Size = @import("paint/Size.zig");
-const Point = @import("paint/Point.zig");
-
-const Event = @import("event.zig").Event;
-
 pub const WidgetIdx = enum(u32) {
     _,
 };
@@ -87,7 +78,7 @@ pub const Layout = struct {
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
         try self.widgets.ensureTotalCapacity(alloc, 100);
-        const widget_data = try alloc.alloc(u8, 1);
+        const widget_data = try alloc.alloc(u8, 100);
         self.widget_alloc = std.heap.FixedBufferAllocator.init(widget_data);
     }
 
@@ -165,6 +156,15 @@ pub const Layout = struct {
         self.get_window().schedule_redraw();
     }
 
+    pub fn set_cursor_shape(
+        self: *const Layout,
+        shape: @import("wayland").wp.CursorShapeDeviceV1.Shape,
+    ) void {
+        const app = self.get_window().app;
+        if (app.cursor_shape == shape) return;
+        app.cursor_shape = shape;
+    }
+
     pub fn draw(layout: *Layout, ctx: PaintCtx) void {
         layout.widgets.items(.rect)[@intFromEnum(layout.root)] = .{
             .x = 0,
@@ -176,3 +176,10 @@ pub const Layout = struct {
         _ = layout.call(layout.root, .draw, .{ layout.get(layout.root, .rect), ctx });
     }
 };
+
+const std = @import("std");
+const PaintCtx = @import("paint.zig").PaintCtxU32;
+const Rect = @import("paint/Rect.zig");
+const Size = @import("paint/Size.zig");
+const Point = @import("paint/Point.zig");
+const Event = @import("event.zig").Event;

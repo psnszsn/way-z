@@ -169,5 +169,6 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, _event: Event) void {
         .pointer => |event| {
             _ = event; // autofix
         },
+        else => {},
     }
 }
