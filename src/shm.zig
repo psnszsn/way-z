@@ -2,7 +2,7 @@ const std = @import("std");
 const os = std.os;
 const wl = @import("generated/wl.zig");
 
-fn bufferListener(wl_buffer: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
+fn bufferListener(wl_buffer: wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
     _ = wl_buffer;
 
     switch (event) {
@@ -16,7 +16,7 @@ fn bufferListener(wl_buffer: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer
 var buf: ?Buffer = undefined;
 
 pub const Pool = struct {
-    wl_pool: *wl.ShmPool,
+    wl_pool: wl.ShmPool,
     backing_fd: os.fd_t,
     mmap: []align(4096) u8,
     size: usize,
@@ -37,9 +37,9 @@ pub const Buffer = struct {
     width: u32,
     height: u32,
     busy: bool,
-    wl_buffer: *wl.Buffer,
+    wl_buffer: wl.Buffer,
 
-    pub fn get(shm: *wl.Shm, _width: u32, _height: u32) !*Buffer {
+    pub fn get(shm: wl.Shm, _width: u32, _height: u32) !*Buffer {
         const width = if (_width == 0) 300 else _width;
         const height = if (_height == 0) 300 else _height;
 
@@ -56,7 +56,7 @@ pub const Buffer = struct {
         unreachable;
     }
 
-    pub fn init(shm: *wl.Shm, width: u32, height: u32) !Buffer {
+    pub fn init(shm: wl.Shm, width: u32, height: u32) !Buffer {
         const stride = width * 4;
         const size = stride * height;
 

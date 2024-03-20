@@ -43,9 +43,16 @@ pub const TabletManagerV2 = struct {
             "destroy",
         },
     };
+    pub const Request = union(enum) {
+        get_tablet_seat: struct {
+            seat: ?u32,
+        },
+        destroy: void,
+    };
+
     /// Get the wp_tablet_seat object for the given seat. This object
     /// provides access to all graphics tablets in this seat.
-    pub fn get_tablet_seat(self: *const TabletManagerV2, _seat: *wl.Seat) *TabletSeatV2 {
+    pub fn get_tablet_seat(self: *const TabletManagerV2, _seat: wl.Seat) TabletSeatV2 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _seat.proxy.id },
@@ -109,39 +116,56 @@ pub const TabletSeatV2 = struct {
         pad_added: struct {
             id: *TabletPadV2, // the newly added pad
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .tablet_added = .{
+                        .id = args[0].new_id,
+                    },
+                },
+                1 => Event{
+                    .tool_added = .{
+                        .id = args[0].new_id,
+                    },
+                },
+                2 => Event{
+                    .pad_added = .{
+                        .id = args[0].new_id,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *TabletSeatV2,
+        self: TabletSeatV2,
         comptime T: type,
-        comptime _listener: *const fn (*TabletSeatV2, Event, T) void,
+        comptime _listener: *const fn (TabletSeatV2, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .tablet_added = .{
-                        .id = args[0].new_id,
-                    } },
-                    1 => Event{ .tool_added = .{
-                        .id = args[0].new_id,
-                    } },
-                    2 => Event{ .pad_added = .{
-                        .id = args[0].new_id,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletSeatV2, @ptrCast(@alignCast(impl))),
+                    TabletSeatV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+    };
 
     /// Destroy the wp_tablet_seat object. Objects created from this
     /// object are unaffected and should be destroyed separately.
@@ -449,88 +473,135 @@ pub const TabletToolV2 = struct {
         frame: struct {
             time: u32, // The time of the event with millisecond granularity
         },
-    };
 
-    pub fn set_listener(
-        self: *TabletToolV2,
-        comptime T: type,
-        comptime _listener: *const fn (*TabletToolV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .type = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .type = .{
                         .tool_type = @enumFromInt(args[0].uint),
-                    } },
-                    1 => Event{ .hardware_serial = .{
+                    },
+                },
+                1 => Event{
+                    .hardware_serial = .{
                         .hardware_serial_hi = args[0].uint,
                         .hardware_serial_lo = args[1].uint,
-                    } },
-                    2 => Event{ .hardware_id_wacom = .{
+                    },
+                },
+                2 => Event{
+                    .hardware_id_wacom = .{
                         .hardware_id_hi = args[0].uint,
                         .hardware_id_lo = args[1].uint,
-                    } },
-                    3 => Event{ .capability = .{
+                    },
+                },
+                3 => Event{
+                    .capability = .{
                         .capability = @enumFromInt(args[0].uint),
-                    } },
-                    4 => Event.done,
-                    5 => Event.removed,
-                    6 => Event{ .proximity_in = .{
+                    },
+                },
+                4 => Event.done,
+                5 => Event.removed,
+                6 => Event{
+                    .proximity_in = .{
                         .serial = args[0].uint,
                         .tablet = args[1].uint,
                         .surface = args[2].uint,
-                    } },
-                    7 => Event.proximity_out,
-                    8 => Event{ .down = .{
+                    },
+                },
+                7 => Event.proximity_out,
+                8 => Event{
+                    .down = .{
                         .serial = args[0].uint,
-                    } },
-                    9 => Event.up,
-                    10 => Event{ .motion = .{
+                    },
+                },
+                9 => Event.up,
+                10 => Event{
+                    .motion = .{
                         .x = args[0].fixed,
                         .y = args[1].fixed,
-                    } },
-                    11 => Event{ .pressure = .{
+                    },
+                },
+                11 => Event{
+                    .pressure = .{
                         .pressure = args[0].uint,
-                    } },
-                    12 => Event{ .distance = .{
+                    },
+                },
+                12 => Event{
+                    .distance = .{
                         .distance = args[0].uint,
-                    } },
-                    13 => Event{ .tilt = .{
+                    },
+                },
+                13 => Event{
+                    .tilt = .{
                         .tilt_x = args[0].fixed,
                         .tilt_y = args[1].fixed,
-                    } },
-                    14 => Event{ .rotation = .{
+                    },
+                },
+                14 => Event{
+                    .rotation = .{
                         .degrees = args[0].fixed,
-                    } },
-                    15 => Event{ .slider = .{
+                    },
+                },
+                15 => Event{
+                    .slider = .{
                         .position = args[0].int,
-                    } },
-                    16 => Event{ .wheel = .{
+                    },
+                },
+                16 => Event{
+                    .wheel = .{
                         .degrees = args[0].fixed,
                         .clicks = args[1].int,
-                    } },
-                    17 => Event{ .button = .{
+                    },
+                },
+                17 => Event{
+                    .button = .{
                         .serial = args[0].uint,
                         .button = args[1].uint,
                         .state = @enumFromInt(args[2].uint),
-                    } },
-                    18 => Event{ .frame = .{
+                    },
+                },
+                18 => Event{
+                    .frame = .{
                         .time = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: TabletToolV2,
+        comptime T: type,
+        comptime _listener: *const fn (TabletToolV2, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletToolV2, @ptrCast(@alignCast(impl))),
+                    TabletToolV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_cursor: struct {
+            serial: u32,
+            surface: u32,
+            hotspot_x: i32,
+            hotspot_y: i32,
+        },
+        destroy: void,
+    };
 
     /// Sets the surface of the cursor used for this tool on the given
     /// tablet. This request only takes effect if the tool is in proximity
@@ -562,7 +633,7 @@ pub const TabletToolV2 = struct {
     /// wp_tablet_tool. If the surface already has another role or has
     /// previously been used as cursor surface for a different tool, a
     /// protocol error is raised.
-    pub fn set_cursor(self: *const TabletToolV2, _serial: u32, _surface: ?*wl.Surface, _hotspot_x: i32, _hotspot_y: i32) void {
+    pub fn set_cursor(self: *const TabletToolV2, _serial: u32, _surface: ?wl.Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .object = if (_surface) |arg| arg.proxy.id else 0 },
@@ -647,42 +718,58 @@ pub const TabletV2 = struct {
         /// When this event is received, the client must wp_tablet.destroy
         /// the object.
         removed: void,
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .name = .{
+                        .name = args[0].string,
+                    },
+                },
+                1 => Event{
+                    .id = .{
+                        .vid = args[0].uint,
+                        .pid = args[1].uint,
+                    },
+                },
+                2 => Event{
+                    .path = .{
+                        .path = args[0].string,
+                    },
+                },
+                3 => Event.done,
+                4 => Event.removed,
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *TabletV2,
+        self: TabletV2,
         comptime T: type,
-        comptime _listener: *const fn (*TabletV2, Event, T) void,
+        comptime _listener: *const fn (TabletV2, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .name = .{
-                        .name = args[0].string,
-                    } },
-                    1 => Event{ .id = .{
-                        .vid = args[0].uint,
-                        .pid = args[1].uint,
-                    } },
-                    2 => Event{ .path = .{
-                        .path = args[0].string,
-                    } },
-                    3 => Event.done,
-                    4 => Event.removed,
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletV2, @ptrCast(@alignCast(impl))),
+                    TabletV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+    };
 
     /// This destroys the client's resource for this tablet object.
     pub fn destroy(self: *const TabletV2) void {
@@ -768,40 +855,61 @@ pub const TabletPadRingV2 = struct {
         frame: struct {
             time: u32, // timestamp with millisecond granularity
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .source = .{
+                        .source = @enumFromInt(args[0].uint),
+                    },
+                },
+                1 => Event{
+                    .angle = .{
+                        .degrees = args[0].fixed,
+                    },
+                },
+                2 => Event.stop,
+                3 => Event{
+                    .frame = .{
+                        .time = args[0].uint,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *TabletPadRingV2,
+        self: TabletPadRingV2,
         comptime T: type,
-        comptime _listener: *const fn (*TabletPadRingV2, Event, T) void,
+        comptime _listener: *const fn (TabletPadRingV2, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .source = .{
-                        .source = @enumFromInt(args[0].uint),
-                    } },
-                    1 => Event{ .angle = .{
-                        .degrees = args[0].fixed,
-                    } },
-                    2 => Event.stop,
-                    3 => Event{ .frame = .{
-                        .time = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletPadRingV2, @ptrCast(@alignCast(impl))),
+                    TabletPadRingV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_feedback: struct {
+            description: [:0]const u8,
+            serial: u32,
+        },
+        destroy: void,
+    };
 
     /// Request that the compositor use the provided feedback string
     /// associated with this ring. This request should be issued immediately
@@ -916,40 +1024,61 @@ pub const TabletPadStripV2 = struct {
         frame: struct {
             time: u32, // timestamp with millisecond granularity
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .source = .{
+                        .source = @enumFromInt(args[0].uint),
+                    },
+                },
+                1 => Event{
+                    .position = .{
+                        .position = args[0].uint,
+                    },
+                },
+                2 => Event.stop,
+                3 => Event{
+                    .frame = .{
+                        .time = args[0].uint,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *TabletPadStripV2,
+        self: TabletPadStripV2,
         comptime T: type,
-        comptime _listener: *const fn (*TabletPadStripV2, Event, T) void,
+        comptime _listener: *const fn (TabletPadStripV2, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .source = .{
-                        .source = @enumFromInt(args[0].uint),
-                    } },
-                    1 => Event{ .position = .{
-                        .position = args[0].uint,
-                    } },
-                    2 => Event.stop,
-                    3 => Event{ .frame = .{
-                        .time = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletPadStripV2, @ptrCast(@alignCast(impl))),
+                    TabletPadStripV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_feedback: struct {
+            description: [:0]const u8,
+            serial: u32,
+        },
+        destroy: void,
+    };
 
     /// Requests the compositor to use the provided feedback string
     /// associated with this strip. This request should be issued immediately
@@ -1112,48 +1241,69 @@ pub const TabletPadGroupV2 = struct {
             serial: u32,
             mode: u32, // the new mode of the pad
         },
-    };
 
-    pub fn set_listener(
-        self: *TabletPadGroupV2,
-        comptime T: type,
-        comptime _listener: *const fn (*TabletPadGroupV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .buttons = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .buttons = .{
                         .buttons = undefined,
-                    } },
-                    1 => Event{ .ring = .{
+                    },
+                },
+                1 => Event{
+                    .ring = .{
                         .ring = args[0].new_id,
-                    } },
-                    2 => Event{ .strip = .{
+                    },
+                },
+                2 => Event{
+                    .strip = .{
                         .strip = args[0].new_id,
-                    } },
-                    3 => Event{ .modes = .{
+                    },
+                },
+                3 => Event{
+                    .modes = .{
                         .modes = args[0].uint,
-                    } },
-                    4 => Event.done,
-                    5 => Event{ .mode_switch = .{
+                    },
+                },
+                4 => Event.done,
+                5 => Event{
+                    .mode_switch = .{
                         .time = args[0].uint,
                         .serial = args[1].uint,
                         .mode = args[2].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: TabletPadGroupV2,
+        comptime T: type,
+        comptime _listener: *const fn (TabletPadGroupV2, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletPadGroupV2, @ptrCast(@alignCast(impl))),
+                    TabletPadGroupV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+    };
 
     /// Destroy the wp_tablet_pad_group object. Objects created from this object
     /// are unaffected and should be destroyed separately.
@@ -1276,55 +1426,82 @@ pub const TabletPadV2 = struct {
         /// and groups that were offered by this pad, and issue wp_tablet_pad.destroy
         /// the pad itself.
         removed: void,
-    };
-
-    pub fn set_listener(
-        self: *TabletPadV2,
-        comptime T: type,
-        comptime _listener: *const fn (*TabletPadV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .group = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .group = .{
                         .pad_group = args[0].new_id,
-                    } },
-                    1 => Event{ .path = .{
+                    },
+                },
+                1 => Event{
+                    .path = .{
                         .path = args[0].string,
-                    } },
-                    2 => Event{ .buttons = .{
+                    },
+                },
+                2 => Event{
+                    .buttons = .{
                         .buttons = args[0].uint,
-                    } },
-                    3 => Event.done,
-                    4 => Event{ .button = .{
+                    },
+                },
+                3 => Event.done,
+                4 => Event{
+                    .button = .{
                         .time = args[0].uint,
                         .button = args[1].uint,
                         .state = @enumFromInt(args[2].uint),
-                    } },
-                    5 => Event{ .enter = .{
+                    },
+                },
+                5 => Event{
+                    .enter = .{
                         .serial = args[0].uint,
                         .tablet = args[1].uint,
                         .surface = args[2].uint,
-                    } },
-                    6 => Event{ .leave = .{
+                    },
+                },
+                6 => Event{
+                    .leave = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
-                    } },
-                    7 => Event.removed,
-                    else => unreachable,
-                };
+                    },
+                },
+                7 => Event.removed,
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: TabletPadV2,
+        comptime T: type,
+        comptime _listener: *const fn (TabletPadV2, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*TabletPadV2, @ptrCast(@alignCast(impl))),
+                    TabletPadV2{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_feedback: struct {
+            button: u32,
+            description: [:0]const u8,
+            serial: u32,
+        },
+        destroy: void,
+    };
 
     /// Requests the compositor to use the provided feedback string
     /// associated with this button. This request should be issued immediately

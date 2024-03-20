@@ -12,57 +12,85 @@ pub const Interface = struct {
     request_names: []const []const u8 = &.{},
 };
 
+pub const ObjectAttrs = struct {
+    interface: *const Interface,
+    listener: ?*const fn (Proxy, u16, []Argument, data: ?*anyopaque) void = null,
+    listener_data: ?*anyopaque = undefined,
+    is_free: bool = false,
+};
+
 pub const Proxy = struct {
     id: u32 = 0,
     client: *Client,
-    interface: *const Interface,
-    listener: ?*const fn (*anyopaque, u16, []Argument, data: ?*anyopaque) void = null,
-    listener_data: ?*anyopaque = undefined,
-    pub fn deinit(self: *Proxy) void {
-        self.client.objects.items[self.id] = null;
-        self.client.allocator.destroy(self);
-    }
-    pub fn unmarshal_event(self: *Proxy, data: []const u8, opcode: u16) void {
-        // std.log.info("event args {any}", .{self});
 
-        const signature = self.interface.event_signatures[opcode];
+    pub fn init(
+        self: Proxy,
+        atrrs: ObjectAttrs,
+    ) void {
+        self.client.objects.set(self.id, atrrs);
+    }
+
+    pub fn get(
+        self: Proxy,
+        comptime item: std.meta.FieldEnum(ObjectAttrs),
+    ) std.meta.FieldType(ObjectAttrs, item) {
+        return self.client.objects.items(item)[self.id];
+    }
+
+    pub fn set(
+        self: Proxy,
+        comptime item: std.meta.FieldEnum(ObjectAttrs),
+        value: std.meta.FieldType(ObjectAttrs, item),
+    ) void {
+        self.client.objects.items(item)[self.id] = value;
+    }
+
+    pub fn destroy(self: Proxy) void {
+        self.set(.is_free, true);
+    }
+
+    pub fn unmarshal_event(self: Proxy, data: []const u8, opcode: u16) void {
+        // std.log.info("unmarshal {any}", .{self.id});
+
+        const interface = self.get(.interface);
+        const listener = self.get(.listener);
+        const listener_data = self.get(.listener_data);
+
+        const signature = interface.event_signatures[opcode];
         var argdata = data;
         var args: [20]Argument = undefined;
         for (signature, 0..) |arg_type, i| {
             args[i] = Argument.unmarshal(arg_type, self.client.allocator, argdata);
             argdata = argdata[args[i].len()..];
         }
-        log.debug("<- {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.event_names[opcode] });
-        if (self.listener) |l| {
-            l(@ptrCast(self), opcode, args[0..signature.len], self.listener_data);
+        // log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
+        if (listener) |l| {
+            l(self, opcode, args[0..signature.len], listener_data);
         }
     }
 
-    pub fn marshal_request_constructor(self: *const Proxy, comptime T: type, opcode: u16, args: []Argument) !*T {
-        const next_id = self.client.next_id();
-        // std.log.info("next id {}", .{next_id});
-        const next = &self.client.objects.items[next_id];
-        next.* = Proxy{
-            .client = self.client,
+    pub fn marshal_request_constructor(self: Proxy, comptime T: type, opcode: u16, args: []Argument) !T {
+        const next_proxy = self.client.next_object();
+        // std.log.info("next id {}", .{next_proxy.id});
+        self.client.objects.set(next_proxy.id, .{
             .interface = &T.interface,
-            .id = next_id,
-        };
+        });
 
         for (args) |*arg| {
             switch (arg.*) {
-                .new_id => |_| arg.* = .{ .new_id = next_id },
+                .new_id => |_| arg.* = .{ .new_id = next_proxy.id },
                 // .new_id => |_| arg.* = .{ .object = obj.proxy.id },
                 else => {},
             }
         }
         try self.marshal_request(opcode, args);
 
-        return @ptrCast(next);
+        return T{ .proxy = next_proxy };
     }
 
-    pub fn marshal_request(self: *const Proxy, opcode: u16, args: []const Argument) !void {
+    pub fn marshal_request(self: Proxy, opcode: u16, args: []const Argument) !void {
         const connection = self.client.connection;
-        try connection.out.pushSlice(std.mem.asBytes(&self.id));
+        try connection.out.pushSlice(&std.mem.toBytes(self.id + 1));
         try connection.out.pushSlice(std.mem.asBytes(&opcode));
         var size: u16 = 0;
         for (args) |arg| {
@@ -79,7 +107,7 @@ pub const Proxy = struct {
             }
         }
 
-        log.debug("-> {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.request_names[opcode] });
+        // log.debug("-> {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.request_names[opcode] });
 
         // const ret = try self.display.connection.send();
         // _ = ret;

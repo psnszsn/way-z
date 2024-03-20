@@ -58,6 +58,15 @@ pub const LayerShellV1 = struct {
         top = 2,
         overlay = 3,
     };
+    pub const Request = union(enum) {
+        get_layer_surface: struct {
+            surface: ?u32,
+            output: u32,
+            layer: Layer,
+            namespace: [:0]const u8,
+        },
+        destroy: void,
+    };
 
     /// Create a layer surface for an existing surface. This assigns the role of
     /// layer_surface, or raises a protocol error if another role is already
@@ -80,7 +89,7 @@ pub const LayerShellV1 = struct {
     ///
     /// Clients can specify a namespace that defines the purpose of the layer
     /// surface.
-    pub fn get_layer_surface(self: *const LayerShellV1, _surface: *wl.Surface, _output: ?*wl.Output, _layer: Layer, _namespace: [:0]const u8) *LayerSurfaceV1 {
+    pub fn get_layer_surface(self: *const LayerShellV1, _surface: wl.Surface, _output: ?wl.Output, _layer: Layer, _namespace: [:0]const u8) LayerSurfaceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
@@ -188,36 +197,76 @@ pub const LayerSurfaceV1 = struct {
         /// ignored. The client should destroy the resource after receiving this
         /// event, and create a new surface if they so choose.
         closed: void,
-    };
-
-    pub fn set_listener(
-        self: *LayerSurfaceV1,
-        comptime T: type,
-        comptime _listener: *const fn (*LayerSurfaceV1, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .configure = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .configure = .{
                         .serial = args[0].uint,
                         .width = args[1].uint,
                         .height = args[2].uint,
-                    } },
-                    1 => Event.closed,
-                    else => unreachable,
-                };
+                    },
+                },
+                1 => Event.closed,
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: LayerSurfaceV1,
+        comptime T: type,
+        comptime _listener: *const fn (LayerSurfaceV1, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*LayerSurfaceV1, @ptrCast(@alignCast(impl))),
+                    LayerSurfaceV1{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_size: struct {
+            width: u32,
+            height: u32,
+        },
+        set_anchor: struct {
+            anchor: Anchor,
+        },
+        set_exclusive_zone: struct {
+            zone: i32,
+        },
+        set_margin: struct {
+            top: i32,
+            right: i32,
+            bottom: i32,
+            left: i32,
+        },
+        set_keyboard_interactivity: struct {
+            keyboard_interactivity: KeyboardInteractivity,
+        },
+        get_popup: struct {
+            popup: ?u32,
+        },
+        ack_configure: struct {
+            serial: u32,
+        },
+        destroy: void,
+        set_layer: struct {
+            layer: LayerShellV1.Layer,
+        },
+    };
 
     /// Sets the size of the surface in surface-local coordinates. The
     /// compositor will display the surface centered with respect to its
@@ -333,7 +382,7 @@ pub const LayerSurfaceV1 = struct {
     ///
     /// See the documentation of xdg_popup for more details about what an
     /// xdg_popup is and how it is used.
-    pub fn get_popup(self: *const LayerSurfaceV1, _popup: *xdg.Popup) void {
+    pub fn get_popup(self: *const LayerSurfaceV1, _popup: xdg.Popup) void {
         var _args = [_]Argument{
             .{ .object = _popup.proxy.id },
         };

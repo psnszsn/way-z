@@ -74,38 +74,54 @@ pub const Display = struct {
         delete_id: struct {
             id: u32, // deleted object ID
         },
-    };
 
-    pub fn set_listener(
-        self: *Display,
-        comptime T: type,
-        comptime _listener: *const fn (*Display, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .@"error" = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .@"error" = .{
                         .object_id = args[0].uint,
                         .code = args[1].uint,
                         .message = args[2].string,
-                    } },
-                    1 => Event{ .delete_id = .{
+                    },
+                },
+                1 => Event{
+                    .delete_id = .{
                         .id = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Display,
+        comptime T: type,
+        comptime _listener: *const fn (Display, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Display, @ptrCast(@alignCast(impl))),
+                    Display{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        sync: void,
+        get_registry: void,
+    };
 
     /// The sync request asks the server to emit the 'done' event
     /// on the returned wl_callback object.  Since requests are
@@ -118,7 +134,7 @@ pub const Display = struct {
     /// attempt to use it after that point.
     ///
     /// The callback_data passed in the callback is the event serial.
-    pub fn sync(self: *const Display) *Callback {
+    pub fn sync(self: *const Display) Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -134,7 +150,7 @@ pub const Display = struct {
     /// client disconnects, not when the client side proxy is destroyed.
     /// Therefore, clients should invoke get_registry as infrequently as
     /// possible to avoid wasting memory.
-    pub fn get_registry(self: *const Display) *Registry {
+    pub fn get_registry(self: *const Display) Registry {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -201,42 +217,59 @@ pub const Registry = struct {
         global_remove: struct {
             name: u32, // numeric name of the global object
         },
-    };
 
-    pub fn set_listener(
-        self: *Registry,
-        comptime T: type,
-        comptime _listener: *const fn (*Registry, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .global = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .global = .{
                         .name = args[0].uint,
                         .interface = args[1].string,
                         .version = args[2].uint,
-                    } },
-                    1 => Event{ .global_remove = .{
+                    },
+                },
+                1 => Event{
+                    .global_remove = .{
                         .name = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Registry,
+        comptime T: type,
+        comptime _listener: *const fn (Registry, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Registry, @ptrCast(@alignCast(impl))),
+                    Registry{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        bind: struct {
+            name: u32,
+        },
+    };
 
     /// Binds a new, client-created object to the server using the
     /// specified name as the identifier.
-    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) *T {
+    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) T {
         var _args = [_]Argument{
             .{ .uint = _name },
             .{ .string = T.interface.name },
@@ -267,33 +300,44 @@ pub const Callback = struct {
         done: struct {
             callback_data: u32, // request-specific data for the callback
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .done = .{
+                        .callback_data = args[0].uint,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Callback,
+        self: Callback,
         comptime T: type,
-        comptime _listener: *const fn (*Callback, Event, T) void,
+        comptime _listener: *const fn (Callback, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .done = .{
-                        .callback_data = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Callback, @ptrCast(@alignCast(impl))),
+                    Callback{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {};
 };
 
 /// A compositor.  This object is a singleton global.  The
@@ -309,8 +353,13 @@ pub const Compositor = struct {
             "create_region",
         },
     };
+    pub const Request = union(enum) {
+        create_surface: void,
+        create_region: void,
+    };
+
     /// Ask the compositor to create a new surface.
-    pub fn create_surface(self: *const Compositor) *Surface {
+    pub fn create_surface(self: *const Compositor) Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -318,7 +367,7 @@ pub const Compositor = struct {
     }
 
     /// Ask the compositor to create a new region.
-    pub fn create_region(self: *const Compositor) *Region {
+    pub fn create_region(self: *const Compositor) Region {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -344,6 +393,20 @@ pub const ShmPool = struct {
             "resize",
         },
     };
+    pub const Request = union(enum) {
+        create_buffer: struct {
+            offset: i32,
+            width: i32,
+            height: i32,
+            stride: i32,
+            format: Shm.Format,
+        },
+        destroy: void,
+        resize: struct {
+            size: i32,
+        },
+    };
+
     /// Create a wl_buffer object from the pool.
     ///
     /// The buffer is created offset bytes into the pool and has
@@ -355,7 +418,7 @@ pub const ShmPool = struct {
     /// A buffer will keep a reference to the pool it was created from
     /// so it is valid to destroy the pool immediately after creating
     /// a buffer from it.
-    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) *Buffer {
+    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) Buffer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .int = _offset },
@@ -539,40 +602,56 @@ pub const Shm = struct {
         format: struct {
             format: Format, // buffer pixel format
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .format = .{
+                        .format = @enumFromInt(args[0].uint),
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Shm,
+        self: Shm,
         comptime T: type,
-        comptime _listener: *const fn (*Shm, Event, T) void,
+        comptime _listener: *const fn (Shm, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .format = .{
-                        .format = @enumFromInt(args[0].uint),
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Shm, @ptrCast(@alignCast(impl))),
+                    Shm{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        create_pool: struct {
+            fd: i32,
+            size: i32,
+        },
+    };
 
     /// Create a new wl_shm_pool object.
     ///
     /// The pool can be used to create shared memory based buffer
     /// objects.  The server will mmap size bytes of the passed file
     /// descriptor, to use as backing memory for the pool.
-    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) *ShmPool {
+    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) ShmPool {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .fd = _fd },
@@ -622,32 +701,41 @@ pub const Buffer = struct {
         /// wl_surface contents, e.g. as a GL texture. This is an important
         /// optimization for GL(ES) compositors with wl_shm clients.
         release: void,
+        pub fn from_args(
+            opcode: u16,
+            _: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event.release,
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Buffer,
+        self: Buffer,
         comptime T: type,
-        comptime _listener: *const fn (*Buffer, Event, T) void,
+        comptime _listener: *const fn (Buffer, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event.release,
-                    else => unreachable,
-                };
-                _ = args;
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Buffer, @ptrCast(@alignCast(impl))),
+                    Buffer{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+    };
 
     /// Destroy a buffer. If and how you need to release the backing
     /// storage is defined by the buffer factory interface.
@@ -743,39 +831,69 @@ pub const DataOffer = struct {
         action: struct {
             dnd_action: DataDeviceManager.DndAction, // action selected by the compositor
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .offer = .{
+                        .mime_type = args[0].string,
+                    },
+                },
+                1 => Event{
+                    .source_actions = .{
+                        .source_actions = @bitCast(args[0].uint),
+                    },
+                },
+                2 => Event{
+                    .action = .{
+                        .dnd_action = @bitCast(args[0].uint),
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *DataOffer,
+        self: DataOffer,
         comptime T: type,
-        comptime _listener: *const fn (*DataOffer, Event, T) void,
+        comptime _listener: *const fn (DataOffer, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .offer = .{
-                        .mime_type = args[0].string,
-                    } },
-                    1 => Event{ .source_actions = .{
-                        .source_actions = @bitCast(args[0].uint),
-                    } },
-                    2 => Event{ .action = .{
-                        .dnd_action = @bitCast(args[0].uint),
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*DataOffer, @ptrCast(@alignCast(impl))),
+                    DataOffer{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        accept: struct {
+            serial: u32,
+            mime_type: ?[:0]const u8,
+        },
+        receive: struct {
+            mime_type: [:0]const u8,
+            fd: i32,
+        },
+        destroy: void,
+        finish: void,
+        set_actions: struct {
+            dnd_actions: DataDeviceManager.DndAction,
+            preferred_action: DataDeviceManager.DndAction,
+        },
+    };
 
     /// Indicate that the client can accept the given mime type, or
     /// NULL for not accepted.
@@ -997,43 +1115,66 @@ pub const DataSource = struct {
         action: struct {
             dnd_action: DataDeviceManager.DndAction, // action selected by the compositor
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .target = .{
+                        .mime_type = args[0].string,
+                    },
+                },
+                1 => Event{
+                    .send = .{
+                        .mime_type = args[0].string,
+                        .fd = args[1].fd,
+                    },
+                },
+                2 => Event.cancelled,
+                3 => Event.dnd_drop_performed,
+                4 => Event.dnd_finished,
+                5 => Event{
+                    .action = .{
+                        .dnd_action = @bitCast(args[0].uint),
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *DataSource,
+        self: DataSource,
         comptime T: type,
-        comptime _listener: *const fn (*DataSource, Event, T) void,
+        comptime _listener: *const fn (DataSource, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .target = .{
-                        .mime_type = args[0].string,
-                    } },
-                    1 => Event{ .send = .{
-                        .mime_type = args[0].string,
-                        .fd = args[1].fd,
-                    } },
-                    2 => Event.cancelled,
-                    3 => Event.dnd_drop_performed,
-                    4 => Event.dnd_finished,
-                    5 => Event{ .action = .{
-                        .dnd_action = @bitCast(args[0].uint),
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*DataSource, @ptrCast(@alignCast(impl))),
+                    DataSource{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        offer: struct {
+            mime_type: [:0]const u8,
+        },
+        destroy: void,
+        set_actions: struct {
+            dnd_actions: DataDeviceManager.DndAction,
+        },
+    };
 
     /// This request adds a mime type to the set of mime types
     /// advertised to targets.  Can be called several times to offer
@@ -1167,50 +1308,79 @@ pub const DataDevice = struct {
         selection: struct {
             id: u32, // selection data_offer object
         },
-    };
 
-    pub fn set_listener(
-        self: *DataDevice,
-        comptime T: type,
-        comptime _listener: *const fn (*DataDevice, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .data_offer = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .data_offer = .{
                         .id = args[0].new_id,
-                    } },
-                    1 => Event{ .enter = .{
+                    },
+                },
+                1 => Event{
+                    .enter = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
                         .x = args[2].fixed,
                         .y = args[3].fixed,
                         .id = args[4].uint,
-                    } },
-                    2 => Event.leave,
-                    3 => Event{ .motion = .{
+                    },
+                },
+                2 => Event.leave,
+                3 => Event{
+                    .motion = .{
                         .time = args[0].uint,
                         .x = args[1].fixed,
                         .y = args[2].fixed,
-                    } },
-                    4 => Event.drop,
-                    5 => Event{ .selection = .{
+                    },
+                },
+                4 => Event.drop,
+                5 => Event{
+                    .selection = .{
                         .id = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: DataDevice,
+        comptime T: type,
+        comptime _listener: *const fn (DataDevice, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*DataDevice, @ptrCast(@alignCast(impl))),
+                    DataDevice{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        start_drag: struct {
+            source: u32,
+            origin: ?u32,
+            icon: u32,
+            serial: u32,
+        },
+        set_selection: struct {
+            source: u32,
+            serial: u32,
+        },
+        release: void,
+    };
 
     /// This request asks the compositor to start a drag-and-drop
     /// operation on behalf of the client.
@@ -1237,7 +1407,7 @@ pub const DataDevice = struct {
     ///
     /// The input region is ignored for wl_surfaces with the role of a
     /// drag-and-drop icon.
-    pub fn start_drag(self: *const DataDevice, _source: ?*DataSource, _origin: *Surface, _icon: ?*Surface, _serial: u32) void {
+    pub fn start_drag(self: *const DataDevice, _source: ?DataSource, _origin: Surface, _icon: ?Surface, _serial: u32) void {
         var _args = [_]Argument{
             .{ .object = if (_source) |arg| arg.proxy.id else 0 },
             .{ .object = _origin.proxy.id },
@@ -1251,7 +1421,7 @@ pub const DataDevice = struct {
     /// to the data from the source on behalf of the client.
     ///
     /// To unset the selection, set the source to NULL.
-    pub fn set_selection(self: *const DataDevice, _source: ?*DataSource, _serial: u32) void {
+    pub fn set_selection(self: *const DataDevice, _source: ?DataSource, _serial: u32) void {
         var _args = [_]Argument{
             .{ .object = if (_source) |arg| arg.proxy.id else 0 },
             .{ .uint = _serial },
@@ -1292,9 +1462,15 @@ pub const DataDeviceManager = struct {
         ask: bool = false,
         _padding: u29 = 0,
     };
+    pub const Request = union(enum) {
+        create_data_source: void,
+        get_data_device: struct {
+            seat: ?u32,
+        },
+    };
 
     /// Create a new data source.
-    pub fn create_data_source(self: *const DataDeviceManager) *DataSource {
+    pub fn create_data_source(self: *const DataDeviceManager) DataSource {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -1302,7 +1478,7 @@ pub const DataDeviceManager = struct {
     }
 
     /// Create a new data device for a given seat.
-    pub fn get_data_device(self: *const DataDeviceManager, _seat: *Seat) *DataDevice {
+    pub fn get_data_device(self: *const DataDeviceManager, _seat: Seat) DataDevice {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _seat.proxy.id },
@@ -1332,13 +1508,18 @@ pub const Shell = struct {
     pub const Error = enum(c_int) {
         role = 0,
     };
+    pub const Request = union(enum) {
+        get_shell_surface: struct {
+            surface: ?u32,
+        },
+    };
 
     /// Create a shell surface for an existing surface. This gives
     /// the wl_surface the role of a shell surface. If the wl_surface
     /// already has another role, it raises a protocol error.
     ///
     /// Only one shell surface can be associated with a given surface.
-    pub fn get_shell_surface(self: *const Shell, _surface: *Surface) *ShellSurface {
+    pub fn get_shell_surface(self: *const Shell, _surface: Surface) ShellSurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
@@ -1433,39 +1614,93 @@ pub const ShellSurface = struct {
         /// that is, when the user clicks a surface that doesn't belong
         /// to the client owning the popup surface.
         popup_done: void,
-    };
-
-    pub fn set_listener(
-        self: *ShellSurface,
-        comptime T: type,
-        comptime _listener: *const fn (*ShellSurface, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .ping = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .ping = .{
                         .serial = args[0].uint,
-                    } },
-                    1 => Event{ .configure = .{
+                    },
+                },
+                1 => Event{
+                    .configure = .{
                         .edges = @bitCast(args[0].uint),
                         .width = args[1].int,
                         .height = args[2].int,
-                    } },
-                    2 => Event.popup_done,
-                    else => unreachable,
-                };
+                    },
+                },
+                2 => Event.popup_done,
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: ShellSurface,
+        comptime T: type,
+        comptime _listener: *const fn (ShellSurface, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*ShellSurface, @ptrCast(@alignCast(impl))),
+                    ShellSurface{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        pong: struct {
+            serial: u32,
+        },
+        move: struct {
+            seat: ?u32,
+            serial: u32,
+        },
+        resize: struct {
+            seat: ?u32,
+            serial: u32,
+            edges: Resize,
+        },
+        set_toplevel: void,
+        set_transient: struct {
+            parent: ?u32,
+            x: i32,
+            y: i32,
+            flags: Transient,
+        },
+        set_fullscreen: struct {
+            method: FullscreenMethod,
+            framerate: u32,
+            output: u32,
+        },
+        set_popup: struct {
+            seat: ?u32,
+            serial: u32,
+            parent: ?u32,
+            x: i32,
+            y: i32,
+            flags: Transient,
+        },
+        set_maximized: struct {
+            output: u32,
+        },
+        set_title: struct {
+            title: [:0]const u8,
+        },
+        set_class: struct {
+            class_: [:0]const u8,
+        },
+    };
 
     /// A client must respond to a ping event with a pong request or
     /// the client may be deemed unresponsive.
@@ -1481,7 +1716,7 @@ pub const ShellSurface = struct {
     /// This request must be used in response to a button press event.
     /// The server may ignore move requests depending on the state of
     /// the surface (e.g. fullscreen or maximized).
-    pub fn move(self: *const ShellSurface, _seat: *Seat, _serial: u32) void {
+    pub fn move(self: *const ShellSurface, _seat: Seat, _serial: u32) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -1494,7 +1729,7 @@ pub const ShellSurface = struct {
     /// This request must be used in response to a button press event.
     /// The server may ignore resize requests depending on the state of
     /// the surface (e.g. fullscreen or maximized).
-    pub fn resize(self: *const ShellSurface, _seat: *Seat, _serial: u32, _edges: Resize) void {
+    pub fn resize(self: *const ShellSurface, _seat: Seat, _serial: u32, _edges: Resize) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -1517,7 +1752,7 @@ pub const ShellSurface = struct {
     /// parent surface, in surface-local coordinates.
     ///
     /// The flags argument controls details of the transient behaviour.
-    pub fn set_transient(self: *const ShellSurface, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_transient(self: *const ShellSurface, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
             .{ .object = _parent.proxy.id },
             .{ .int = _x },
@@ -1560,7 +1795,7 @@ pub const ShellSurface = struct {
     /// The compositor must reply to this request with a configure event
     /// with the dimensions for the output on which the surface will
     /// be made fullscreen.
-    pub fn set_fullscreen(self: *const ShellSurface, _method: FullscreenMethod, _framerate: u32, _output: ?*Output) void {
+    pub fn set_fullscreen(self: *const ShellSurface, _method: FullscreenMethod, _framerate: u32, _output: ?Output) void {
         var _args = [_]Argument{
             .{ .uint = @intCast(@intFromEnum(_method)) },
             .{ .uint = _framerate },
@@ -1588,7 +1823,7 @@ pub const ShellSurface = struct {
     /// The x and y arguments specify the location of the upper left
     /// corner of the surface relative to the upper left corner of the
     /// parent surface, in surface-local coordinates.
-    pub fn set_popup(self: *const ShellSurface, _seat: *Seat, _serial: u32, _parent: *Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_popup(self: *const ShellSurface, _seat: Seat, _serial: u32, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -1618,7 +1853,7 @@ pub const ShellSurface = struct {
     /// fullscreen shell surface.
     ///
     /// The details depend on the compositor implementation.
-    pub fn set_maximized(self: *const ShellSurface, _output: ?*Output) void {
+    pub fn set_maximized(self: *const ShellSurface, _output: ?Output) void {
         var _args = [_]Argument{
             .{ .object = if (_output) |arg| arg.proxy.id else 0 },
         };
@@ -1771,42 +2006,96 @@ pub const Surface = struct {
         preferred_buffer_transform: struct {
             transform: Output.Transform, // preferred transform
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .enter = .{
+                        .output = args[0].uint,
+                    },
+                },
+                1 => Event{
+                    .leave = .{
+                        .output = args[0].uint,
+                    },
+                },
+                2 => Event{
+                    .preferred_buffer_scale = .{
+                        .factor = args[0].int,
+                    },
+                },
+                3 => Event{
+                    .preferred_buffer_transform = .{
+                        .transform = @enumFromInt(args[0].uint),
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Surface,
+        self: Surface,
         comptime T: type,
-        comptime _listener: *const fn (*Surface, Event, T) void,
+        comptime _listener: *const fn (Surface, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .enter = .{
-                        .output = args[0].uint,
-                    } },
-                    1 => Event{ .leave = .{
-                        .output = args[0].uint,
-                    } },
-                    2 => Event{ .preferred_buffer_scale = .{
-                        .factor = args[0].int,
-                    } },
-                    3 => Event{ .preferred_buffer_transform = .{
-                        .transform = @enumFromInt(args[0].uint),
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Surface, @ptrCast(@alignCast(impl))),
+                    Surface{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+        attach: struct {
+            buffer: u32,
+            x: i32,
+            y: i32,
+        },
+        damage: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+        frame: void,
+        set_opaque_region: struct {
+            region: u32,
+        },
+        set_input_region: struct {
+            region: u32,
+        },
+        commit: void,
+        set_buffer_transform: struct {
+            transform: Output.Transform,
+        },
+        set_buffer_scale: struct {
+            scale: i32,
+        },
+        damage_buffer: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+        offset: struct {
+            x: i32,
+            y: i32,
+        },
+    };
 
     /// Deletes the surface and invalidates its object ID.
     pub fn destroy(self: *const Surface) void {
@@ -1871,7 +2160,7 @@ pub const Surface = struct {
     ///
     /// If wl_surface.attach is sent with a NULL wl_buffer, the
     /// following wl_surface.commit will remove the surface content.
-    pub fn attach(self: *const Surface, _buffer: ?*Buffer, _x: i32, _y: i32) void {
+    pub fn attach(self: *const Surface, _buffer: ?Buffer, _x: i32, _y: i32) void {
         var _args = [_]Argument{
             .{ .object = if (_buffer) |arg| arg.proxy.id else 0 },
             .{ .int = _x },
@@ -1943,7 +2232,7 @@ pub const Surface = struct {
     ///
     /// The callback_data passed in the callback is the current time, in
     /// milliseconds, with an undefined base.
-    pub fn frame(self: *const Surface) *Callback {
+    pub fn frame(self: *const Surface) Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -1974,7 +2263,7 @@ pub const Surface = struct {
     /// opaque region has copy semantics, and the wl_region object can be
     /// destroyed immediately. A NULL wl_region causes the pending opaque
     /// region to be set to empty.
-    pub fn set_opaque_region(self: *const Surface, _region: ?*Region) void {
+    pub fn set_opaque_region(self: *const Surface, _region: ?Region) void {
         var _args = [_]Argument{
             .{ .object = if (_region) |arg| arg.proxy.id else 0 },
         };
@@ -2003,7 +2292,7 @@ pub const Surface = struct {
     /// has copy semantics, and the wl_region object can be destroyed
     /// immediately. A NULL wl_region causes the input region to be set
     /// to infinite.
-    pub fn set_input_region(self: *const Surface, _region: ?*Region) void {
+    pub fn set_input_region(self: *const Surface, _region: ?Region) void {
         var _args = [_]Argument{
             .{ .object = if (_region) |arg| arg.proxy.id else 0 },
         };
@@ -2238,36 +2527,54 @@ pub const Seat = struct {
         name: struct {
             name: [:0]const u8, // seat identifier
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .capabilities = .{
+                        .capabilities = @bitCast(args[0].uint),
+                    },
+                },
+                1 => Event{
+                    .name = .{
+                        .name = args[0].string,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Seat,
+        self: Seat,
         comptime T: type,
-        comptime _listener: *const fn (*Seat, Event, T) void,
+        comptime _listener: *const fn (Seat, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .capabilities = .{
-                        .capabilities = @bitCast(args[0].uint),
-                    } },
-                    1 => Event{ .name = .{
-                        .name = args[0].string,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Seat, @ptrCast(@alignCast(impl))),
+                    Seat{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        get_pointer: void,
+        get_keyboard: void,
+        get_touch: void,
+        release: void,
+    };
 
     /// The ID provided will be initialized to the wl_pointer interface
     /// for this seat.
@@ -2277,7 +2584,7 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the pointer capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_pointer(self: *const Seat) *Pointer {
+    pub fn get_pointer(self: *const Seat) Pointer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -2292,7 +2599,7 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the keyboard capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_keyboard(self: *const Seat) *Keyboard {
+    pub fn get_keyboard(self: *const Seat) Keyboard {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -2307,7 +2614,7 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the touch capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_touch(self: *const Seat) *Touch {
+    pub fn get_touch(self: *const Seat) Touch {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -2634,76 +2941,113 @@ pub const Pointer = struct {
             axis: Axis, // axis type
             direction: AxisRelativeDirection, // physical direction relative to axis motion
         },
-    };
 
-    pub fn set_listener(
-        self: *Pointer,
-        comptime T: type,
-        comptime _listener: *const fn (*Pointer, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .enter = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .enter = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
                         .surface_x = args[2].fixed,
                         .surface_y = args[3].fixed,
-                    } },
-                    1 => Event{ .leave = .{
+                    },
+                },
+                1 => Event{
+                    .leave = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
-                    } },
-                    2 => Event{ .motion = .{
+                    },
+                },
+                2 => Event{
+                    .motion = .{
                         .time = args[0].uint,
                         .surface_x = args[1].fixed,
                         .surface_y = args[2].fixed,
-                    } },
-                    3 => Event{ .button = .{
+                    },
+                },
+                3 => Event{
+                    .button = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .button = args[2].uint,
                         .state = @enumFromInt(args[3].uint),
-                    } },
-                    4 => Event{ .axis = .{
+                    },
+                },
+                4 => Event{
+                    .axis = .{
                         .time = args[0].uint,
                         .axis = @enumFromInt(args[1].uint),
                         .value = args[2].fixed,
-                    } },
-                    5 => Event.frame,
-                    6 => Event{ .axis_source = .{
+                    },
+                },
+                5 => Event.frame,
+                6 => Event{
+                    .axis_source = .{
                         .axis_source = @enumFromInt(args[0].uint),
-                    } },
-                    7 => Event{ .axis_stop = .{
+                    },
+                },
+                7 => Event{
+                    .axis_stop = .{
                         .time = args[0].uint,
                         .axis = @enumFromInt(args[1].uint),
-                    } },
-                    8 => Event{ .axis_discrete = .{
+                    },
+                },
+                8 => Event{
+                    .axis_discrete = .{
                         .axis = @enumFromInt(args[0].uint),
                         .discrete = args[1].int,
-                    } },
-                    9 => Event{ .axis_value120 = .{
+                    },
+                },
+                9 => Event{
+                    .axis_value120 = .{
                         .axis = @enumFromInt(args[0].uint),
                         .value120 = args[1].int,
-                    } },
-                    10 => Event{ .axis_relative_direction = .{
+                    },
+                },
+                10 => Event{
+                    .axis_relative_direction = .{
                         .axis = @enumFromInt(args[0].uint),
                         .direction = @enumFromInt(args[1].uint),
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Pointer,
+        comptime T: type,
+        comptime _listener: *const fn (Pointer, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Pointer, @ptrCast(@alignCast(impl))),
+                    Pointer{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        set_cursor: struct {
+            serial: u32,
+            surface: u32,
+            hotspot_x: i32,
+            hotspot_y: i32,
+        },
+        release: void,
+    };
 
     /// Set the pointer surface, i.e., the surface that contains the
     /// pointer image (cursor). This request gives the surface the role
@@ -2738,7 +3082,7 @@ pub const Pointer = struct {
     /// The serial parameter must match the latest wl_pointer.enter
     /// serial number sent to the client. Otherwise the request will be
     /// ignored.
-    pub fn set_cursor(self: *const Pointer, _serial: u32, _surface: ?*Surface, _hotspot_x: i32, _hotspot_y: i32) void {
+    pub fn set_cursor(self: *const Pointer, _serial: u32, _surface: ?Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .object = if (_surface) |arg| arg.proxy.id else 0 },
@@ -2866,61 +3210,84 @@ pub const Keyboard = struct {
             rate: i32, // the rate of repeating keys in characters per second
             delay: i32, // delay in milliseconds since key down until repeating starts
         },
-    };
 
-    pub fn set_listener(
-        self: *Keyboard,
-        comptime T: type,
-        comptime _listener: *const fn (*Keyboard, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .keymap = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .keymap = .{
                         .format = @enumFromInt(args[0].uint),
                         .fd = args[1].fd,
                         .size = args[2].uint,
-                    } },
-                    1 => Event{ .enter = .{
+                    },
+                },
+                1 => Event{
+                    .enter = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
                         .keys = undefined,
-                    } },
-                    2 => Event{ .leave = .{
+                    },
+                },
+                2 => Event{
+                    .leave = .{
                         .serial = args[0].uint,
                         .surface = args[1].uint,
-                    } },
-                    3 => Event{ .key = .{
+                    },
+                },
+                3 => Event{
+                    .key = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .key = args[2].uint,
                         .state = @enumFromInt(args[3].uint),
-                    } },
-                    4 => Event{ .modifiers = .{
+                    },
+                },
+                4 => Event{
+                    .modifiers = .{
                         .serial = args[0].uint,
                         .mods_depressed = args[1].uint,
                         .mods_latched = args[2].uint,
                         .mods_locked = args[3].uint,
                         .group = args[4].uint,
-                    } },
-                    5 => Event{ .repeat_info = .{
+                    },
+                },
+                5 => Event{
+                    .repeat_info = .{
                         .rate = args[0].int,
                         .delay = args[1].int,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Keyboard,
+        comptime T: type,
+        comptime _listener: *const fn (Keyboard, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Keyboard, @ptrCast(@alignCast(impl))),
+                    Keyboard{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        release: void,
+    };
     pub fn release(self: *const Keyboard) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
@@ -3059,60 +3426,81 @@ pub const Touch = struct {
             id: i32, // the unique ID of this touch point
             orientation: Fixed, // angle between major axis and positive surface y-axis in degrees
         },
-    };
 
-    pub fn set_listener(
-        self: *Touch,
-        comptime T: type,
-        comptime _listener: *const fn (*Touch, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .down = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .down = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .surface = args[2].uint,
                         .id = args[3].int,
                         .x = args[4].fixed,
                         .y = args[5].fixed,
-                    } },
-                    1 => Event{ .up = .{
+                    },
+                },
+                1 => Event{
+                    .up = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
                         .id = args[2].int,
-                    } },
-                    2 => Event{ .motion = .{
+                    },
+                },
+                2 => Event{
+                    .motion = .{
                         .time = args[0].uint,
                         .id = args[1].int,
                         .x = args[2].fixed,
                         .y = args[3].fixed,
-                    } },
-                    3 => Event.frame,
-                    4 => Event.cancel,
-                    5 => Event{ .shape = .{
+                    },
+                },
+                3 => Event.frame,
+                4 => Event.cancel,
+                5 => Event{
+                    .shape = .{
                         .id = args[0].int,
                         .major = args[1].fixed,
                         .minor = args[2].fixed,
-                    } },
-                    6 => Event{ .orientation = .{
+                    },
+                },
+                6 => Event{
+                    .orientation = .{
                         .id = args[0].int,
                         .orientation = args[1].fixed,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Touch,
+        comptime T: type,
+        comptime _listener: *const fn (Touch, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Touch, @ptrCast(@alignCast(impl))),
+                    Touch{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        release: void,
+    };
     pub fn release(self: *const Touch) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
@@ -3313,18 +3701,14 @@ pub const Output = struct {
         description: struct {
             description: [:0]const u8, // output description
         },
-    };
 
-    pub fn set_listener(
-        self: *Output,
-        comptime T: type,
-        comptime _listener: *const fn (*Output, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .geometry = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .geometry = .{
                         .x = args[0].int,
                         .y = args[1].int,
                         .physical_width = args[2].int,
@@ -3333,36 +3717,61 @@ pub const Output = struct {
                         .make = args[5].string,
                         .model = args[6].string,
                         .transform = args[7].int,
-                    } },
-                    1 => Event{ .mode = .{
+                    },
+                },
+                1 => Event{
+                    .mode = .{
                         .flags = @bitCast(args[0].uint),
                         .width = args[1].int,
                         .height = args[2].int,
                         .refresh = args[3].int,
-                    } },
-                    2 => Event.done,
-                    3 => Event{ .scale = .{
+                    },
+                },
+                2 => Event.done,
+                3 => Event{
+                    .scale = .{
                         .factor = args[0].int,
-                    } },
-                    4 => Event{ .name = .{
+                    },
+                },
+                4 => Event{
+                    .name = .{
                         .name = args[0].string,
-                    } },
-                    5 => Event{ .description = .{
+                    },
+                },
+                5 => Event{
+                    .description = .{
                         .description = args[0].string,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Output,
+        comptime T: type,
+        comptime _listener: *const fn (Output, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Output, @ptrCast(@alignCast(impl))),
+                    Output{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        release: void,
+    };
 
     /// Using this request a client can tell the server that it is not going to
     /// use the output object anymore.
@@ -3387,6 +3796,22 @@ pub const Region = struct {
             "subtract",
         },
     };
+    pub const Request = union(enum) {
+        destroy: void,
+        add: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+        subtract: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+    };
+
     /// Destroy the region.  This will invalidate the object ID.
     pub fn destroy(self: *const Region) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -3449,6 +3874,13 @@ pub const Subcompositor = struct {
         bad_surface = 0,
         bad_parent = 1,
     };
+    pub const Request = union(enum) {
+        destroy: void,
+        get_subsurface: struct {
+            surface: ?u32,
+            parent: ?u32,
+        },
+    };
 
     /// Informs the server that the client will not be using this
     /// protocol object anymore. This does not affect any other
@@ -3477,7 +3909,7 @@ pub const Subcompositor = struct {
     ///
     /// This request modifies the behaviour of wl_surface.commit request on
     /// the sub-surface, see the documentation on wl_subsurface interface.
-    pub fn get_subsurface(self: *const Subcompositor, _surface: *Surface, _parent: *Surface) *Subsurface {
+    pub fn get_subsurface(self: *const Subcompositor, _surface: Surface, _parent: Surface) Subsurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
@@ -3551,6 +3983,21 @@ pub const Subsurface = struct {
     pub const Error = enum(c_int) {
         bad_surface = 0,
     };
+    pub const Request = union(enum) {
+        destroy: void,
+        set_position: struct {
+            x: i32,
+            y: i32,
+        },
+        place_above: struct {
+            sibling: ?u32,
+        },
+        place_below: struct {
+            sibling: ?u32,
+        },
+        set_sync: void,
+        set_desync: void,
+    };
 
     /// The sub-surface interface is removed from the wl_surface object
     /// that was turned into a sub-surface with a
@@ -3600,7 +4047,7 @@ pub const Subsurface = struct {
     ///
     /// A new sub-surface is initially added as the top-most in the stack
     /// of its siblings and parent.
-    pub fn place_above(self: *const Subsurface, _sibling: *Surface) void {
+    pub fn place_above(self: *const Subsurface, _sibling: Surface) void {
         var _args = [_]Argument{
             .{ .object = _sibling.proxy.id },
         };
@@ -3609,7 +4056,7 @@ pub const Subsurface = struct {
 
     /// The sub-surface is placed just below the reference surface.
     /// See wl_subsurface.place_above.
-    pub fn place_below(self: *const Subsurface, _sibling: *Surface) void {
+    pub fn place_below(self: *const Subsurface, _sibling: Surface) void {
         var _args = [_]Argument{
             .{ .object = _sibling.proxy.id },
         };

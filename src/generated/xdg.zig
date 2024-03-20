@@ -79,33 +79,53 @@ pub const WmBase = struct {
         ping: struct {
             serial: u32, // pass this to the pong request
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .ping = .{
+                        .serial = args[0].uint,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *WmBase,
+        self: WmBase,
         comptime T: type,
-        comptime _listener: *const fn (*WmBase, Event, T) void,
+        comptime _listener: *const fn (WmBase, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .ping = .{
-                        .serial = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*WmBase, @ptrCast(@alignCast(impl))),
+                    WmBase{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+        create_positioner: void,
+        get_xdg_surface: struct {
+            surface: ?u32,
+        },
+        pong: struct {
+            serial: u32,
+        },
+    };
 
     /// Destroy this xdg_wm_base object.
     ///
@@ -120,7 +140,7 @@ pub const WmBase = struct {
     /// Create a positioner object. A positioner object is used to position
     /// surfaces relative to some parent surface. See the interface description
     /// and xdg_surface.get_popup for details.
-    pub fn create_positioner(self: *const WmBase) *Positioner {
+    pub fn create_positioner(self: *const WmBase) Positioner {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -140,7 +160,7 @@ pub const WmBase = struct {
     ///
     /// See the documentation of xdg_surface for more details about what an
     /// xdg_surface is and how it is used.
-    pub fn get_xdg_surface(self: *const WmBase, _surface: *wl.Surface) *Surface {
+    pub fn get_xdg_surface(self: *const WmBase, _surface: wl.Surface) Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _surface.proxy.id },
@@ -229,6 +249,40 @@ pub const Positioner = struct {
         resize_x: bool = false,
         resize_y: bool = false,
         _padding: u26 = 0,
+    };
+    pub const Request = union(enum) {
+        destroy: void,
+        set_size: struct {
+            width: i32,
+            height: i32,
+        },
+        set_anchor_rect: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+        set_anchor: struct {
+            anchor: Anchor,
+        },
+        set_gravity: struct {
+            gravity: Gravity,
+        },
+        set_constraint_adjustment: struct {
+            constraint_adjustment: u32,
+        },
+        set_offset: struct {
+            x: i32,
+            y: i32,
+        },
+        set_reactive: void,
+        set_parent_size: struct {
+            parent_width: i32,
+            parent_height: i32,
+        },
+        set_parent_configure: struct {
+            serial: u32,
+        },
     };
 
     /// Notify the compositor that the xdg_positioner will no longer be used.
@@ -465,33 +519,60 @@ pub const Surface = struct {
         configure: struct {
             serial: u32, // serial of the configure event
         },
+
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .configure = .{
+                        .serial = args[0].uint,
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 
     pub fn set_listener(
-        self: *Surface,
+        self: Surface,
         comptime T: type,
-        comptime _listener: *const fn (*Surface, Event, T) void,
+        comptime _listener: *const fn (Surface, Event, T) void,
         _data: T,
     ) void {
         const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .configure = .{
-                        .serial = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Surface, @ptrCast(@alignCast(impl))),
+                    Surface{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+        get_toplevel: void,
+        get_popup: struct {
+            parent: u32,
+            positioner: ?u32,
+        },
+        set_window_geometry: struct {
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+        },
+        ack_configure: struct {
+            serial: u32,
+        },
+    };
 
     /// Destroy the xdg_surface object. An xdg_surface must only be destroyed
     /// after its role object has been destroyed, otherwise
@@ -506,7 +587,7 @@ pub const Surface = struct {
     ///
     /// See the documentation of xdg_toplevel for more details about what an
     /// xdg_toplevel is and how it is used.
-    pub fn get_toplevel(self: *const Surface) *Toplevel {
+    pub fn get_toplevel(self: *const Surface) Toplevel {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
@@ -521,7 +602,7 @@ pub const Surface = struct {
     ///
     /// See the documentation of xdg_popup for more details about what an
     /// xdg_popup is and how it is used.
-    pub fn get_popup(self: *const Surface, _parent: ?*Surface, _positioner: *Positioner) *Popup {
+    pub fn get_popup(self: *const Surface, _parent: ?Surface, _positioner: Positioner) Popup {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = if (_parent) |arg| arg.proxy.id else 0 },
@@ -779,43 +860,99 @@ pub const Toplevel = struct {
         wm_capabilities: struct {
             capabilities: *anyopaque, // array of 32-bit capabilities
         },
-    };
 
-    pub fn set_listener(
-        self: *Toplevel,
-        comptime T: type,
-        comptime _listener: *const fn (*Toplevel, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .configure = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .configure = .{
                         .width = args[0].int,
                         .height = args[1].int,
                         .states = undefined,
-                    } },
-                    1 => Event.close,
-                    2 => Event{ .configure_bounds = .{
+                    },
+                },
+                1 => Event.close,
+                2 => Event{
+                    .configure_bounds = .{
                         .width = args[0].int,
                         .height = args[1].int,
-                    } },
-                    3 => Event{ .wm_capabilities = .{
+                    },
+                },
+                3 => Event{
+                    .wm_capabilities = .{
                         .capabilities = undefined,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Toplevel,
+        comptime T: type,
+        comptime _listener: *const fn (Toplevel, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Toplevel, @ptrCast(@alignCast(impl))),
+                    Toplevel{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+        set_parent: struct {
+            parent: u32,
+        },
+        set_title: struct {
+            title: [:0]const u8,
+        },
+        set_app_id: struct {
+            app_id: [:0]const u8,
+        },
+        show_window_menu: struct {
+            seat: ?u32,
+            serial: u32,
+            x: i32,
+            y: i32,
+        },
+        move: struct {
+            seat: ?u32,
+            serial: u32,
+        },
+        resize: struct {
+            seat: ?u32,
+            serial: u32,
+            edges: ResizeEdge,
+        },
+        set_max_size: struct {
+            width: i32,
+            height: i32,
+        },
+        set_min_size: struct {
+            width: i32,
+            height: i32,
+        },
+        set_maximized: void,
+        unset_maximized: void,
+        set_fullscreen: struct {
+            output: u32,
+        },
+        unset_fullscreen: void,
+        set_minimized: void,
+    };
 
     /// This request destroys the role surface and unmaps the surface;
     /// see "Unmapping" behavior in interface section for details.
@@ -844,7 +981,7 @@ pub const Toplevel = struct {
     /// The parent toplevel must not be one of the child toplevel's
     /// descendants, and the parent must be different from the child toplevel,
     /// otherwise the invalid_parent protocol error is raised.
-    pub fn set_parent(self: *const Toplevel, _parent: ?*Toplevel) void {
+    pub fn set_parent(self: *const Toplevel, _parent: ?Toplevel) void {
         var _args = [_]Argument{
             .{ .object = if (_parent) |arg| arg.proxy.id else 0 },
         };
@@ -907,7 +1044,7 @@ pub const Toplevel = struct {
     ///
     /// This request must be used in response to some sort of user action
     /// like a button press, key press, or touch down event.
-    pub fn show_window_menu(self: *const Toplevel, _seat: *wl.Seat, _serial: u32, _x: i32, _y: i32) void {
+    pub fn show_window_menu(self: *const Toplevel, _seat: wl.Seat, _serial: u32, _x: i32, _y: i32) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -933,7 +1070,7 @@ pub const Toplevel = struct {
     /// compositor to visually indicate that the move is taking place, such as
     /// updating a pointer cursor, during the move. There is no guarantee
     /// that the device focus will return when the move is completed.
-    pub fn move(self: *const Toplevel, _seat: *wl.Seat, _serial: u32) void {
+    pub fn move(self: *const Toplevel, _seat: wl.Seat, _serial: u32) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -972,7 +1109,7 @@ pub const Toplevel = struct {
     /// for example when dragging the top left corner. The compositor may also
     /// use this information to adapt its behavior, e.g. choose an appropriate
     /// cursor image.
-    pub fn resize(self: *const Toplevel, _seat: *wl.Seat, _serial: u32, _edges: ResizeEdge) void {
+    pub fn resize(self: *const Toplevel, _seat: wl.Seat, _serial: u32, _edges: ResizeEdge) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -1136,7 +1273,7 @@ pub const Toplevel = struct {
     /// sure that other screen content not part of the same surface tree (made
     /// up of subsurfaces, popups or similarly coupled surfaces) are not
     /// visible below the fullscreened surface.
-    pub fn set_fullscreen(self: *const Toplevel, _output: ?*wl.Output) void {
+    pub fn set_fullscreen(self: *const Toplevel, _output: ?wl.Output) void {
         var _args = [_]Argument{
             .{ .object = if (_output) |arg| arg.proxy.id else 0 },
         };
@@ -1263,40 +1400,63 @@ pub const Popup = struct {
         repositioned: struct {
             token: u32, // reposition request token
         },
-    };
 
-    pub fn set_listener(
-        self: *Popup,
-        comptime T: type,
-        comptime _listener: *const fn (*Popup, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(impl: *anyopaque, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = switch (opcode) {
-                    0 => Event{ .configure = .{
+        pub fn from_args(
+            opcode: u16,
+            args: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event{
+                    .configure = .{
                         .x = args[0].int,
                         .y = args[1].int,
                         .width = args[2].int,
                         .height = args[3].int,
-                    } },
-                    1 => Event.popup_done,
-                    2 => Event{ .repositioned = .{
+                    },
+                },
+                1 => Event.popup_done,
+                2 => Event{
+                    .repositioned = .{
                         .token = args[0].uint,
-                    } },
-                    else => unreachable,
-                };
+                    },
+                },
+                else => unreachable,
+            };
+        }
+    };
+
+    pub fn set_listener(
+        self: Popup,
+        comptime T: type,
+        comptime _listener: *const fn (Popup, Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = Event.from_args(opcode, args);
+
                 @call(.always_inline, _listener, .{
-                    @as(*Popup, @ptrCast(@alignCast(impl))),
+                    Popup{ .proxy = proxy },
                     event,
                     @as(T, @ptrCast(@alignCast(__data))),
                 });
             }
         };
 
-        self.proxy.listener = w.inner;
-        self.proxy.listener_data = _data;
+        self.proxy.set(.listener, w.inner);
+        self.proxy.set(.listener_data, _data);
     }
+    pub const Request = union(enum) {
+        destroy: void,
+        grab: struct {
+            seat: ?u32,
+            serial: u32,
+        },
+        reposition: struct {
+            positioner: ?u32,
+            token: u32,
+        },
+    };
 
     /// This destroys the popup. Explicitly destroying the xdg_popup
     /// object will also dismiss the popup, and unmap the surface.
@@ -1345,7 +1505,7 @@ pub const Popup = struct {
     /// and touch events for all their surfaces as normal (similar to an
     /// "owner-events" grab in X11 parlance), while the top most grabbing popup
     /// will always have keyboard focus.
-    pub fn grab(self: *const Popup, _seat: *wl.Seat, _serial: u32) void {
+    pub fn grab(self: *const Popup, _seat: wl.Seat, _serial: u32) void {
         var _args = [_]Argument{
             .{ .object = _seat.proxy.id },
             .{ .uint = _serial },
@@ -1376,7 +1536,7 @@ pub const Popup = struct {
     /// If the popup is repositioned together with a parent that is being
     /// resized, but not in response to a configure event, the client should
     /// send an xdg_positioner.set_parent_size request.
-    pub fn reposition(self: *const Popup, _positioner: *Positioner, _token: u32) void {
+    pub fn reposition(self: *const Popup, _positioner: Positioner, _token: u32) void {
         var _args = [_]Argument{
             .{ .object = _positioner.proxy.id },
             .{ .uint = _token },

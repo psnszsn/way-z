@@ -1,6 +1,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
+const ObjectAttrs = @import("proxy.zig").ObjectAttrs;
 const xev = @import("xev");
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const wl = @import("generated/wl.zig");
@@ -122,24 +123,29 @@ pub const Connection = struct {
 };
 
 pub const Client = struct {
-    wl_display: *wl.Display,
-    objects: std.ArrayListUnmanaged(?Proxy) = .{},
+    wl_display: wl.Display,
+    // objects: std.ArrayListUnmanaged(?Proxy) = .{},
+    objects: std.MultiArrayList(ObjectAttrs) = .{},
     unused_oids: std.ArrayListUnmanaged(u32) = .{},
     connection: *Connection,
     allocator: std.mem.Allocator,
 
     pub const Event = wl.Display.Event;
 
-    pub fn next_id(self: *const Client) u32 {
-        for (self.objects.items, 0..) |*obj, id| {
-            if (id == 0) continue;
-            if (obj.* == null) return @intCast(id);
+    pub fn next_id(self: *Client) u32 {
+        for (self.objects.items(.is_free), 0..) |is_free, id| {
+            if (is_free) return @intCast(id);
         }
-        unreachable;
+        const next = self.objects.addOneAssumeCapacity();
+        return @intCast(next);
     }
 
-    pub fn next_object(self: *const Client) *?Proxy {
-        return &self.objects.items[self.next_id()];
+    pub fn next_object(self: *Client) Proxy {
+        const id = self.next_id();
+        return .{
+            .client = self,
+            .id = id,
+        };
     }
 
     pub fn connect(allocator: std.mem.Allocator) !*Client {
@@ -149,16 +155,18 @@ pub const Client = struct {
         var self = try allocator.create(Client);
         self.* = .{
             .wl_display = undefined,
-            .objects = try std.ArrayListUnmanaged(?Proxy).initCapacity(allocator, 1000),
             .connection = undefined,
             .allocator = allocator,
         };
 
-        self.objects.appendNTimesAssumeCapacity(null, 1000);
+        try self.objects.ensureTotalCapacity(allocator, 1000);
 
         const next = self.next_object();
-        next.* = Proxy{ .client = self, .interface = &wl.Display.interface, .id = 1 };
-        self.wl_display = @ptrCast(next);
+        next.init(.{ .interface = &wl.Display.interface });
+
+        self.wl_display = wl.Display{
+            .proxy = next,
+        };
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
         const wl_display_name = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
@@ -183,7 +191,7 @@ pub const Client = struct {
 
         self.connection = connection;
 
-        self.set_listener(?*anyopaque, displayListener, null);
+        self.wl_display.set_listener(?*anyopaque, displayListener, null);
 
         return self;
     }
@@ -201,7 +209,10 @@ pub const Client = struct {
             _ = self.connection.in.copy(std.mem.asBytes(&header));
 
             if (self.connection.in.count < header.size) break;
-            const proxy = &self.objects.items[header.id].?;
+            const proxy = Proxy{
+                .id = header.id - 1,
+                .client = @constCast(self),
+            };
 
             var data = pre_wrap;
             if (data.len < header.size) {
@@ -231,38 +242,16 @@ pub const Client = struct {
         self.allocator.destroy(self);
     }
 
-    pub inline fn get_registry(self: *Client) *wl.Registry {
-        return self.wl_display.get_registry();
-    }
-
-    pub inline fn sync(self: *const Client) *wl.Callback {
-        return self.wl_display.sync();
-    }
-
-    pub inline fn set_listener(
-        self: *Client,
-        comptime T: type,
-        comptime _listener: fn (display: *Client, event: Event, data: T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn l(display: *wl.Display, event: Event, data: T) void {
-                const u: *Client = display.proxy.client;
-                _listener(u, event, data);
-            }
-        };
-        return self.wl_display.set_listener(T, w.l, _data);
-    }
     pub fn roundtrip(self: *const Client) !void {
         const w = struct {
-            fn cbListener(cb: *wl.Callback, _: wl.Callback.Event, done: *bool) void {
+            fn cbListener(cb: wl.Callback, _: wl.Callback.Event, done: *bool) void {
                 _ = cb;
                 done.* = true;
                 // Todo: cb.destroy()
                 // std.log.info("event: {}", .{event});
             }
         };
-        const callblack = self.sync();
+        const callblack = self.wl_display.sync();
         var done: bool = false;
         callblack.set_listener(*bool, w.cbListener, &done);
         self.connection.is_running = false;
@@ -274,16 +263,60 @@ pub const Client = struct {
             try self.connection.loop.run(.once);
         }
     }
+
+    // TODO
+    // pub fn set_listener(
+    //     self: *Client,
+    //     object: anytype,
+    //     comptime T: type,
+    //     comptime _listener: *const fn (*Client, @TypeOf(object), @TypeOf(object).Event, T) void,
+    //     _data: T,
+    // ) void {
+    //     _ = _listener; // autofix
+    //     const w = struct {
+    //         fn inner(client: *Client, idx: u32, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+    //             const event = @TypeOf(object).Event.from_args(opcode, args);
+    //             @call(.always_inline, _listener, .{
+    //                 client,
+    //                 @as(@TypeOf(object), @enumFromInt(idx)),
+    //                 event,
+    //                 @as(T, @ptrCast(@alignCast(__data))),
+    //             });
+    //         }
+    //     };
+    //
+    //     self.set(object, .listener, w.inner);
+    //     self.set(object, .listener_data, _data);
+    // }
+    //
+    // pub fn get(
+    //     self: *Client,
+    //     idx: anytype,
+    //     comptime item: std.meta.FieldEnum(ObjectAttrs),
+    // ) std.meta.FieldType(ObjectAttrs, item) {
+    //     return self.client.objects.items(item)[@intFromEnum(idx)];
+    // }
+    //
+    // pub fn set(
+    //     self: *Client,
+    //     idx: anytype,
+    //     comptime item: std.meta.FieldEnum(ObjectAttrs),
+    //     value: std.meta.FieldType(ObjectAttrs, item),
+    // ) void {
+    //     self.client.objects.items(item)[@intFromEnum(idx)] = value;
+    // }
 };
 
-fn displayListener(display: *Client, event: wl.Display.Event, _: ?*anyopaque) void {
+fn displayListener(displ: wl.Display, event: wl.Display.Event, _: ?*anyopaque) void {
+    const client = displ.proxy.client;
     switch (event) {
         .@"error" => |e| {
             std.log.err("Wayland error {}: {s}", .{ e.code, e.message });
         },
         .delete_id => |del| {
-            std.debug.assert(display.objects.items[del.id] != null);
-            display.objects.items[del.id] = null;
+            const id = del.id - 1;
+            std.debug.assert(client.objects.items(.is_free)[id] == false);
+            client.objects.items(.is_free)[id] = true;
         },
     }
 }

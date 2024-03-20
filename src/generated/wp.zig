@@ -46,6 +46,16 @@ pub const CursorShapeManagerV1 = struct {
             "get_tablet_tool_v2",
         },
     };
+    pub const Request = union(enum) {
+        destroy: void,
+        get_pointer: struct {
+            pointer: ?u32,
+        },
+        get_tablet_tool_v2: struct {
+            tablet_tool: ?u32,
+        },
+    };
+
     /// Destroy the cursor shape manager.
     pub fn destroy(self: *const CursorShapeManagerV1) void {
         self.proxy.marshal_request(0, &.{}) catch unreachable;
@@ -53,7 +63,7 @@ pub const CursorShapeManagerV1 = struct {
     }
 
     /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
-    pub fn get_pointer(self: *const CursorShapeManagerV1, _pointer: *wl.Pointer) *CursorShapeDeviceV1 {
+    pub fn get_pointer(self: *const CursorShapeManagerV1, _pointer: wl.Pointer) CursorShapeDeviceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _pointer.proxy.id },
@@ -62,7 +72,7 @@ pub const CursorShapeManagerV1 = struct {
     }
 
     /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
-    pub fn get_tablet_tool_v2(self: *const CursorShapeManagerV1, _tablet_tool: *zwp.TabletToolV2) *CursorShapeDeviceV1 {
+    pub fn get_tablet_tool_v2(self: *const CursorShapeManagerV1, _tablet_tool: zwp.TabletToolV2) CursorShapeDeviceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .object = _tablet_tool.proxy.id },
@@ -121,6 +131,13 @@ pub const CursorShapeDeviceV1 = struct {
     };
     pub const Error = enum(c_int) {
         invalid_shape = 1,
+    };
+    pub const Request = union(enum) {
+        destroy: void,
+        set_shape: struct {
+            serial: u32,
+            shape: Shape,
+        },
     };
 
     /// Destroy the cursor shape device.

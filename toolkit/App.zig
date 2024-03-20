@@ -20,16 +20,16 @@ const Layout = w.Layout;
 const Event = @import("event.zig").Event;
 
 client: *wayland.Client,
-shm: ?*wl.Shm = null,
-compositor: ?*wl.Compositor = null,
-wm_base: ?*xdg.WmBase = null,
-layer_shell: ?*zwlr.LayerShellV1 = null,
-cursor_shape_manager: ?*wp.CursorShapeManagerV1 = null,
-seat: ?*wl.Seat = null,
-cursor_shape_device: ?*wp.CursorShapeDeviceV1 = null,
+shm: ?wl.Shm = null,
+compositor: ?wl.Compositor = null,
+wm_base: ?xdg.WmBase = null,
+layer_shell: ?zwlr.LayerShellV1 = null,
+cursor_shape_manager: ?wp.CursorShapeManagerV1 = null,
+seat: ?wl.Seat = null,
+cursor_shape_device: ?wp.CursorShapeDeviceV1 = null,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 pointer_enter_serial: u32 = 0,
-pointer: ?*wl.Pointer = null,
+pointer: ?wl.Pointer = null,
 
 font: *font.Font,
 
@@ -38,7 +38,7 @@ running: bool = true,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
     const client = try wayland.Client.connect(alloc);
-    const registry = client.get_registry();
+    const registry = client.wl_display.get_registry();
 
     // TODO: remove allocation
     const app = try alloc.create(App);
@@ -116,13 +116,13 @@ const WindowType = enum {
 pub const Window = struct {
     app: *App,
 
-    wl_surface: *wl.Surface,
+    wl_surface: wl.Surface,
     wl: union(WindowType) {
         xdg_shell: struct {
-            xdg_surface: *xdg.Surface,
-            xdg_toplevel: *xdg.Toplevel,
+            xdg_surface: xdg.Surface,
+            xdg_toplevel: xdg.Toplevel,
         },
-        wlr_layer_shell: *zwlr.LayerSurfaceV1,
+        wlr_layer_shell: zwlr.LayerSurfaceV1,
     },
     width: u32,
     height: u32,
@@ -170,7 +170,7 @@ pub const Window = struct {
         self.wl_surface.commit();
     }
 
-    fn layer_suface_listener(layer_suface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
+    fn layer_suface_listener(layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
         switch (event) {
             .configure => |configure| {
                 layer_suface.ack_configure(configure.serial);
@@ -195,7 +195,7 @@ pub const Window = struct {
         }
     }
 
-    fn frame_listener(cb: *wl.Callback, event: wl.Callback.Event, window: *Window) void {
+    fn frame_listener(cb: wl.Callback, event: wl.Callback.Event, window: *Window) void {
         _ = cb;
         switch (event) {
             .done => |done| {
@@ -206,14 +206,14 @@ pub const Window = struct {
         }
     }
 
-    fn xdg_surface_listener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
+    fn xdg_surface_listener(xdg_surface: xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
         switch (event) {
             .configure => |configure| {
                 xdg_surface.ack_configure(configure.serial);
             },
         }
     }
-    fn xdg_toplevel_listener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
+    fn xdg_toplevel_listener(_: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
         switch (event) {
             .configure => |configure| {
                 if (configure.width == 0) return;
@@ -242,7 +242,7 @@ pub const Window = struct {
     }
 };
 
-pub fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *App) void {
+pub fn registryListener(registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
@@ -264,7 +264,7 @@ pub fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, contex
     }
 }
 
-fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
+fn seat_listener(seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
@@ -289,7 +289,7 @@ fn seat_listener(seat: *wl.Seat, event: wl.Seat.Event, app: *App) void {
     }
 }
 
-fn pointer_listener(_: *wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
+fn pointer_listener(_: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const win = app.window;
     const event: ?Event.PointerEvent = switch (_event) {
         .enter => |ev| blk: {

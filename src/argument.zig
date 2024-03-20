@@ -1,6 +1,5 @@
 const std = @import("std");
 
-
 pub const Fixed = enum(i32) {
     _,
     pub fn toInt(f: Fixed) i24 {
@@ -62,6 +61,9 @@ pub const Argument = union(enum) {
         switch (self.*) {
             .new_id,
             .object,
+            => |inner| {
+                try writer.writeInt(u32, inner + 1, .little);
+            },
             .uint,
             => |inner| {
                 try writer.writeInt(u32, inner, .little);
@@ -96,7 +98,7 @@ pub const Argument = union(enum) {
             },
             .uint => {
                 // std.debug.print("v: {}\n", .{v});
-                return Argument{ .uint = @bitCast(data[0..4].*)};
+                return Argument{ .uint = @bitCast(data[0..4].*) };
             },
             .int => {
                 // std.debug.print("v: {}\n", .{v});

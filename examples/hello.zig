@@ -12,17 +12,17 @@ pub const std_options = std.Options{
 };
 
 const App = struct {
-    shm: ?*wl.Shm,
-    compositor: ?*wl.Compositor,
-    wm_base: ?*xdg.WmBase,
+    shm: ?wl.Shm,
+    compositor: ?wl.Compositor,
+    wm_base: ?xdg.WmBase,
     running: bool = true,
 };
 
 const SurfaceCtx = struct {
     ctx: *App,
-    wl_surface: *wl.Surface,
-    xdg_surface: *xdg.Surface,
-    xdg_toplevel: *xdg.Toplevel,
+    wl_surface: wl.Surface,
+    xdg_surface: xdg.Surface,
+    xdg_toplevel: xdg.Toplevel,
     width: u32,
     height: u32,
     offset: f32,
@@ -35,7 +35,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = client.get_registry();
+    const registry = client.wl_display.get_registry();
 
     var context = App{
         .shm = null,
@@ -88,7 +88,7 @@ pub fn main() !void {
     try client.recvEvents();
 }
 
-fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *App) void {
+fn registryListener(registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
@@ -135,7 +135,7 @@ fn draw2(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
     }
 }
 
-fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
+fn xdgSurfaceListener(xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
     _ = surf;
     switch (event) {
         .configure => |configure| {
@@ -144,7 +144,7 @@ fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, surf:
     }
 }
 
-fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
+fn xdgToplevelListener(_: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
     switch (event) {
         .configure => |configure| {
             std.log.warn("new size {} {}", .{ configure.width, configure.height });
@@ -158,7 +158,7 @@ fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, surf: *Surfa
     }
 }
 
-fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
+fn seatListener(_: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
@@ -173,7 +173,7 @@ fn seatListener(_: *wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     }
 }
 
-fn frameListener(cb: *wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
+fn frameListener(cb: wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
     _ = cb;
     switch (event) {
         .done => |done| {
