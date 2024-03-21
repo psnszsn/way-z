@@ -8,13 +8,13 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = client.wl_display.get_registry();
+    const registry = client.wl_display.get_registry(client);
     var foo: u32 = 42;
-    registry.set_listener(*u32, listener, &foo);
+    client.set_listener(registry, *u32, listener, &foo);
     try client.roundtrip();
 }
 
-fn listener(_: wl.Registry, event: wl.Registry.Event, data: *u32) void {
+fn listener(_: *wayland.Client, _: wl.Registry, event: wl.Registry.Event, data: *u32) void {
     std.debug.print("foo is {}\n", .{data.*});
     switch (event) {
         .global => |e| {

@@ -28,11 +28,12 @@ const Proxy = @import("../proxy.zig").Proxy;
 const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
 
 /// The core global object.  This is a special singleton object.  It
 /// is used for internal Wayland protocol features.
-pub const Display = struct {
-    proxy: Proxy,
+pub const Display = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_display",
         .version = 1,
@@ -65,7 +66,6 @@ pub const Display = struct {
             code: u32, // error code
             message: [:0]const u8, // error description
         },
-
         /// This event is used internally by the object ID management
         /// logic. When a client deletes an object that it had created,
         /// the server will send this event to acknowledge that it has
@@ -96,31 +96,38 @@ pub const Display = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Display,
-        comptime T: type,
-        comptime _listener: *const fn (Display, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Display{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// The sync request asks the server to emit the 'done' event
+        /// on the returned wl_callback object.  Since requests are
+        /// handled in-order and events are delivered in-order, this can
+        /// be used as a barrier to ensure all previous requests and the
+        /// resulting events have been handled.
+        ///
+        /// The object returned by this request will be destroyed by the
+        /// compositor after the callback is fired and as such the client must not
+        /// attempt to use it after that point.
+        ///
+        /// The callback_data passed in the callback is the event serial.
         sync: void,
+        /// This request creates a registry object that allows the client
+        /// to list and bind the global objects available from the
+        /// compositor.
+        ///
+        /// It should be noted that the server side resources consumed in
+        /// response to a get_registry request can only be released when the
+        /// client disconnects, not when the client side proxy is destroyed.
+        /// Therefore, clients should invoke get_registry as infrequently as
+        /// possible to avoid wasting memory.
         get_registry: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => Callback,
+                1 => Registry,
+            };
+        }
     };
 
     /// The sync request asks the server to emit the 'done' event
@@ -134,11 +141,12 @@ pub const Display = struct {
     /// attempt to use it after that point.
     ///
     /// The callback_data passed in the callback is the event serial.
-    pub fn sync(self: *const Display) Callback {
+    pub fn sync(self: Display, client: *Client) Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Callback, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Callback, 0, &_args) catch @panic("buffer full");
     }
 
     /// This request creates a registry object that allows the client
@@ -150,11 +158,12 @@ pub const Display = struct {
     /// client disconnects, not when the client side proxy is destroyed.
     /// Therefore, clients should invoke get_registry as infrequently as
     /// possible to avoid wasting memory.
-    pub fn get_registry(self: *const Display) Registry {
+    pub fn get_registry(self: Display, client: *Client) Registry {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Registry, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Registry, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -178,8 +187,8 @@ pub const Display = struct {
 /// request.  This creates a client-side handle that lets the object
 /// emit events to the client and lets the client invoke requests on
 /// the object.
-pub const Registry = struct {
-    proxy: Proxy,
+pub const Registry = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_registry",
         .version = 1,
@@ -203,7 +212,6 @@ pub const Registry = struct {
             interface: [:0]const u8, // interface implemented by the object
             version: u32, // interface version
         },
-
         /// Notify the client of removed global objects.
         ///
         /// This event notifies the client that the global identified
@@ -239,44 +247,33 @@ pub const Registry = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Registry,
-        comptime T: type,
-        comptime _listener: *const fn (Registry, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Registry{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Binds a new, client-created object to the server using the
+        /// specified name as the identifier.
         bind: struct {
-            name: u32,
+            name: u32, // unique numeric name of the object
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => @compileError("BIND"),
+            };
+        }
     };
 
     /// Binds a new, client-created object to the server using the
     /// specified name as the identifier.
-    pub fn bind(self: *const Registry, _name: u32, comptime T: type, _version: u32) T {
+    pub fn bind(self: Registry, client: *Client, _name: u32, comptime T: type, _version: u32) T {
         var _args = [_]Argument{
             .{ .uint = _name },
             .{ .string = T.interface.name },
             .{ .uint = _version },
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(T, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(T, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -285,8 +282,8 @@ pub const Registry = struct {
 ///
 /// Note, because wl_callback objects are created from multiple independent
 /// factory interfaces, the wl_callback interface is frozen at version 1.
-pub const Callback = struct {
-    proxy: Proxy,
+pub const Callback = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_callback",
         .version = 1,
@@ -315,36 +312,20 @@ pub const Callback = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Callback,
-        comptime T: type,
-        comptime _listener: *const fn (Callback, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Callback{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
-    pub const Request = union(enum) {};
+    pub const Request = union(enum) {
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {};
+        }
+    };
 };
 
 /// A compositor.  This object is a singleton global.  The
 /// compositor is in charge of combining the contents of multiple
 /// surfaces into one displayable output.
-pub const Compositor = struct {
-    proxy: Proxy,
+pub const Compositor = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_compositor",
         .version = 6,
@@ -354,24 +335,37 @@ pub const Compositor = struct {
         },
     };
     pub const Request = union(enum) {
+        /// Ask the compositor to create a new surface.
         create_surface: void,
+        /// Ask the compositor to create a new region.
         create_region: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => Surface,
+                1 => Region,
+            };
+        }
     };
 
     /// Ask the compositor to create a new surface.
-    pub fn create_surface(self: *const Compositor) Surface {
+    pub fn create_surface(self: Compositor, client: *Client) Surface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Surface, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Surface, 0, &_args) catch @panic("buffer full");
     }
 
     /// Ask the compositor to create a new region.
-    pub fn create_region(self: *const Compositor) Region {
+    pub fn create_region(self: Compositor, client: *Client) Region {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Region, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Region, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -382,8 +376,8 @@ pub const Compositor = struct {
 /// underlying mapped memory. Reusing the mapped memory avoids the
 /// setup/teardown overhead and is useful when interactively resizing
 /// a surface or for many small buffers.
-pub const ShmPool = struct {
-    proxy: Proxy,
+pub const ShmPool = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_shm_pool",
         .version = 1,
@@ -394,17 +388,53 @@ pub const ShmPool = struct {
         },
     };
     pub const Request = union(enum) {
+        /// Create a wl_buffer object from the pool.
+        ///
+        /// The buffer is created offset bytes into the pool and has
+        /// width and height as specified.  The stride argument specifies
+        /// the number of bytes from the beginning of one row to the beginning
+        /// of the next.  The format is the pixel format of the buffer and
+        /// must be one of those advertised through the wl_shm.format event.
+        ///
+        /// A buffer will keep a reference to the pool it was created from
+        /// so it is valid to destroy the pool immediately after creating
+        /// a buffer from it.
         create_buffer: struct {
-            offset: i32,
-            width: i32,
-            height: i32,
-            stride: i32,
-            format: Shm.Format,
+            offset: i32, // buffer byte offset within the pool
+            width: i32, // buffer width, in pixels
+            height: i32, // buffer height, in pixels
+            stride: i32, // number of bytes from the beginning of one row to the beginning of the next row
+            format: Shm.Format, // buffer pixel format
         },
+        /// Destroy the shared memory pool.
+        ///
+        /// The mmapped memory will be released when all
+        /// buffers that have been created from this pool
+        /// are gone.
         destroy: void,
+        /// This request will cause the server to remap the backing memory
+        /// for the pool from the file descriptor passed when the pool was
+        /// created, but using the new size.  This request can only be
+        /// used to make the pool bigger.
+        ///
+        /// This request only changes the amount of bytes that are mmapped
+        /// by the server and does not touch the file corresponding to the
+        /// file descriptor passed at creation time. It is the client's
+        /// responsibility to ensure that the file is at least as big as
+        /// the new pool size.
         resize: struct {
-            size: i32,
+            size: i32, // new size of the pool, in bytes
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => Buffer,
+                1 => void,
+                2 => void,
+            };
+        }
     };
 
     /// Create a wl_buffer object from the pool.
@@ -418,7 +448,7 @@ pub const ShmPool = struct {
     /// A buffer will keep a reference to the pool it was created from
     /// so it is valid to destroy the pool immediately after creating
     /// a buffer from it.
-    pub fn create_buffer(self: *const ShmPool, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) Buffer {
+    pub fn create_buffer(self: ShmPool, client: *Client, _offset: i32, _width: i32, _height: i32, _stride: i32, _format: Shm.Format) Buffer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .int = _offset },
@@ -427,7 +457,8 @@ pub const ShmPool = struct {
             .{ .int = _stride },
             .{ .uint = @intCast(@intFromEnum(_format)) },
         };
-        return self.proxy.marshal_request_constructor(Buffer, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Buffer, 0, &_args) catch @panic("buffer full");
     }
 
     /// Destroy the shared memory pool.
@@ -435,8 +466,9 @@ pub const ShmPool = struct {
     /// The mmapped memory will be released when all
     /// buffers that have been created from this pool
     /// are gone.
-    pub fn destroy(self: *const ShmPool) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: ShmPool, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -450,11 +482,12 @@ pub const ShmPool = struct {
     /// file descriptor passed at creation time. It is the client's
     /// responsibility to ensure that the file is at least as big as
     /// the new pool size.
-    pub fn resize(self: *const ShmPool, _size: i32) void {
+    pub fn resize(self: ShmPool, client: *Client, _size: i32) void {
         var _args = [_]Argument{
             .{ .int = _size },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 };
 
@@ -467,8 +500,8 @@ pub const ShmPool = struct {
 /// On binding the wl_shm object one or more format events
 /// are emitted to inform clients about the valid pixel formats
 /// that can be used for buffers.
-pub const Shm = struct {
-    proxy: Proxy,
+pub const Shm = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_shm",
         .version = 1,
@@ -617,33 +650,24 @@ pub const Shm = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Shm,
-        comptime T: type,
-        comptime _listener: *const fn (Shm, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Shm{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Create a new wl_shm_pool object.
+        ///
+        /// The pool can be used to create shared memory based buffer
+        /// objects.  The server will mmap size bytes of the passed file
+        /// descriptor, to use as backing memory for the pool.
         create_pool: struct {
-            fd: i32,
-            size: i32,
+            fd: i32, // file descriptor for the pool
+            size: i32, // pool size, in bytes
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => ShmPool,
+            };
+        }
     };
 
     /// Create a new wl_shm_pool object.
@@ -651,13 +675,14 @@ pub const Shm = struct {
     /// The pool can be used to create shared memory based buffer
     /// objects.  The server will mmap size bytes of the passed file
     /// descriptor, to use as backing memory for the pool.
-    pub fn create_pool(self: *const Shm, _fd: i32, _size: i32) ShmPool {
+    pub fn create_pool(self: Shm, client: *Client, _fd: i32, _size: i32) ShmPool {
         var _args = [_]Argument{
             .{ .new_id = 0 },
             .{ .fd = _fd },
             .{ .int = _size },
         };
-        return self.proxy.marshal_request_constructor(ShmPool, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(ShmPool, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -674,8 +699,8 @@ pub const Shm = struct {
 ///
 /// Note, because wl_buffer objects are created from multiple independent
 /// factory interfaces, the wl_buffer interface is frozen at version 1.
-pub const Buffer = struct {
-    proxy: Proxy,
+pub const Buffer = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_buffer",
         .version = 1,
@@ -701,6 +726,7 @@ pub const Buffer = struct {
         /// wl_surface contents, e.g. as a GL texture. This is an important
         /// optimization for GL(ES) compositors with wl_shm clients.
         release: void,
+
         pub fn from_args(
             opcode: u16,
             _: []Argument,
@@ -711,38 +737,29 @@ pub const Buffer = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Buffer,
-        comptime T: type,
-        comptime _listener: *const fn (Buffer, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Buffer{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Destroy a buffer. If and how you need to release the backing
+        /// storage is defined by the buffer factory interface.
+        ///
+        /// For possible side-effects to a surface, see wl_surface.attach.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
 
     /// Destroy a buffer. If and how you need to release the backing
     /// storage is defined by the buffer factory interface.
     ///
     /// For possible side-effects to a surface, see wl_surface.attach.
-    pub fn destroy(self: *const Buffer) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: Buffer, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -753,8 +770,8 @@ pub const Buffer = struct {
 /// describes the different mime types that the data can be
 /// converted to and provides the mechanism for transferring the
 /// data directly from the source client.
-pub const DataOffer = struct {
-    proxy: Proxy,
+pub const DataOffer = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_data_offer",
         .version = 3,
@@ -784,7 +801,6 @@ pub const DataOffer = struct {
         offer: struct {
             mime_type: [:0]const u8, // offered mime type
         },
-
         /// This event indicates the actions offered by the data source. It
         /// will be sent immediately after creating the wl_data_offer object,
         /// or anytime the source side changes its offered actions through
@@ -792,7 +808,6 @@ pub const DataOffer = struct {
         source_actions: struct {
             source_actions: DataDeviceManager.DndAction, // actions offered by the data source
         },
-
         /// This event indicates the action selected by the compositor after
         /// matching the source/destination side actions. Only one action (or
         /// none) will be offered here.
@@ -856,43 +871,108 @@ pub const DataOffer = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: DataOffer,
-        comptime T: type,
-        comptime _listener: *const fn (DataOffer, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    DataOffer{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Indicate that the client can accept the given mime type, or
+        /// NULL for not accepted.
+        ///
+        /// For objects of version 2 or older, this request is used by the
+        /// client to give feedback whether the client can receive the given
+        /// mime type, or NULL if none is accepted; the feedback does not
+        /// determine whether the drag-and-drop operation succeeds or not.
+        ///
+        /// For objects of version 3 or newer, this request determines the
+        /// final result of the drag-and-drop operation. If the end result
+        /// is that no mime types were accepted, the drag-and-drop operation
+        /// will be cancelled and the corresponding drag source will receive
+        /// wl_data_source.cancelled. Clients may still use this event in
+        /// conjunction with wl_data_source.action for feedback.
         accept: struct {
-            serial: u32,
-            mime_type: ?[:0]const u8,
+            serial: u32, // serial number of the accept request
+            mime_type: ?[:0]const u8, // mime type accepted by the client
         },
+        /// To transfer the offered data, the client issues this request
+        /// and indicates the mime type it wants to receive.  The transfer
+        /// happens through the passed file descriptor (typically created
+        /// with the pipe system call).  The source client writes the data
+        /// in the mime type representation requested and then closes the
+        /// file descriptor.
+        ///
+        /// The receiving client reads from the read end of the pipe until
+        /// EOF and then closes its end, at which point the transfer is
+        /// complete.
+        ///
+        /// This request may happen multiple times for different mime types,
+        /// both before and after wl_data_device.drop. Drag-and-drop destination
+        /// clients may preemptively fetch data or examine it more closely to
+        /// determine acceptance.
         receive: struct {
-            mime_type: [:0]const u8,
-            fd: i32,
+            mime_type: [:0]const u8, // mime type desired by receiver
+            fd: i32, // file descriptor for data transfer
         },
+        /// Destroy the data offer.
         destroy: void,
+        /// Notifies the compositor that the drag destination successfully
+        /// finished the drag-and-drop operation.
+        ///
+        /// Upon receiving this request, the compositor will emit
+        /// wl_data_source.dnd_finished on the drag source client.
+        ///
+        /// It is a client error to perform other requests than
+        /// wl_data_offer.destroy after this one. It is also an error to perform
+        /// this request after a NULL mime type has been set in
+        /// wl_data_offer.accept or no action was received through
+        /// wl_data_offer.action.
+        ///
+        /// If wl_data_offer.finish request is received for a non drag and drop
+        /// operation, the invalid_finish protocol error is raised.
         finish: void,
+        /// Sets the actions that the destination side client supports for
+        /// this operation. This request may trigger the emission of
+        /// wl_data_source.action and wl_data_offer.action events if the compositor
+        /// needs to change the selected action.
+        ///
+        /// This request can be called multiple times throughout the
+        /// drag-and-drop operation, typically in response to wl_data_device.enter
+        /// or wl_data_device.motion events.
+        ///
+        /// This request determines the final result of the drag-and-drop
+        /// operation. If the end result is that no action is accepted,
+        /// the drag source will receive wl_data_source.cancelled.
+        ///
+        /// The dnd_actions argument must contain only values expressed in the
+        /// wl_data_device_manager.dnd_actions enum, and the preferred_action
+        /// argument must only contain one of those values set, otherwise it
+        /// will result in a protocol error.
+        ///
+        /// While managing an "ask" action, the destination drag-and-drop client
+        /// may perform further wl_data_offer.receive requests, and is expected
+        /// to perform one last wl_data_offer.set_actions request with a preferred
+        /// action other than "ask" (and optionally wl_data_offer.accept) before
+        /// requesting wl_data_offer.finish, in order to convey the action selected
+        /// by the user. If the preferred action is not in the
+        /// wl_data_offer.source_actions mask, an error will be raised.
+        ///
+        /// If the "ask" action is dismissed (e.g. user cancellation), the client
+        /// is expected to perform wl_data_offer.destroy right away.
+        ///
+        /// This request can only be made on drag-and-drop offers, a protocol error
+        /// will be raised otherwise.
         set_actions: struct {
-            dnd_actions: DataDeviceManager.DndAction,
-            preferred_action: DataDeviceManager.DndAction,
+            dnd_actions: DataDeviceManager.DndAction, // actions supported by the destination client
+            preferred_action: DataDeviceManager.DndAction, // action preferred by the destination client
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+                3 => void,
+                4 => void,
+            };
+        }
     };
 
     /// Indicate that the client can accept the given mime type, or
@@ -909,12 +989,13 @@ pub const DataOffer = struct {
     /// will be cancelled and the corresponding drag source will receive
     /// wl_data_source.cancelled. Clients may still use this event in
     /// conjunction with wl_data_source.action for feedback.
-    pub fn accept(self: *const DataOffer, _serial: u32, _mime_type: ?[:0]const u8) void {
+    pub fn accept(self: DataOffer, client: *Client, _serial: u32, _mime_type: ?[:0]const u8) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .string = _mime_type },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// To transfer the offered data, the client issues this request
@@ -932,17 +1013,19 @@ pub const DataOffer = struct {
     /// both before and after wl_data_device.drop. Drag-and-drop destination
     /// clients may preemptively fetch data or examine it more closely to
     /// determine acceptance.
-    pub fn receive(self: *const DataOffer, _mime_type: [:0]const u8, _fd: i32) void {
+    pub fn receive(self: DataOffer, client: *Client, _mime_type: [:0]const u8, _fd: i32) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
             .{ .fd = _fd },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// Destroy the data offer.
-    pub fn destroy(self: *const DataOffer) void {
-        self.proxy.marshal_request(2, &.{}) catch unreachable;
+    pub fn destroy(self: DataOffer, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -960,8 +1043,9 @@ pub const DataOffer = struct {
     ///
     /// If wl_data_offer.finish request is received for a non drag and drop
     /// operation, the invalid_finish protocol error is raised.
-    pub fn finish(self: *const DataOffer) void {
-        self.proxy.marshal_request(3, &.{}) catch unreachable;
+    pub fn finish(self: DataOffer, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(3, &.{}) catch unreachable;
     }
 
     /// Sets the actions that the destination side client supports for
@@ -995,12 +1079,13 @@ pub const DataOffer = struct {
     ///
     /// This request can only be made on drag-and-drop offers, a protocol error
     /// will be raised otherwise.
-    pub fn set_actions(self: *const DataOffer, _dnd_actions: DataDeviceManager.DndAction, _preferred_action: DataDeviceManager.DndAction) void {
+    pub fn set_actions(self: DataOffer, client: *Client, _dnd_actions: DataDeviceManager.DndAction, _preferred_action: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
             .{ .uint = @bitCast(_dnd_actions) },
             .{ .uint = @bitCast(_preferred_action) },
         };
-        self.proxy.marshal_request(4, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(4, &_args) catch unreachable;
     }
 };
 
@@ -1008,8 +1093,8 @@ pub const DataOffer = struct {
 /// It is created by the source client in a data transfer and
 /// provides a way to describe the offered data and a way to respond
 /// to requests to transfer the data.
-pub const DataSource = struct {
-    proxy: Proxy,
+pub const DataSource = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_data_source",
         .version = 3,
@@ -1040,7 +1125,6 @@ pub const DataSource = struct {
         target: struct {
             mime_type: ?[:0]const u8, // mime type accepted by the target
         },
-
         /// Request for data from the client.  Send the data as the
         /// specified mime type over the passed file descriptor, then
         /// close it.
@@ -1048,7 +1132,6 @@ pub const DataSource = struct {
             mime_type: [:0]const u8, // mime type for the data
             fd: i32, // file descriptor for the data
         },
-
         /// This data source is no longer valid. There are several reasons why
         /// this could happen:
         ///
@@ -1144,51 +1227,58 @@ pub const DataSource = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: DataSource,
-        comptime T: type,
-        comptime _listener: *const fn (DataSource, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    DataSource{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// This request adds a mime type to the set of mime types
+        /// advertised to targets.  Can be called several times to offer
+        /// multiple types.
         offer: struct {
-            mime_type: [:0]const u8,
+            mime_type: [:0]const u8, // mime type offered by the data source
         },
+        /// Destroy the data source.
         destroy: void,
+        /// Sets the actions that the source side client supports for this
+        /// operation. This request may trigger wl_data_source.action and
+        /// wl_data_offer.action events if the compositor needs to change the
+        /// selected action.
+        ///
+        /// The dnd_actions argument must contain only values expressed in the
+        /// wl_data_device_manager.dnd_actions enum, otherwise it will result
+        /// in a protocol error.
+        ///
+        /// This request must be made once only, and can only be made on sources
+        /// used in drag-and-drop, so it must be performed before
+        /// wl_data_device.start_drag. Attempting to use the source other than
+        /// for drag-and-drop will raise a protocol error.
         set_actions: struct {
-            dnd_actions: DataDeviceManager.DndAction,
+            dnd_actions: DataDeviceManager.DndAction, // actions supported by the data source
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+            };
+        }
     };
 
     /// This request adds a mime type to the set of mime types
     /// advertised to targets.  Can be called several times to offer
     /// multiple types.
-    pub fn offer(self: *const DataSource, _mime_type: [:0]const u8) void {
+    pub fn offer(self: DataSource, client: *Client, _mime_type: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _mime_type },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// Destroy the data source.
-    pub fn destroy(self: *const DataSource) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: DataSource, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -1205,11 +1295,12 @@ pub const DataSource = struct {
     /// used in drag-and-drop, so it must be performed before
     /// wl_data_device.start_drag. Attempting to use the source other than
     /// for drag-and-drop will raise a protocol error.
-    pub fn set_actions(self: *const DataSource, _dnd_actions: DataDeviceManager.DndAction) void {
+    pub fn set_actions(self: DataSource, client: *Client, _dnd_actions: DataDeviceManager.DndAction) void {
         var _args = [_]Argument{
             .{ .uint = @bitCast(_dnd_actions) },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 };
 
@@ -1218,8 +1309,8 @@ pub const DataSource = struct {
 ///
 /// A wl_data_device provides access to inter-client data transfer
 /// mechanisms such as copy-and-paste and drag-and-drop.
-pub const DataDevice = struct {
-    proxy: Proxy,
+pub const DataDevice = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_data_device",
         .version = 3,
@@ -1249,10 +1340,7 @@ pub const DataDevice = struct {
         /// following the data_device.data_offer event, the new data_offer
         /// object will send out data_offer.offer events to describe the
         /// mime types it offers.
-        data_offer: struct {
-            id: *DataOffer, // the new data_offer object
-        },
-
+        data_offer: void,
         /// This event is sent when an active drag-and-drop pointer enters
         /// a surface owned by the client.  The position of the pointer at
         /// enter time is provided by the x and y arguments, in surface-local
@@ -1264,7 +1352,6 @@ pub const DataDevice = struct {
             y: Fixed, // surface-local y coordinate
             id: u32, // source data_offer object
         },
-
         /// This event is sent when the drag-and-drop pointer leaves the
         /// surface and the session ends.  The client must destroy the
         /// wl_data_offer introduced at enter time at this point.
@@ -1278,7 +1365,6 @@ pub const DataDevice = struct {
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
         },
-
         /// The event is sent when a drag-and-drop operation is ended
         /// because the implicit grab is removed.
         ///
@@ -1346,40 +1432,58 @@ pub const DataDevice = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: DataDevice,
-        comptime T: type,
-        comptime _listener: *const fn (DataDevice, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    DataDevice{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// This request asks the compositor to start a drag-and-drop
+        /// operation on behalf of the client.
+        ///
+        /// The source argument is the data source that provides the data
+        /// for the eventual data transfer. If source is NULL, enter, leave
+        /// and motion events are sent only to the client that initiated the
+        /// drag and the client is expected to handle the data passing
+        /// internally. If source is destroyed, the drag-and-drop session will be
+        /// cancelled.
+        ///
+        /// The origin surface is the surface where the drag originates and
+        /// the client must have an active implicit grab that matches the
+        /// serial.
+        ///
+        /// The icon surface is an optional (can be NULL) surface that
+        /// provides an icon to be moved around with the cursor.  Initially,
+        /// the top-left corner of the icon surface is placed at the cursor
+        /// hotspot, but subsequent wl_surface.attach request can move the
+        /// relative position. Attach requests must be confirmed with
+        /// wl_surface.commit as usual. The icon surface is given the role of
+        /// a drag-and-drop icon. If the icon surface already has another role,
+        /// it raises a protocol error.
+        ///
+        /// The input region is ignored for wl_surfaces with the role of a
+        /// drag-and-drop icon.
         start_drag: struct {
-            source: u32,
-            origin: ?u32,
-            icon: u32,
-            serial: u32,
+            source: u32, // data source for the eventual transfer
+            origin: ?u32, // surface where the drag originates
+            icon: u32, // drag-and-drop icon surface
+            serial: u32, // serial number of the implicit grab on the origin
         },
+        /// This request asks the compositor to set the selection
+        /// to the data from the source on behalf of the client.
+        ///
+        /// To unset the selection, set the source to NULL.
         set_selection: struct {
-            source: u32,
-            serial: u32,
+            source: u32, // data source for the selection
+            serial: u32, // serial number of the event that triggered this request
         },
+        /// This request destroys the data device.
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+            };
+        }
     };
 
     /// This request asks the compositor to start a drag-and-drop
@@ -1407,31 +1511,34 @@ pub const DataDevice = struct {
     ///
     /// The input region is ignored for wl_surfaces with the role of a
     /// drag-and-drop icon.
-    pub fn start_drag(self: *const DataDevice, _source: ?DataSource, _origin: Surface, _icon: ?Surface, _serial: u32) void {
+    pub fn start_drag(self: DataDevice, client: *Client, _source: ?DataSource, _origin: Surface, _icon: ?Surface, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .object = if (_source) |arg| arg.proxy.id else 0 },
-            .{ .object = _origin.proxy.id },
-            .{ .object = if (_icon) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_source) |arg| @intFromEnum(arg) else 0 },
+            .{ .object = @intFromEnum(_origin) },
+            .{ .object = if (_icon) |arg| @intFromEnum(arg) else 0 },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// This request asks the compositor to set the selection
     /// to the data from the source on behalf of the client.
     ///
     /// To unset the selection, set the source to NULL.
-    pub fn set_selection(self: *const DataDevice, _source: ?DataSource, _serial: u32) void {
+    pub fn set_selection(self: DataDevice, client: *Client, _source: ?DataSource, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .object = if (_source) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_source) |arg| @intFromEnum(arg) else 0 },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// This request destroys the data device.
-    pub fn release(self: *const DataDevice) void {
-        self.proxy.marshal_request(2, &.{}) catch unreachable;
+    pub fn release(self: DataDevice, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -1446,8 +1553,8 @@ pub const DataDevice = struct {
 /// wl_data_device_manager object will have different requirements for
 /// functioning properly. See wl_data_source.set_actions,
 /// wl_data_offer.accept and wl_data_offer.finish for details.
-pub const DataDeviceManager = struct {
-    proxy: Proxy,
+pub const DataDeviceManager = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_data_device_manager",
         .version = 3,
@@ -1463,27 +1570,40 @@ pub const DataDeviceManager = struct {
         _padding: u29 = 0,
     };
     pub const Request = union(enum) {
+        /// Create a new data source.
         create_data_source: void,
+        /// Create a new data device for a given seat.
         get_data_device: struct {
-            seat: ?u32,
+            seat: ?u32, // seat associated with the data device
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => DataSource,
+                1 => DataDevice,
+            };
+        }
     };
 
     /// Create a new data source.
-    pub fn create_data_source(self: *const DataDeviceManager) DataSource {
+    pub fn create_data_source(self: DataDeviceManager, client: *Client) DataSource {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(DataSource, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(DataSource, 0, &_args) catch @panic("buffer full");
     }
 
     /// Create a new data device for a given seat.
-    pub fn get_data_device(self: *const DataDeviceManager, _seat: Seat) DataDevice {
+    pub fn get_data_device(self: DataDeviceManager, client: *Client, _seat: Seat) DataDevice {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _seat.proxy.id },
+            .{ .object = @intFromEnum(_seat) },
         };
-        return self.proxy.marshal_request_constructor(DataDevice, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(DataDevice, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -1496,8 +1616,8 @@ pub const DataDeviceManager = struct {
 /// Note! This protocol is deprecated and not intended for production use.
 /// For desktop-style user interfaces, use xdg_shell. Compositors and clients
 /// should not implement this interface.
-pub const Shell = struct {
-    proxy: Proxy,
+pub const Shell = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_shell",
         .version = 1,
@@ -1509,9 +1629,22 @@ pub const Shell = struct {
         role = 0,
     };
     pub const Request = union(enum) {
+        /// Create a shell surface for an existing surface. This gives
+        /// the wl_surface the role of a shell surface. If the wl_surface
+        /// already has another role, it raises a protocol error.
+        ///
+        /// Only one shell surface can be associated with a given surface.
         get_shell_surface: struct {
-            surface: ?u32,
+            surface: ?u32, // surface to be given the shell surface role
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => ShellSurface,
+            };
+        }
     };
 
     /// Create a shell surface for an existing surface. This gives
@@ -1519,12 +1652,13 @@ pub const Shell = struct {
     /// already has another role, it raises a protocol error.
     ///
     /// Only one shell surface can be associated with a given surface.
-    pub fn get_shell_surface(self: *const Shell, _surface: Surface) ShellSurface {
+    pub fn get_shell_surface(self: Shell, client: *Client, _surface: Surface) ShellSurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _surface.proxy.id },
+            .{ .object = @intFromEnum(_surface) },
         };
-        return self.proxy.marshal_request_constructor(ShellSurface, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(ShellSurface, 0, &_args) catch @panic("buffer full");
     }
 };
 
@@ -1539,8 +1673,8 @@ pub const Shell = struct {
 /// the related wl_surface is destroyed. On the client side,
 /// wl_shell_surface_destroy() must be called before destroying
 /// the wl_surface object.
-pub const ShellSurface = struct {
-    proxy: Proxy,
+pub const ShellSurface = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_shell_surface",
         .version = 1,
@@ -1586,7 +1720,6 @@ pub const ShellSurface = struct {
         ping: struct {
             serial: u32, // serial number of the ping
         },
-
         /// The configure event asks the client to resize its surface.
         ///
         /// The size is a hint, in the sense that the client is free to
@@ -1609,11 +1742,11 @@ pub const ShellSurface = struct {
             width: i32, // new width of the surface
             height: i32, // new height of the surface
         },
-
         /// The popup_done event is sent out when a popup grab is broken,
         /// that is, when the user clicks a surface that doesn't belong
         /// to the client owning the popup surface.
         popup_done: void,
+
         pub fn from_args(
             opcode: u16,
             args: []Argument,
@@ -1636,79 +1769,180 @@ pub const ShellSurface = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: ShellSurface,
-        comptime T: type,
-        comptime _listener: *const fn (ShellSurface, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    ShellSurface{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// A client must respond to a ping event with a pong request or
+        /// the client may be deemed unresponsive.
         pong: struct {
-            serial: u32,
+            serial: u32, // serial number of the ping event
         },
+        /// Start a pointer-driven move of the surface.
+        ///
+        /// This request must be used in response to a button press event.
+        /// The server may ignore move requests depending on the state of
+        /// the surface (e.g. fullscreen or maximized).
         move: struct {
-            seat: ?u32,
-            serial: u32,
+            seat: ?u32, // seat whose pointer is used
+            serial: u32, // serial number of the implicit grab on the pointer
         },
+        /// Start a pointer-driven resizing of the surface.
+        ///
+        /// This request must be used in response to a button press event.
+        /// The server may ignore resize requests depending on the state of
+        /// the surface (e.g. fullscreen or maximized).
         resize: struct {
-            seat: ?u32,
-            serial: u32,
-            edges: Resize,
+            seat: ?u32, // seat whose pointer is used
+            serial: u32, // serial number of the implicit grab on the pointer
+            edges: Resize, // which edge or corner is being dragged
         },
+        /// Map the surface as a toplevel surface.
+        ///
+        /// A toplevel surface is not fullscreen, maximized or transient.
         set_toplevel: void,
+        /// Map the surface relative to an existing surface.
+        ///
+        /// The x and y arguments specify the location of the upper left
+        /// corner of the surface relative to the upper left corner of the
+        /// parent surface, in surface-local coordinates.
+        ///
+        /// The flags argument controls details of the transient behaviour.
         set_transient: struct {
-            parent: ?u32,
-            x: i32,
-            y: i32,
-            flags: Transient,
+            parent: ?u32, // parent surface
+            x: i32, // surface-local x coordinate
+            y: i32, // surface-local y coordinate
+            flags: Transient, // transient surface behavior
         },
+        /// Map the surface as a fullscreen surface.
+        ///
+        /// If an output parameter is given then the surface will be made
+        /// fullscreen on that output. If the client does not specify the
+        /// output then the compositor will apply its policy - usually
+        /// choosing the output on which the surface has the biggest surface
+        /// area.
+        ///
+        /// The client may specify a method to resolve a size conflict
+        /// between the output size and the surface size - this is provided
+        /// through the method parameter.
+        ///
+        /// The framerate parameter is used only when the method is set
+        /// to "driver", to indicate the preferred framerate. A value of 0
+        /// indicates that the client does not care about framerate.  The
+        /// framerate is specified in mHz, that is framerate of 60000 is 60Hz.
+        ///
+        /// A method of "scale" or "driver" implies a scaling operation of
+        /// the surface, either via a direct scaling operation or a change of
+        /// the output mode. This will override any kind of output scaling, so
+        /// that mapping a surface with a buffer size equal to the mode can
+        /// fill the screen independent of buffer_scale.
+        ///
+        /// A method of "fill" means we don't scale up the buffer, however
+        /// any output scale is applied. This means that you may run into
+        /// an edge case where the application maps a buffer with the same
+        /// size of the output mode but buffer_scale 1 (thus making a
+        /// surface larger than the output). In this case it is allowed to
+        /// downscale the results to fit the screen.
+        ///
+        /// The compositor must reply to this request with a configure event
+        /// with the dimensions for the output on which the surface will
+        /// be made fullscreen.
         set_fullscreen: struct {
-            method: FullscreenMethod,
-            framerate: u32,
-            output: u32,
+            method: FullscreenMethod, // method for resolving size conflict
+            framerate: u32, // framerate in mHz
+            output: u32, // output on which the surface is to be fullscreen
         },
+        /// Map the surface as a popup.
+        ///
+        /// A popup surface is a transient surface with an added pointer
+        /// grab.
+        ///
+        /// An existing implicit grab will be changed to owner-events mode,
+        /// and the popup grab will continue after the implicit grab ends
+        /// (i.e. releasing the mouse button does not cause the popup to
+        /// be unmapped).
+        ///
+        /// The popup grab continues until the window is destroyed or a
+        /// mouse button is pressed in any other client's window. A click
+        /// in any of the client's surfaces is reported as normal, however,
+        /// clicks in other clients' surfaces will be discarded and trigger
+        /// the callback.
+        ///
+        /// The x and y arguments specify the location of the upper left
+        /// corner of the surface relative to the upper left corner of the
+        /// parent surface, in surface-local coordinates.
         set_popup: struct {
-            seat: ?u32,
-            serial: u32,
-            parent: ?u32,
-            x: i32,
-            y: i32,
-            flags: Transient,
+            seat: ?u32, // seat whose pointer is used
+            serial: u32, // serial number of the implicit grab on the pointer
+            parent: ?u32, // parent surface
+            x: i32, // surface-local x coordinate
+            y: i32, // surface-local y coordinate
+            flags: Transient, // transient surface behavior
         },
+        /// Map the surface as a maximized surface.
+        ///
+        /// If an output parameter is given then the surface will be
+        /// maximized on that output. If the client does not specify the
+        /// output then the compositor will apply its policy - usually
+        /// choosing the output on which the surface has the biggest surface
+        /// area.
+        ///
+        /// The compositor will reply with a configure event telling
+        /// the expected new surface size. The operation is completed
+        /// on the next buffer attach to this surface.
+        ///
+        /// A maximized surface typically fills the entire output it is
+        /// bound to, except for desktop elements such as panels. This is
+        /// the main difference between a maximized shell surface and a
+        /// fullscreen shell surface.
+        ///
+        /// The details depend on the compositor implementation.
         set_maximized: struct {
-            output: u32,
+            output: u32, // output on which the surface is to be maximized
         },
+        /// Set a short title for the surface.
+        ///
+        /// This string may be used to identify the surface in a task bar,
+        /// window list, or other user interface elements provided by the
+        /// compositor.
+        ///
+        /// The string must be encoded in UTF-8.
         set_title: struct {
-            title: [:0]const u8,
+            title: [:0]const u8, // surface title
         },
+        /// Set a class for the surface.
+        ///
+        /// The surface class identifies the general class of applications
+        /// to which the surface belongs. A common convention is to use the
+        /// file name (or the full path if it is a non-standard location) of
+        /// the application's .desktop file as the class.
         set_class: struct {
-            class_: [:0]const u8,
+            class_: [:0]const u8, // surface class
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+                3 => void,
+                4 => void,
+                5 => void,
+                6 => void,
+                7 => void,
+                8 => void,
+                9 => void,
+            };
+        }
     };
 
     /// A client must respond to a ping event with a pong request or
     /// the client may be deemed unresponsive.
-    pub fn pong(self: *const ShellSurface, _serial: u32) void {
+    pub fn pong(self: ShellSurface, client: *Client, _serial: u32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// Start a pointer-driven move of the surface.
@@ -1716,12 +1950,13 @@ pub const ShellSurface = struct {
     /// This request must be used in response to a button press event.
     /// The server may ignore move requests depending on the state of
     /// the surface (e.g. fullscreen or maximized).
-    pub fn move(self: *const ShellSurface, _seat: Seat, _serial: u32) void {
+    pub fn move(self: ShellSurface, client: *Client, _seat: Seat, _serial: u32) void {
         var _args = [_]Argument{
-            .{ .object = _seat.proxy.id },
+            .{ .object = @intFromEnum(_seat) },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// Start a pointer-driven resizing of the surface.
@@ -1729,20 +1964,22 @@ pub const ShellSurface = struct {
     /// This request must be used in response to a button press event.
     /// The server may ignore resize requests depending on the state of
     /// the surface (e.g. fullscreen or maximized).
-    pub fn resize(self: *const ShellSurface, _seat: Seat, _serial: u32, _edges: Resize) void {
+    pub fn resize(self: ShellSurface, client: *Client, _seat: Seat, _serial: u32, _edges: Resize) void {
         var _args = [_]Argument{
-            .{ .object = _seat.proxy.id },
+            .{ .object = @intFromEnum(_seat) },
             .{ .uint = _serial },
             .{ .uint = @bitCast(_edges) },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 
     /// Map the surface as a toplevel surface.
     ///
     /// A toplevel surface is not fullscreen, maximized or transient.
-    pub fn set_toplevel(self: *const ShellSurface) void {
-        self.proxy.marshal_request(3, &.{}) catch unreachable;
+    pub fn set_toplevel(self: ShellSurface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(3, &.{}) catch unreachable;
     }
 
     /// Map the surface relative to an existing surface.
@@ -1752,14 +1989,15 @@ pub const ShellSurface = struct {
     /// parent surface, in surface-local coordinates.
     ///
     /// The flags argument controls details of the transient behaviour.
-    pub fn set_transient(self: *const ShellSurface, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_transient(self: ShellSurface, client: *Client, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
-            .{ .object = _parent.proxy.id },
+            .{ .object = @intFromEnum(_parent) },
             .{ .int = _x },
             .{ .int = _y },
             .{ .uint = @bitCast(_flags) },
         };
-        self.proxy.marshal_request(4, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(4, &_args) catch unreachable;
     }
 
     /// Map the surface as a fullscreen surface.
@@ -1795,13 +2033,14 @@ pub const ShellSurface = struct {
     /// The compositor must reply to this request with a configure event
     /// with the dimensions for the output on which the surface will
     /// be made fullscreen.
-    pub fn set_fullscreen(self: *const ShellSurface, _method: FullscreenMethod, _framerate: u32, _output: ?Output) void {
+    pub fn set_fullscreen(self: ShellSurface, client: *Client, _method: FullscreenMethod, _framerate: u32, _output: ?Output) void {
         var _args = [_]Argument{
             .{ .uint = @intCast(@intFromEnum(_method)) },
             .{ .uint = _framerate },
-            .{ .object = if (_output) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_output) |arg| @intFromEnum(arg) else 0 },
         };
-        self.proxy.marshal_request(5, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(5, &_args) catch unreachable;
     }
 
     /// Map the surface as a popup.
@@ -1823,16 +2062,17 @@ pub const ShellSurface = struct {
     /// The x and y arguments specify the location of the upper left
     /// corner of the surface relative to the upper left corner of the
     /// parent surface, in surface-local coordinates.
-    pub fn set_popup(self: *const ShellSurface, _seat: Seat, _serial: u32, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
+    pub fn set_popup(self: ShellSurface, client: *Client, _seat: Seat, _serial: u32, _parent: Surface, _x: i32, _y: i32, _flags: Transient) void {
         var _args = [_]Argument{
-            .{ .object = _seat.proxy.id },
+            .{ .object = @intFromEnum(_seat) },
             .{ .uint = _serial },
-            .{ .object = _parent.proxy.id },
+            .{ .object = @intFromEnum(_parent) },
             .{ .int = _x },
             .{ .int = _y },
             .{ .uint = @bitCast(_flags) },
         };
-        self.proxy.marshal_request(6, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(6, &_args) catch unreachable;
     }
 
     /// Map the surface as a maximized surface.
@@ -1853,11 +2093,12 @@ pub const ShellSurface = struct {
     /// fullscreen shell surface.
     ///
     /// The details depend on the compositor implementation.
-    pub fn set_maximized(self: *const ShellSurface, _output: ?Output) void {
+    pub fn set_maximized(self: ShellSurface, client: *Client, _output: ?Output) void {
         var _args = [_]Argument{
-            .{ .object = if (_output) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_output) |arg| @intFromEnum(arg) else 0 },
         };
-        self.proxy.marshal_request(7, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(7, &_args) catch unreachable;
     }
 
     /// Set a short title for the surface.
@@ -1867,11 +2108,12 @@ pub const ShellSurface = struct {
     /// compositor.
     ///
     /// The string must be encoded in UTF-8.
-    pub fn set_title(self: *const ShellSurface, _title: [:0]const u8) void {
+    pub fn set_title(self: ShellSurface, client: *Client, _title: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _title },
         };
-        self.proxy.marshal_request(8, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(8, &_args) catch unreachable;
     }
 
     /// Set a class for the surface.
@@ -1880,11 +2122,12 @@ pub const ShellSurface = struct {
     /// to which the surface belongs. A common convention is to use the
     /// file name (or the full path if it is a non-standard location) of
     /// the application's .desktop file as the class.
-    pub fn set_class(self: *const ShellSurface, _class_: [:0]const u8) void {
+    pub fn set_class(self: ShellSurface, client: *Client, _class_: [:0]const u8) void {
         var _args = [_]Argument{
             .{ .string = _class_ },
         };
-        self.proxy.marshal_request(9, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(9, &_args) catch unreachable;
     }
 };
 
@@ -1930,8 +2173,8 @@ pub const ShellSurface = struct {
 /// wl_surface again, but it is not allowed to use the wl_surface as
 /// a cursor (cursor is a different role than sub-surface, and role
 /// switching is not allowed).
-pub const Surface = struct {
-    proxy: Proxy,
+pub const Surface = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_surface",
         .version = 6,
@@ -1972,7 +2215,6 @@ pub const Surface = struct {
         enter: struct {
             output: ?u32, // output entered by the surface
         },
-
         /// This is emitted whenever a surface's creation, movement, or resizing
         /// results in it no longer having any part of it within the scanout region
         /// of an output.
@@ -1985,7 +2227,6 @@ pub const Surface = struct {
         leave: struct {
             output: ?u32, // output left by the surface
         },
-
         /// This event indicates the preferred buffer scale for this surface. It is
         /// sent whenever the compositor's preference changes.
         ///
@@ -1996,7 +2237,6 @@ pub const Surface = struct {
         preferred_buffer_scale: struct {
             factor: i32, // preferred scaling factor
         },
-
         /// This event indicates the preferred buffer transform for this surface.
         /// It is sent whenever the compositor's preference changes.
         ///
@@ -2036,70 +2276,337 @@ pub const Surface = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Surface,
-        comptime T: type,
-        comptime _listener: *const fn (Surface, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Surface{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Deletes the surface and invalidates its object ID.
         destroy: void,
+        /// Set a buffer as the content of this surface.
+        ///
+        /// The new size of the surface is calculated based on the buffer
+        /// size transformed by the inverse buffer_transform and the
+        /// inverse buffer_scale. This means that at commit time the supplied
+        /// buffer size must be an integer multiple of the buffer_scale. If
+        /// that's not the case, an invalid_size error is sent.
+        ///
+        /// The x and y arguments specify the location of the new pending
+        /// buffer's upper left corner, relative to the current buffer's upper
+        /// left corner, in surface-local coordinates. In other words, the
+        /// x and y, combined with the new surface size define in which
+        /// directions the surface's size changes. Setting anything other than 0
+        /// as x and y arguments is discouraged, and should instead be replaced
+        /// with using the separate wl_surface.offset request.
+        ///
+        /// When the bound wl_surface version is 5 or higher, passing any
+        /// non-zero x or y is a protocol violation, and will result in an
+        /// 'invalid_offset' error being raised. The x and y arguments are ignored
+        /// and do not change the pending state. To achieve equivalent semantics,
+        /// use wl_surface.offset.
+        ///
+        /// Surface contents are double-buffered state, see wl_surface.commit.
+        ///
+        /// The initial surface contents are void; there is no content.
+        /// wl_surface.attach assigns the given wl_buffer as the pending
+        /// wl_buffer. wl_surface.commit makes the pending wl_buffer the new
+        /// surface contents, and the size of the surface becomes the size
+        /// calculated from the wl_buffer, as described above. After commit,
+        /// there is no pending buffer until the next attach.
+        ///
+        /// Committing a pending wl_buffer allows the compositor to read the
+        /// pixels in the wl_buffer. The compositor may access the pixels at
+        /// any time after the wl_surface.commit request. When the compositor
+        /// will not access the pixels anymore, it will send the
+        /// wl_buffer.release event. Only after receiving wl_buffer.release,
+        /// the client may reuse the wl_buffer. A wl_buffer that has been
+        /// attached and then replaced by another attach instead of committed
+        /// will not receive a release event, and is not used by the
+        /// compositor.
+        ///
+        /// If a pending wl_buffer has been committed to more than one wl_surface,
+        /// the delivery of wl_buffer.release events becomes undefined. A well
+        /// behaved client should not rely on wl_buffer.release events in this
+        /// case. Alternatively, a client could create multiple wl_buffer objects
+        /// from the same backing storage or use wp_linux_buffer_release.
+        ///
+        /// Destroying the wl_buffer after wl_buffer.release does not change
+        /// the surface contents. Destroying the wl_buffer before wl_buffer.release
+        /// is allowed as long as the underlying buffer storage isn't re-used (this
+        /// can happen e.g. on client process termination). However, if the client
+        /// destroys the wl_buffer before receiving the wl_buffer.release event and
+        /// mutates the underlying buffer storage, the surface contents become
+        /// undefined immediately.
+        ///
+        /// If wl_surface.attach is sent with a NULL wl_buffer, the
+        /// following wl_surface.commit will remove the surface content.
         attach: struct {
-            buffer: u32,
-            x: i32,
-            y: i32,
+            buffer: u32, // buffer of surface contents
+            x: i32, // surface-local x coordinate
+            y: i32, // surface-local y coordinate
         },
+        /// This request is used to describe the regions where the pending
+        /// buffer is different from the current surface contents, and where
+        /// the surface therefore needs to be repainted. The compositor
+        /// ignores the parts of the damage that fall outside of the surface.
+        ///
+        /// Damage is double-buffered state, see wl_surface.commit.
+        ///
+        /// The damage rectangle is specified in surface-local coordinates,
+        /// where x and y specify the upper left corner of the damage rectangle.
+        ///
+        /// The initial value for pending damage is empty: no damage.
+        /// wl_surface.damage adds pending damage: the new pending damage
+        /// is the union of old pending damage and the given rectangle.
+        ///
+        /// wl_surface.commit assigns pending damage as the current damage,
+        /// and clears pending damage. The server will clear the current
+        /// damage as it repaints the surface.
+        ///
+        /// Note! New clients should not use this request. Instead damage can be
+        /// posted with wl_surface.damage_buffer which uses buffer coordinates
+        /// instead of surface coordinates.
         damage: struct {
-            x: i32,
-            y: i32,
-            width: i32,
-            height: i32,
+            x: i32, // surface-local x coordinate
+            y: i32, // surface-local y coordinate
+            width: i32, // width of damage rectangle
+            height: i32, // height of damage rectangle
         },
+        /// Request a notification when it is a good time to start drawing a new
+        /// frame, by creating a frame callback. This is useful for throttling
+        /// redrawing operations, and driving animations.
+        ///
+        /// When a client is animating on a wl_surface, it can use the 'frame'
+        /// request to get notified when it is a good time to draw and commit the
+        /// next frame of animation. If the client commits an update earlier than
+        /// that, it is likely that some updates will not make it to the display,
+        /// and the client is wasting resources by drawing too often.
+        ///
+        /// The frame request will take effect on the next wl_surface.commit.
+        /// The notification will only be posted for one frame unless
+        /// requested again. For a wl_surface, the notifications are posted in
+        /// the order the frame requests were committed.
+        ///
+        /// The server must send the notifications so that a client
+        /// will not send excessive updates, while still allowing
+        /// the highest possible update rate for clients that wait for the reply
+        /// before drawing again. The server should give some time for the client
+        /// to draw and commit after sending the frame callback events to let it
+        /// hit the next output refresh.
+        ///
+        /// A server should avoid signaling the frame callbacks if the
+        /// surface is not visible in any way, e.g. the surface is off-screen,
+        /// or completely obscured by other opaque surfaces.
+        ///
+        /// The object returned by this request will be destroyed by the
+        /// compositor after the callback is fired and as such the client must not
+        /// attempt to use it after that point.
+        ///
+        /// The callback_data passed in the callback is the current time, in
+        /// milliseconds, with an undefined base.
         frame: void,
+        /// This request sets the region of the surface that contains
+        /// opaque content.
+        ///
+        /// The opaque region is an optimization hint for the compositor
+        /// that lets it optimize the redrawing of content behind opaque
+        /// regions.  Setting an opaque region is not required for correct
+        /// behaviour, but marking transparent content as opaque will result
+        /// in repaint artifacts.
+        ///
+        /// The opaque region is specified in surface-local coordinates.
+        ///
+        /// The compositor ignores the parts of the opaque region that fall
+        /// outside of the surface.
+        ///
+        /// Opaque region is double-buffered state, see wl_surface.commit.
+        ///
+        /// wl_surface.set_opaque_region changes the pending opaque region.
+        /// wl_surface.commit copies the pending region to the current region.
+        /// Otherwise, the pending and current regions are never changed.
+        ///
+        /// The initial value for an opaque region is empty. Setting the pending
+        /// opaque region has copy semantics, and the wl_region object can be
+        /// destroyed immediately. A NULL wl_region causes the pending opaque
+        /// region to be set to empty.
         set_opaque_region: struct {
-            region: u32,
+            region: u32, // opaque region of the surface
         },
+        /// This request sets the region of the surface that can receive
+        /// pointer and touch events.
+        ///
+        /// Input events happening outside of this region will try the next
+        /// surface in the server surface stack. The compositor ignores the
+        /// parts of the input region that fall outside of the surface.
+        ///
+        /// The input region is specified in surface-local coordinates.
+        ///
+        /// Input region is double-buffered state, see wl_surface.commit.
+        ///
+        /// wl_surface.set_input_region changes the pending input region.
+        /// wl_surface.commit copies the pending region to the current region.
+        /// Otherwise the pending and current regions are never changed,
+        /// except cursor and icon surfaces are special cases, see
+        /// wl_pointer.set_cursor and wl_data_device.start_drag.
+        ///
+        /// The initial value for an input region is infinite. That means the
+        /// whole surface will accept input. Setting the pending input region
+        /// has copy semantics, and the wl_region object can be destroyed
+        /// immediately. A NULL wl_region causes the input region to be set
+        /// to infinite.
         set_input_region: struct {
-            region: u32,
+            region: u32, // input region of the surface
         },
+        /// Surface state (input, opaque, and damage regions, attached buffers,
+        /// etc.) is double-buffered. Protocol requests modify the pending state,
+        /// as opposed to the current state in use by the compositor. A commit
+        /// request atomically applies all pending state, replacing the current
+        /// state. After commit, the new pending state is as documented for each
+        /// related request.
+        ///
+        /// On commit, a pending wl_buffer is applied first, and all other state
+        /// second. This means that all coordinates in double-buffered state are
+        /// relative to the new wl_buffer coming into use, except for
+        /// wl_surface.attach itself. If there is no pending wl_buffer, the
+        /// coordinates are relative to the current surface contents.
+        ///
+        /// All requests that need a commit to become effective are documented
+        /// to affect double-buffered state.
+        ///
+        /// Other interfaces may add further double-buffered surface state.
         commit: void,
+        /// This request sets an optional transformation on how the compositor
+        /// interprets the contents of the buffer attached to the surface. The
+        /// accepted values for the transform parameter are the values for
+        /// wl_output.transform.
+        ///
+        /// Buffer transform is double-buffered state, see wl_surface.commit.
+        ///
+        /// A newly created surface has its buffer transformation set to normal.
+        ///
+        /// wl_surface.set_buffer_transform changes the pending buffer
+        /// transformation. wl_surface.commit copies the pending buffer
+        /// transformation to the current one. Otherwise, the pending and current
+        /// values are never changed.
+        ///
+        /// The purpose of this request is to allow clients to render content
+        /// according to the output transform, thus permitting the compositor to
+        /// use certain optimizations even if the display is rotated. Using
+        /// hardware overlays and scanning out a client buffer for fullscreen
+        /// surfaces are examples of such optimizations. Those optimizations are
+        /// highly dependent on the compositor implementation, so the use of this
+        /// request should be considered on a case-by-case basis.
+        ///
+        /// Note that if the transform value includes 90 or 270 degree rotation,
+        /// the width of the buffer will become the surface height and the height
+        /// of the buffer will become the surface width.
+        ///
+        /// If transform is not one of the values from the
+        /// wl_output.transform enum the invalid_transform protocol error
+        /// is raised.
         set_buffer_transform: struct {
-            transform: Output.Transform,
+            transform: Output.Transform, // transform for interpreting buffer contents
         },
+        /// This request sets an optional scaling factor on how the compositor
+        /// interprets the contents of the buffer attached to the window.
+        ///
+        /// Buffer scale is double-buffered state, see wl_surface.commit.
+        ///
+        /// A newly created surface has its buffer scale set to 1.
+        ///
+        /// wl_surface.set_buffer_scale changes the pending buffer scale.
+        /// wl_surface.commit copies the pending buffer scale to the current one.
+        /// Otherwise, the pending and current values are never changed.
+        ///
+        /// The purpose of this request is to allow clients to supply higher
+        /// resolution buffer data for use on high resolution outputs. It is
+        /// intended that you pick the same buffer scale as the scale of the
+        /// output that the surface is displayed on. This means the compositor
+        /// can avoid scaling when rendering the surface on that output.
+        ///
+        /// Note that if the scale is larger than 1, then you have to attach
+        /// a buffer that is larger (by a factor of scale in each dimension)
+        /// than the desired surface size.
+        ///
+        /// If scale is not positive the invalid_scale protocol error is
+        /// raised.
         set_buffer_scale: struct {
-            scale: i32,
+            scale: i32, // positive scale for interpreting buffer contents
         },
+        /// This request is used to describe the regions where the pending
+        /// buffer is different from the current surface contents, and where
+        /// the surface therefore needs to be repainted. The compositor
+        /// ignores the parts of the damage that fall outside of the surface.
+        ///
+        /// Damage is double-buffered state, see wl_surface.commit.
+        ///
+        /// The damage rectangle is specified in buffer coordinates,
+        /// where x and y specify the upper left corner of the damage rectangle.
+        ///
+        /// The initial value for pending damage is empty: no damage.
+        /// wl_surface.damage_buffer adds pending damage: the new pending
+        /// damage is the union of old pending damage and the given rectangle.
+        ///
+        /// wl_surface.commit assigns pending damage as the current damage,
+        /// and clears pending damage. The server will clear the current
+        /// damage as it repaints the surface.
+        ///
+        /// This request differs from wl_surface.damage in only one way - it
+        /// takes damage in buffer coordinates instead of surface-local
+        /// coordinates. While this generally is more intuitive than surface
+        /// coordinates, it is especially desirable when using wp_viewport
+        /// or when a drawing library (like EGL) is unaware of buffer scale
+        /// and buffer transform.
+        ///
+        /// Note: Because buffer transformation changes and damage requests may
+        /// be interleaved in the protocol stream, it is impossible to determine
+        /// the actual mapping between surface and buffer damage until
+        /// wl_surface.commit time. Therefore, compositors wishing to take both
+        /// kinds of damage into account will have to accumulate damage from the
+        /// two requests separately and only transform from one to the other
+        /// after receiving the wl_surface.commit.
         damage_buffer: struct {
-            x: i32,
-            y: i32,
-            width: i32,
-            height: i32,
+            x: i32, // buffer-local x coordinate
+            y: i32, // buffer-local y coordinate
+            width: i32, // width of damage rectangle
+            height: i32, // height of damage rectangle
         },
+        /// The x and y arguments specify the location of the new pending
+        /// buffer's upper left corner, relative to the current buffer's upper
+        /// left corner, in surface-local coordinates. In other words, the
+        /// x and y, combined with the new surface size define in which
+        /// directions the surface's size changes.
+        ///
+        /// Surface location offset is double-buffered state, see
+        /// wl_surface.commit.
+        ///
+        /// This request is semantically equivalent to and the replaces the x and y
+        /// arguments in the wl_surface.attach request in wl_surface versions prior
+        /// to 5. See wl_surface.attach for details.
         offset: struct {
-            x: i32,
-            y: i32,
+            x: i32, // surface-local x coordinate
+            y: i32, // surface-local y coordinate
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+                3 => Callback,
+                4 => void,
+                5 => void,
+                6 => void,
+                7 => void,
+                8 => void,
+                9 => void,
+                10 => void,
+            };
+        }
     };
 
     /// Deletes the surface and invalidates its object ID.
-    pub fn destroy(self: *const Surface) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: Surface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -2160,13 +2667,14 @@ pub const Surface = struct {
     ///
     /// If wl_surface.attach is sent with a NULL wl_buffer, the
     /// following wl_surface.commit will remove the surface content.
-    pub fn attach(self: *const Surface, _buffer: ?Buffer, _x: i32, _y: i32) void {
+    pub fn attach(self: Surface, client: *Client, _buffer: ?Buffer, _x: i32, _y: i32) void {
         var _args = [_]Argument{
-            .{ .object = if (_buffer) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_buffer) |arg| @intFromEnum(arg) else 0 },
             .{ .int = _x },
             .{ .int = _y },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// This request is used to describe the regions where the pending
@@ -2190,14 +2698,15 @@ pub const Surface = struct {
     /// Note! New clients should not use this request. Instead damage can be
     /// posted with wl_surface.damage_buffer which uses buffer coordinates
     /// instead of surface coordinates.
-    pub fn damage(self: *const Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn damage(self: Surface, client: *Client, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 
     /// Request a notification when it is a good time to start drawing a new
@@ -2232,11 +2741,12 @@ pub const Surface = struct {
     ///
     /// The callback_data passed in the callback is the current time, in
     /// milliseconds, with an undefined base.
-    pub fn frame(self: *const Surface) Callback {
+    pub fn frame(self: Surface, client: *Client) Callback {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Callback, 3, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Callback, 3, &_args) catch @panic("buffer full");
     }
 
     /// This request sets the region of the surface that contains
@@ -2263,11 +2773,12 @@ pub const Surface = struct {
     /// opaque region has copy semantics, and the wl_region object can be
     /// destroyed immediately. A NULL wl_region causes the pending opaque
     /// region to be set to empty.
-    pub fn set_opaque_region(self: *const Surface, _region: ?Region) void {
+    pub fn set_opaque_region(self: Surface, client: *Client, _region: ?Region) void {
         var _args = [_]Argument{
-            .{ .object = if (_region) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_region) |arg| @intFromEnum(arg) else 0 },
         };
-        self.proxy.marshal_request(4, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(4, &_args) catch unreachable;
     }
 
     /// This request sets the region of the surface that can receive
@@ -2292,11 +2803,12 @@ pub const Surface = struct {
     /// has copy semantics, and the wl_region object can be destroyed
     /// immediately. A NULL wl_region causes the input region to be set
     /// to infinite.
-    pub fn set_input_region(self: *const Surface, _region: ?Region) void {
+    pub fn set_input_region(self: Surface, client: *Client, _region: ?Region) void {
         var _args = [_]Argument{
-            .{ .object = if (_region) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_region) |arg| @intFromEnum(arg) else 0 },
         };
-        self.proxy.marshal_request(5, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(5, &_args) catch unreachable;
     }
 
     /// Surface state (input, opaque, and damage regions, attached buffers,
@@ -2316,8 +2828,9 @@ pub const Surface = struct {
     /// to affect double-buffered state.
     ///
     /// Other interfaces may add further double-buffered surface state.
-    pub fn commit(self: *const Surface) void {
-        self.proxy.marshal_request(6, &.{}) catch unreachable;
+    pub fn commit(self: Surface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(6, &.{}) catch unreachable;
     }
 
     /// This request sets an optional transformation on how the compositor
@@ -2349,11 +2862,12 @@ pub const Surface = struct {
     /// If transform is not one of the values from the
     /// wl_output.transform enum the invalid_transform protocol error
     /// is raised.
-    pub fn set_buffer_transform(self: *const Surface, _transform: Output.Transform) void {
+    pub fn set_buffer_transform(self: Surface, client: *Client, _transform: Output.Transform) void {
         var _args = [_]Argument{
             .{ .int = _transform },
         };
-        self.proxy.marshal_request(7, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(7, &_args) catch unreachable;
     }
 
     /// This request sets an optional scaling factor on how the compositor
@@ -2379,11 +2893,12 @@ pub const Surface = struct {
     ///
     /// If scale is not positive the invalid_scale protocol error is
     /// raised.
-    pub fn set_buffer_scale(self: *const Surface, _scale: i32) void {
+    pub fn set_buffer_scale(self: Surface, client: *Client, _scale: i32) void {
         var _args = [_]Argument{
             .{ .int = _scale },
         };
-        self.proxy.marshal_request(8, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(8, &_args) catch unreachable;
     }
 
     /// This request is used to describe the regions where the pending
@@ -2418,14 +2933,15 @@ pub const Surface = struct {
     /// kinds of damage into account will have to accumulate damage from the
     /// two requests separately and only transform from one to the other
     /// after receiving the wl_surface.commit.
-    pub fn damage_buffer(self: *const Surface, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn damage_buffer(self: Surface, client: *Client, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal_request(9, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(9, &_args) catch unreachable;
     }
 
     /// The x and y arguments specify the location of the new pending
@@ -2440,12 +2956,13 @@ pub const Surface = struct {
     /// This request is semantically equivalent to and the replaces the x and y
     /// arguments in the wl_surface.attach request in wl_surface versions prior
     /// to 5. See wl_surface.attach for details.
-    pub fn offset(self: *const Surface, _x: i32, _y: i32) void {
+    pub fn offset(self: Surface, client: *Client, _x: i32, _y: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
         };
-        self.proxy.marshal_request(10, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(10, &_args) catch unreachable;
     }
 };
 
@@ -2453,8 +2970,8 @@ pub const Surface = struct {
 /// object is published as a global during start up, or when such a
 /// device is hot plugged.  A seat typically has a pointer and
 /// maintains a keyboard focus and a pointer focus.
-pub const Seat = struct {
-    proxy: Proxy,
+pub const Seat = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_seat",
         .version = 9,
@@ -2507,7 +3024,6 @@ pub const Seat = struct {
         capabilities: struct {
             capabilities: Capability, // capabilities of the seat
         },
-
         /// In a multi-seat configuration the seat name can be used by clients to
         /// help identify which physical devices the seat represents.
         ///
@@ -2547,33 +3063,48 @@ pub const Seat = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Seat,
-        comptime T: type,
-        comptime _listener: *const fn (Seat, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Seat{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// The ID provided will be initialized to the wl_pointer interface
+        /// for this seat.
+        ///
+        /// This request only takes effect if the seat has the pointer
+        /// capability, or has had the pointer capability in the past.
+        /// It is a protocol violation to issue this request on a seat that has
+        /// never had the pointer capability. The missing_capability error will
+        /// be sent in this case.
         get_pointer: void,
+        /// The ID provided will be initialized to the wl_keyboard interface
+        /// for this seat.
+        ///
+        /// This request only takes effect if the seat has the keyboard
+        /// capability, or has had the keyboard capability in the past.
+        /// It is a protocol violation to issue this request on a seat that has
+        /// never had the keyboard capability. The missing_capability error will
+        /// be sent in this case.
         get_keyboard: void,
+        /// The ID provided will be initialized to the wl_touch interface
+        /// for this seat.
+        ///
+        /// This request only takes effect if the seat has the touch
+        /// capability, or has had the touch capability in the past.
+        /// It is a protocol violation to issue this request on a seat that has
+        /// never had the touch capability. The missing_capability error will
+        /// be sent in this case.
         get_touch: void,
+        /// Using this request a client can tell the server that it is not going to
+        /// use the seat object anymore.
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => Pointer,
+                1 => Keyboard,
+                2 => Touch,
+                3 => void,
+            };
+        }
     };
 
     /// The ID provided will be initialized to the wl_pointer interface
@@ -2584,11 +3115,12 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the pointer capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_pointer(self: *const Seat) Pointer {
+    pub fn get_pointer(self: Seat, client: *Client) Pointer {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Pointer, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Pointer, 0, &_args) catch @panic("buffer full");
     }
 
     /// The ID provided will be initialized to the wl_keyboard interface
@@ -2599,11 +3131,12 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the keyboard capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_keyboard(self: *const Seat) Keyboard {
+    pub fn get_keyboard(self: Seat, client: *Client) Keyboard {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Keyboard, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Keyboard, 1, &_args) catch @panic("buffer full");
     }
 
     /// The ID provided will be initialized to the wl_touch interface
@@ -2614,17 +3147,19 @@ pub const Seat = struct {
     /// It is a protocol violation to issue this request on a seat that has
     /// never had the touch capability. The missing_capability error will
     /// be sent in this case.
-    pub fn get_touch(self: *const Seat) Touch {
+    pub fn get_touch(self: Seat, client: *Client) Touch {
         var _args = [_]Argument{
             .{ .new_id = 0 },
         };
-        return self.proxy.marshal_request_constructor(Touch, 2, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Touch, 2, &_args) catch @panic("buffer full");
     }
 
     /// Using this request a client can tell the server that it is not going to
     /// use the seat object anymore.
-    pub fn release(self: *const Seat) void {
-        self.proxy.marshal_request(3, &.{}) catch unreachable;
+    pub fn release(self: Seat, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(3, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -2637,8 +3172,8 @@ pub const Seat = struct {
 /// events for the surfaces that the pointer is located over,
 /// and button and axis events for button presses, button releases
 /// and scrolling.
-pub const Pointer = struct {
-    proxy: Proxy,
+pub const Pointer = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_pointer",
         .version = 9,
@@ -2695,7 +3230,6 @@ pub const Pointer = struct {
             surface_x: Fixed, // surface-local x coordinate
             surface_y: Fixed, // surface-local y coordinate
         },
-
         /// Notification that this seat's pointer is no longer focused on
         /// a certain surface.
         ///
@@ -2705,7 +3239,6 @@ pub const Pointer = struct {
             serial: u32, // serial number of the leave event
             surface: ?u32, // surface left by the pointer
         },
-
         /// Notification of pointer location change. The arguments
         /// surface_x and surface_y are the location relative to the
         /// focused surface.
@@ -2714,7 +3247,6 @@ pub const Pointer = struct {
             surface_x: Fixed, // surface-local x coordinate
             surface_y: Fixed, // surface-local y coordinate
         },
-
         /// Mouse button click and release notifications.
         ///
         /// The location of the click is given by the last motion or
@@ -2735,7 +3267,6 @@ pub const Pointer = struct {
             button: u32, // button that produced the event
             state: ButtonState, // physical state of the button
         },
-
         /// Scroll and other axis notifications.
         ///
         /// For scroll events (vertical and horizontal scroll axes), the
@@ -2757,7 +3288,6 @@ pub const Pointer = struct {
             axis: Axis, // axis type
             value: Fixed, // length of vector in surface-local coordinate space
         },
-
         /// Indicates the end of a set of events that logically belong together.
         /// A client is expected to accumulate the data in all events within the
         /// frame before proceeding.
@@ -2821,7 +3351,6 @@ pub const Pointer = struct {
         axis_source: struct {
             axis_source: AxisSource, // source of the axis event
         },
-
         /// Stop notification for scroll and other axes.
         ///
         /// For some wl_pointer.axis_source types, a wl_pointer.axis_stop event
@@ -2840,7 +3369,6 @@ pub const Pointer = struct {
             time: u32, // timestamp with millisecond granularity
             axis: Axis, // the axis stopped with this event
         },
-
         /// Discrete step information for scroll and other axes.
         ///
         /// This event carries the axis value of the wl_pointer.axis event in
@@ -2875,7 +3403,6 @@ pub const Pointer = struct {
             axis: Axis, // axis type
             discrete: i32, // number of steps
         },
-
         /// Discrete high-resolution scroll information.
         ///
         /// This event carries high-resolution wheel scroll information,
@@ -2901,7 +3428,6 @@ pub const Pointer = struct {
             axis: Axis, // axis type
             value120: i32, // scroll distance as fraction of 120
         },
-
         /// Relative directional information of the entity causing the axis
         /// motion.
         ///
@@ -3017,36 +3543,61 @@ pub const Pointer = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Pointer,
-        comptime T: type,
-        comptime _listener: *const fn (Pointer, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Pointer{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Set the pointer surface, i.e., the surface that contains the
+        /// pointer image (cursor). This request gives the surface the role
+        /// of a cursor. If the surface already has another role, it raises
+        /// a protocol error.
+        ///
+        /// The cursor actually changes only if the pointer
+        /// focus for this device is one of the requesting client's surfaces
+        /// or the surface parameter is the current pointer surface. If
+        /// there was a previous surface set with this request it is
+        /// replaced. If surface is NULL, the pointer image is hidden.
+        ///
+        /// The parameters hotspot_x and hotspot_y define the position of
+        /// the pointer surface relative to the pointer location. Its
+        /// top-left corner is always at (x, y) - (hotspot_x, hotspot_y),
+        /// where (x, y) are the coordinates of the pointer location, in
+        /// surface-local coordinates.
+        ///
+        /// On surface.attach requests to the pointer surface, hotspot_x
+        /// and hotspot_y are decremented by the x and y parameters
+        /// passed to the request. Attach must be confirmed by
+        /// wl_surface.commit as usual.
+        ///
+        /// The hotspot can also be updated by passing the currently set
+        /// pointer surface to this request with new values for hotspot_x
+        /// and hotspot_y.
+        ///
+        /// The input region is ignored for wl_surfaces with the role of
+        /// a cursor. When the use as a cursor ends, the wl_surface is
+        /// unmapped.
+        ///
+        /// The serial parameter must match the latest wl_pointer.enter
+        /// serial number sent to the client. Otherwise the request will be
+        /// ignored.
         set_cursor: struct {
-            serial: u32,
-            surface: u32,
-            hotspot_x: i32,
-            hotspot_y: i32,
+            serial: u32, // serial number of the enter event
+            surface: u32, // pointer surface
+            hotspot_x: i32, // surface-local x coordinate
+            hotspot_y: i32, // surface-local y coordinate
         },
+        /// Using this request a client can tell the server that it is not going to
+        /// use the pointer object anymore.
+        ///
+        /// This request destroys the pointer proxy object, so clients must not call
+        /// wl_pointer_destroy() after using this request.
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Set the pointer surface, i.e., the surface that contains the
@@ -3082,14 +3633,15 @@ pub const Pointer = struct {
     /// The serial parameter must match the latest wl_pointer.enter
     /// serial number sent to the client. Otherwise the request will be
     /// ignored.
-    pub fn set_cursor(self: *const Pointer, _serial: u32, _surface: ?Surface, _hotspot_x: i32, _hotspot_y: i32) void {
+    pub fn set_cursor(self: Pointer, client: *Client, _serial: u32, _surface: ?Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
-            .{ .object = if (_surface) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_surface) |arg| @intFromEnum(arg) else 0 },
             .{ .int = _hotspot_x },
             .{ .int = _hotspot_y },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// Using this request a client can tell the server that it is not going to
@@ -3097,16 +3649,17 @@ pub const Pointer = struct {
     ///
     /// This request destroys the pointer proxy object, so clients must not call
     /// wl_pointer_destroy() after using this request.
-    pub fn release(self: *const Pointer) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn release(self: Pointer, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
 
 /// The wl_keyboard interface represents one or more keyboards
 /// associated with a seat.
-pub const Keyboard = struct {
-    proxy: Proxy,
+pub const Keyboard = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_keyboard",
         .version = 9,
@@ -3143,7 +3696,6 @@ pub const Keyboard = struct {
             fd: i32, // keymap file descriptor
             size: u32, // keymap size, in bytes
         },
-
         /// Notification that this seat's keyboard focus is on a certain
         /// surface.
         ///
@@ -3154,7 +3706,6 @@ pub const Keyboard = struct {
             surface: ?u32, // surface gaining keyboard focus
             keys: *anyopaque, // the currently pressed keys
         },
-
         /// Notification that this seat's keyboard focus is no longer on
         /// a certain surface.
         ///
@@ -3167,7 +3718,6 @@ pub const Keyboard = struct {
             serial: u32, // serial number of the leave event
             surface: ?u32, // surface that lost keyboard focus
         },
-
         /// A key was pressed or released.
         /// The time argument is a timestamp with millisecond
         /// granularity, with an undefined base.
@@ -3183,7 +3733,6 @@ pub const Keyboard = struct {
             key: u32, // key that produced the event
             state: KeyState, // physical state of the key
         },
-
         /// Notifies clients that the modifier and/or group state has
         /// changed, and it should update its local state.
         modifiers: struct {
@@ -3193,7 +3742,6 @@ pub const Keyboard = struct {
             mods_locked: u32, // locked modifiers
             group: u32, // keyboard layout
         },
-
         /// Informs the client about the keyboard's repeat rate and delay.
         ///
         /// This event is sent as soon as the wl_keyboard object has been created,
@@ -3263,33 +3811,20 @@ pub const Keyboard = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Keyboard,
-        comptime T: type,
-        comptime _listener: *const fn (Keyboard, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Keyboard{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
-    pub fn release(self: *const Keyboard) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn release(self: Keyboard, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -3302,8 +3837,8 @@ pub const Keyboard = struct {
 /// with a down event, followed by zero or more motion events,
 /// and ending with an up event. Events relating to the same
 /// contact point can be identified by the ID of the sequence.
-pub const Touch = struct {
-    proxy: Proxy,
+pub const Touch = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_touch",
         .version = 9,
@@ -3334,7 +3869,6 @@ pub const Touch = struct {
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
         },
-
         /// The touch point has disappeared. No further events will be sent for
         /// this touch point and the touch point's ID is released and may be
         /// reused in a future touch down event.
@@ -3343,7 +3877,6 @@ pub const Touch = struct {
             time: u32, // timestamp with millisecond granularity
             id: i32, // the unique ID of this touch point
         },
-
         /// A touch point has changed coordinates.
         motion: struct {
             time: u32, // timestamp with millisecond granularity
@@ -3351,7 +3884,6 @@ pub const Touch = struct {
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
         },
-
         /// Indicates the end of a set of events that logically belong together.
         /// A client is expected to accumulate the data in all events within the
         /// frame before proceeding.
@@ -3398,7 +3930,6 @@ pub const Touch = struct {
             major: Fixed, // length of the major axis in surface-local coordinates
             minor: Fixed, // length of the minor axis in surface-local coordinates
         },
-
         /// Sent when a touchpoint has changed its orientation.
         ///
         /// This event does not occur on its own. It is sent before a
@@ -3476,33 +4007,20 @@ pub const Touch = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Touch,
-        comptime T: type,
-        comptime _listener: *const fn (Touch, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Touch{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
-    pub fn release(self: *const Touch) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn release(self: Touch, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -3513,8 +4031,8 @@ pub const Touch = struct {
 /// actually visible.  This typically corresponds to a monitor that
 /// displays part of the compositor space.  This object is published
 /// as global during start up, or when a monitor is hotplugged.
-pub const Output = struct {
-    proxy: Proxy,
+pub const Output = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_output",
         .version = 4,
@@ -3581,7 +4099,6 @@ pub const Output = struct {
             model: [:0]const u8, // textual description of the model
             transform: Transform, // transform that maps framebuffer to output
         },
-
         /// The mode event describes an available mode for the output.
         ///
         /// The event is sent when binding to the output object and there
@@ -3621,7 +4138,6 @@ pub const Output = struct {
             height: i32, // height of the mode in hardware units
             refresh: i32, // vertical refresh rate in mHz
         },
-
         /// This event is sent after all other properties have been
         /// sent after binding to the output object and after any
         /// other property changes done after that. This allows
@@ -3651,7 +4167,6 @@ pub const Output = struct {
         scale: struct {
             factor: i32, // scaling factor of output
         },
-
         /// Many compositors will assign user-friendly names to their outputs, show
         /// them to the user, allow the user to refer to an output, etc. The client
         /// may wish to know this name as well to offer the user similar behaviors.
@@ -3683,7 +4198,6 @@ pub const Output = struct {
         name: struct {
             name: [:0]const u8, // output name
         },
-
         /// Many compositors can produce human-readable descriptions of their
         /// outputs. The client may wish to know this description as well, e.g. for
         /// output selection purposes.
@@ -3747,36 +4261,25 @@ pub const Output = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: Output,
-        comptime T: type,
-        comptime _listener: *const fn (Output, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    Output{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Using this request a client can tell the server that it is not going to
+        /// use the output object anymore.
         release: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
 
     /// Using this request a client can tell the server that it is not going to
     /// use the output object anymore.
-    pub fn release(self: *const Output) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn release(self: Output, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -3785,8 +4288,8 @@ pub const Output = struct {
 ///
 /// Region objects are used to describe the opaque and input
 /// regions of a surface.
-pub const Region = struct {
-    proxy: Proxy,
+pub const Region = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_region",
         .version = 1,
@@ -3797,47 +4300,63 @@ pub const Region = struct {
         },
     };
     pub const Request = union(enum) {
+        /// Destroy the region.  This will invalidate the object ID.
         destroy: void,
+        /// Add the specified rectangle to the region.
         add: struct {
-            x: i32,
-            y: i32,
-            width: i32,
-            height: i32,
+            x: i32, // region-local x coordinate
+            y: i32, // region-local y coordinate
+            width: i32, // rectangle width
+            height: i32, // rectangle height
         },
+        /// Subtract the specified rectangle from the region.
         subtract: struct {
-            x: i32,
-            y: i32,
-            width: i32,
-            height: i32,
+            x: i32, // region-local x coordinate
+            y: i32, // region-local y coordinate
+            width: i32, // rectangle width
+            height: i32, // rectangle height
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+            };
+        }
     };
 
     /// Destroy the region.  This will invalidate the object ID.
-    pub fn destroy(self: *const Region) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: Region, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
     /// Add the specified rectangle to the region.
-    pub fn add(self: *const Region, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn add(self: Region, client: *Client, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// Subtract the specified rectangle from the region.
-    pub fn subtract(self: *const Region, _x: i32, _y: i32, _width: i32, _height: i32) void {
+    pub fn subtract(self: Region, client: *Client, _x: i32, _y: i32, _width: i32, _height: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
             .{ .int = _width },
             .{ .int = _height },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 };
 
@@ -3860,8 +4379,8 @@ pub const Region = struct {
 /// a video player with decorations and video in separate wl_surface
 /// objects. This should allow the compositor to pass YUV video buffer
 /// processing to dedicated overlay hardware when possible.
-pub const Subcompositor = struct {
-    proxy: Proxy,
+pub const Subcompositor = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_subcompositor",
         .version = 1,
@@ -3875,18 +4394,50 @@ pub const Subcompositor = struct {
         bad_parent = 1,
     };
     pub const Request = union(enum) {
+        /// Informs the server that the client will not be using this
+        /// protocol object anymore. This does not affect any other
+        /// objects, wl_subsurface objects included.
         destroy: void,
+        /// Create a sub-surface interface for the given surface, and
+        /// associate it with the given parent surface. This turns a
+        /// plain wl_surface into a sub-surface.
+        ///
+        /// The to-be sub-surface must not already have another role, and it
+        /// must not have an existing wl_subsurface object. Otherwise the
+        /// bad_surface protocol error is raised.
+        ///
+        /// Adding sub-surfaces to a parent is a double-buffered operation on the
+        /// parent (see wl_surface.commit). The effect of adding a sub-surface
+        /// becomes visible on the next time the state of the parent surface is
+        /// applied.
+        ///
+        /// The parent surface must not be one of the child surface's descendants,
+        /// and the parent must be different from the child surface, otherwise the
+        /// bad_parent protocol error is raised.
+        ///
+        /// This request modifies the behaviour of wl_surface.commit request on
+        /// the sub-surface, see the documentation on wl_subsurface interface.
         get_subsurface: struct {
-            surface: ?u32,
-            parent: ?u32,
+            surface: ?u32, // the surface to be turned into a sub-surface
+            parent: ?u32, // the parent surface
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => Subsurface,
+            };
+        }
     };
 
     /// Informs the server that the client will not be using this
     /// protocol object anymore. This does not affect any other
     /// objects, wl_subsurface objects included.
-    pub fn destroy(self: *const Subcompositor) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: Subcompositor, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -3909,13 +4460,14 @@ pub const Subcompositor = struct {
     ///
     /// This request modifies the behaviour of wl_surface.commit request on
     /// the sub-surface, see the documentation on wl_subsurface interface.
-    pub fn get_subsurface(self: *const Subcompositor, _surface: Surface, _parent: Surface) Subsurface {
+    pub fn get_subsurface(self: Subcompositor, client: *Client, _surface: Surface, _parent: Surface) Subsurface {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _surface.proxy.id },
-            .{ .object = _parent.proxy.id },
+            .{ .object = @intFromEnum(_surface) },
+            .{ .object = @intFromEnum(_parent) },
         };
-        return self.proxy.marshal_request_constructor(Subsurface, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(Subsurface, 1, &_args) catch @panic("buffer full");
     }
 };
 
@@ -3966,8 +4518,8 @@ pub const Subcompositor = struct {
 ///
 /// If the parent wl_surface object is destroyed, the sub-surface is
 /// unmapped.
-pub const Subsurface = struct {
-    proxy: Proxy,
+pub const Subsurface = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wl_subsurface",
         .version = 1,
@@ -3984,27 +4536,110 @@ pub const Subsurface = struct {
         bad_surface = 0,
     };
     pub const Request = union(enum) {
+        /// The sub-surface interface is removed from the wl_surface object
+        /// that was turned into a sub-surface with a
+        /// wl_subcompositor.get_subsurface request. The wl_surface's association
+        /// to the parent is deleted. The wl_surface is unmapped immediately.
         destroy: void,
+        /// This schedules a sub-surface position change.
+        /// The sub-surface will be moved so that its origin (top left
+        /// corner pixel) will be at the location x, y of the parent surface
+        /// coordinate system. The coordinates are not restricted to the parent
+        /// surface area. Negative values are allowed.
+        ///
+        /// The scheduled coordinates will take effect whenever the state of the
+        /// parent surface is applied. When this happens depends on whether the
+        /// parent surface is in synchronized mode or not. See
+        /// wl_subsurface.set_sync and wl_subsurface.set_desync for details.
+        ///
+        /// If more than one set_position request is invoked by the client before
+        /// the commit of the parent surface, the position of a new request always
+        /// replaces the scheduled position from any previous request.
+        ///
+        /// The initial position is 0, 0.
         set_position: struct {
-            x: i32,
-            y: i32,
+            x: i32, // x coordinate in the parent surface
+            y: i32, // y coordinate in the parent surface
         },
+        /// This sub-surface is taken from the stack, and put back just
+        /// above the reference surface, changing the z-order of the sub-surfaces.
+        /// The reference surface must be one of the sibling surfaces, or the
+        /// parent surface. Using any other surface, including this sub-surface,
+        /// will cause a protocol error.
+        ///
+        /// The z-order is double-buffered. Requests are handled in order and
+        /// applied immediately to a pending state. The final pending state is
+        /// copied to the active state the next time the state of the parent
+        /// surface is applied. When this happens depends on whether the parent
+        /// surface is in synchronized mode or not. See wl_subsurface.set_sync and
+        /// wl_subsurface.set_desync for details.
+        ///
+        /// A new sub-surface is initially added as the top-most in the stack
+        /// of its siblings and parent.
         place_above: struct {
-            sibling: ?u32,
+            sibling: ?u32, // the reference surface
         },
+        /// The sub-surface is placed just below the reference surface.
+        /// See wl_subsurface.place_above.
         place_below: struct {
-            sibling: ?u32,
+            sibling: ?u32, // the reference surface
         },
+        /// Change the commit behaviour of the sub-surface to synchronized
+        /// mode, also described as the parent dependent mode.
+        ///
+        /// In synchronized mode, wl_surface.commit on a sub-surface will
+        /// accumulate the committed state in a cache, but the state will
+        /// not be applied and hence will not change the compositor output.
+        /// The cached state is applied to the sub-surface immediately after
+        /// the parent surface's state is applied. This ensures atomic
+        /// updates of the parent and all its synchronized sub-surfaces.
+        /// Applying the cached state will invalidate the cache, so further
+        /// parent surface commits do not (re-)apply old state.
+        ///
+        /// See wl_subsurface for the recursive effect of this mode.
         set_sync: void,
+        /// Change the commit behaviour of the sub-surface to desynchronized
+        /// mode, also described as independent or freely running mode.
+        ///
+        /// In desynchronized mode, wl_surface.commit on a sub-surface will
+        /// apply the pending state directly, without caching, as happens
+        /// normally with a wl_surface. Calling wl_surface.commit on the
+        /// parent surface has no effect on the sub-surface's wl_surface
+        /// state. This mode allows a sub-surface to be updated on its own.
+        ///
+        /// If cached state exists when wl_surface.commit is called in
+        /// desynchronized mode, the pending state is added to the cached
+        /// state, and applied as a whole. This invalidates the cache.
+        ///
+        /// Note: even if a sub-surface is set to desynchronized, a parent
+        /// sub-surface may override it to behave as synchronized. For details,
+        /// see wl_subsurface.
+        ///
+        /// If a surface's parent surface behaves as desynchronized, then
+        /// the cached state is applied on set_desync.
         set_desync: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+                3 => void,
+                4 => void,
+                5 => void,
+            };
+        }
     };
 
     /// The sub-surface interface is removed from the wl_surface object
     /// that was turned into a sub-surface with a
     /// wl_subcompositor.get_subsurface request. The wl_surface's association
     /// to the parent is deleted. The wl_surface is unmapped immediately.
-    pub fn destroy(self: *const Subsurface) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: Subsurface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -4024,12 +4659,13 @@ pub const Subsurface = struct {
     /// replaces the scheduled position from any previous request.
     ///
     /// The initial position is 0, 0.
-    pub fn set_position(self: *const Subsurface, _x: i32, _y: i32) void {
+    pub fn set_position(self: Subsurface, client: *Client, _x: i32, _y: i32) void {
         var _args = [_]Argument{
             .{ .int = _x },
             .{ .int = _y },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// This sub-surface is taken from the stack, and put back just
@@ -4047,20 +4683,22 @@ pub const Subsurface = struct {
     ///
     /// A new sub-surface is initially added as the top-most in the stack
     /// of its siblings and parent.
-    pub fn place_above(self: *const Subsurface, _sibling: Surface) void {
+    pub fn place_above(self: Subsurface, client: *Client, _sibling: Surface) void {
         var _args = [_]Argument{
-            .{ .object = _sibling.proxy.id },
+            .{ .object = @intFromEnum(_sibling) },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 
     /// The sub-surface is placed just below the reference surface.
     /// See wl_subsurface.place_above.
-    pub fn place_below(self: *const Subsurface, _sibling: Surface) void {
+    pub fn place_below(self: Subsurface, client: *Client, _sibling: Surface) void {
         var _args = [_]Argument{
-            .{ .object = _sibling.proxy.id },
+            .{ .object = @intFromEnum(_sibling) },
         };
-        self.proxy.marshal_request(3, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(3, &_args) catch unreachable;
     }
 
     /// Change the commit behaviour of the sub-surface to synchronized
@@ -4076,8 +4714,9 @@ pub const Subsurface = struct {
     /// parent surface commits do not (re-)apply old state.
     ///
     /// See wl_subsurface for the recursive effect of this mode.
-    pub fn set_sync(self: *const Subsurface) void {
-        self.proxy.marshal_request(4, &.{}) catch unreachable;
+    pub fn set_sync(self: Subsurface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(4, &.{}) catch unreachable;
     }
 
     /// Change the commit behaviour of the sub-surface to desynchronized
@@ -4099,7 +4738,8 @@ pub const Subsurface = struct {
     ///
     /// If a surface's parent surface behaves as desynchronized, then
     /// the cached state is applied on set_desync.
-    pub fn set_desync(self: *const Subsurface) void {
-        self.proxy.marshal_request(5, &.{}) catch unreachable;
+    pub fn set_desync(self: Subsurface, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(5, &.{}) catch unreachable;
     }
 };

@@ -27,14 +27,15 @@ const Proxy = @import("../proxy.zig").Proxy;
 const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
 
 const wl = @import("wl.zig");
 
 /// An object that provides access to the graphics tablets available on this
 /// system. All tablets are associated with a seat, to get access to the
 /// actual tablets, use wp_tablet_manager.get_tablet_seat.
-pub const TabletManagerV2 = struct {
-    proxy: Proxy,
+pub const TabletManagerV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_manager_v2",
         .version = 1,
@@ -44,26 +45,41 @@ pub const TabletManagerV2 = struct {
         },
     };
     pub const Request = union(enum) {
+        /// Get the wp_tablet_seat object for the given seat. This object
+        /// provides access to all graphics tablets in this seat.
         get_tablet_seat: struct {
-            seat: ?u32,
+            seat: ?u32, // The wl_seat object to retrieve the tablets for
         },
+        /// Destroy the wp_tablet_manager object. Objects created from this
+        /// object are unaffected and should be destroyed separately.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => TabletSeatV2,
+                1 => void,
+            };
+        }
     };
 
     /// Get the wp_tablet_seat object for the given seat. This object
     /// provides access to all graphics tablets in this seat.
-    pub fn get_tablet_seat(self: *const TabletManagerV2, _seat: wl.Seat) TabletSeatV2 {
+    pub fn get_tablet_seat(self: TabletManagerV2, client: *Client, _seat: wl.Seat) TabletSeatV2 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _seat.proxy.id },
+            .{ .object = @intFromEnum(_seat) },
         };
-        return self.proxy.marshal_request_constructor(TabletSeatV2, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(TabletSeatV2, 0, &_args) catch @panic("buffer full");
     }
 
     /// Destroy the wp_tablet_manager object. Objects created from this
     /// object are unaffected and should be destroyed separately.
-    pub fn destroy(self: *const TabletManagerV2) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: TabletManagerV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -71,8 +87,8 @@ pub const TabletManagerV2 = struct {
 /// An object that provides access to the graphics tablets available on this
 /// seat. After binding to this interface, the compositor sends a set of
 /// wp_tablet_seat.tablet_added and wp_tablet_seat.tool_added events.
-pub const TabletSeatV2 = struct {
-    proxy: Proxy,
+pub const TabletSeatV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_seat_v2",
         .version = 1,
@@ -91,18 +107,12 @@ pub const TabletSeatV2 = struct {
         /// seat. This event only provides the object id of the tablet, any
         /// static information about the tablet (device name, vid/pid, etc.) is
         /// sent through the wp_tablet interface.
-        tablet_added: struct {
-            id: *TabletV2, // the newly added graphics tablet
-        },
-
+        tablet_added: void,
         /// This event is sent whenever a tool that has not previously been used
         /// with a tablet comes into use. This event only provides the object id
         /// of the tool; any static information about the tool (capabilities,
         /// type, etc.) is sent through the wp_tablet_tool interface.
-        tool_added: struct {
-            id: *TabletToolV2, // the newly added tablet tool
-        },
-
+        tool_added: void,
         /// This event is sent whenever a new pad is known to the system. Typically,
         /// pads are physically attached to tablets and a pad_added event is
         /// sent immediately after the wp_tablet_seat.tablet_added.
@@ -113,9 +123,7 @@ pub const TabletSeatV2 = struct {
         /// This event only provides the object id of the pad. All further
         /// features (buttons, strips, rings) are sent through the wp_tablet_pad
         /// interface.
-        pad_added: struct {
-            id: *TabletPadV2, // the newly added pad
-        },
+        pad_added: void,
 
         pub fn from_args(
             opcode: u16,
@@ -141,36 +149,25 @@ pub const TabletSeatV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletSeatV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletSeatV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletSeatV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Destroy the wp_tablet_seat object. Objects created from this
+        /// object are unaffected and should be destroyed separately.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
 
     /// Destroy the wp_tablet_seat object. Objects created from this
     /// object are unaffected and should be destroyed separately.
-    pub fn destroy(self: *const TabletSeatV2) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: TabletSeatV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -195,8 +192,8 @@ pub const TabletSeatV2 = struct {
 /// Tablet tool events are grouped by wp_tablet_tool.frame events.
 /// Any events received before a wp_tablet_tool.frame event should be
 /// considered part of the same hardware state change.
-pub const TabletToolV2 = struct {
-    proxy: Proxy,
+pub const TabletToolV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_tool_v2",
         .version = 1,
@@ -261,7 +258,6 @@ pub const TabletToolV2 = struct {
         type: struct {
             tool_type: Type, // the physical tool type
         },
-
         /// If the physical tool can be identified by a unique 64-bit serial
         /// number, this event notifies the client of this serial number.
         ///
@@ -281,7 +277,6 @@ pub const TabletToolV2 = struct {
             hardware_serial_hi: u32, // the unique serial number of the tool, most significant bits
             hardware_serial_lo: u32, // the unique serial number of the tool, least significant bits
         },
-
         /// This event notifies the client of a hardware id available on this tool.
         ///
         /// The hardware id is a device-specific 64-bit id that provides extra
@@ -296,7 +291,6 @@ pub const TabletToolV2 = struct {
             hardware_id_hi: u32, // the hardware id, most significant bits
             hardware_id_lo: u32, // the hardware id, least significant bits
         },
-
         /// This event notifies the client of any capabilities of this tool,
         /// beyond the main set of x/y axes and tip up/down detection.
         ///
@@ -307,7 +301,6 @@ pub const TabletToolV2 = struct {
         capability: struct {
             capability: Capability, // the capability
         },
-
         /// This event signals the end of the initial burst of descriptive
         /// events. A client may consider the static description of the tool to
         /// be complete and finalize initialization of the tool.
@@ -341,7 +334,6 @@ pub const TabletToolV2 = struct {
             tablet: ?u32, // The tablet the tool is in proximity of
             surface: ?u32, // The current surface the tablet tool is over
         },
-
         /// Notification that this tool has either left proximity, or is no
         /// longer focused on a certain surface.
         ///
@@ -370,7 +362,6 @@ pub const TabletToolV2 = struct {
         down: struct {
             serial: u32,
         },
-
         /// Sent whenever the tablet tool stops making contact with the surface of
         /// the tablet, or when the tablet tool moves out of the input region
         /// and the compositor grab (if any) is dismissed.
@@ -393,7 +384,6 @@ pub const TabletToolV2 = struct {
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
         },
-
         /// Sent whenever the pressure axis on a tool changes. The value of this
         /// event is normalized to a value between 0 and 65535.
         ///
@@ -402,7 +392,6 @@ pub const TabletToolV2 = struct {
         pressure: struct {
             pressure: u32, // The current pressure value
         },
-
         /// Sent whenever the distance axis on a tool changes. The value of this
         /// event is normalized to a value between 0 and 65535.
         ///
@@ -411,7 +400,6 @@ pub const TabletToolV2 = struct {
         distance: struct {
             distance: u32, // The current distance value
         },
-
         /// Sent whenever one or both of the tilt axes on a tool change. Each tilt
         /// value is in degrees, relative to the z-axis of the tablet.
         /// The angle is positive when the top of a tool tilts along the
@@ -420,14 +408,12 @@ pub const TabletToolV2 = struct {
             tilt_x: Fixed, // The current value of the X tilt axis
             tilt_y: Fixed, // The current value of the Y tilt axis
         },
-
         /// Sent whenever the z-rotation axis on the tool changes. The
         /// rotation value is in degrees clockwise from the tool's
         /// logical neutral position.
         rotation: struct {
             degrees: Fixed, // The current rotation of the Z axis
         },
-
         /// Sent whenever the slider position on the tool changes. The
         /// value is normalized between -65535 and 65535, with 0 as the logical
         /// neutral position of the slider.
@@ -436,7 +422,6 @@ pub const TabletToolV2 = struct {
         slider: struct {
             position: i32, // The current position of slider
         },
-
         /// Sent whenever the wheel on the tool emits an event. This event
         /// contains two values for the same axis change. The degrees value is
         /// in the same orientation as the wl_pointer.vertical_scroll axis. The
@@ -453,7 +438,6 @@ pub const TabletToolV2 = struct {
             degrees: Fixed, // The wheel delta in degrees
             clicks: i32, // The wheel delta in discrete clicks
         },
-
         /// Sent whenever a button on the tool is pressed or released.
         ///
         /// If a button is held down when the tool moves in or out of proximity,
@@ -465,7 +449,6 @@ pub const TabletToolV2 = struct {
             button: u32, // The button whose state has changed
             state: ButtonState, // Whether the button was pressed or released
         },
-
         /// Marks the end of a series of axis and/or button updates from the
         /// tablet. The Wayland protocol requires axis updates to be sent
         /// sequentially, however all events within a frame should be considered
@@ -571,36 +554,54 @@ pub const TabletToolV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletToolV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletToolV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletToolV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Sets the surface of the cursor used for this tool on the given
+        /// tablet. This request only takes effect if the tool is in proximity
+        /// of one of the requesting client's surfaces or the surface parameter
+        /// is the current pointer surface. If there was a previous surface set
+        /// with this request it is replaced. If surface is NULL, the cursor
+        /// image is hidden.
+        ///
+        /// The parameters hotspot_x and hotspot_y define the position of the
+        /// pointer surface relative to the pointer location. Its top-left corner
+        /// is always at (x, y) - (hotspot_x, hotspot_y), where (x, y) are the
+        /// coordinates of the pointer location, in surface-local coordinates.
+        ///
+        /// On surface.attach requests to the pointer surface, hotspot_x and
+        /// hotspot_y are decremented by the x and y parameters passed to the
+        /// request. Attach must be confirmed by wl_surface.commit as usual.
+        ///
+        /// The hotspot can also be updated by passing the currently set pointer
+        /// surface to this request with new values for hotspot_x and hotspot_y.
+        ///
+        /// The current and pending input regions of the wl_surface are cleared,
+        /// and wl_surface.set_input_region is ignored until the wl_surface is no
+        /// longer used as the cursor. When the use as a cursor ends, the current
+        /// and pending input regions become undefined, and the wl_surface is
+        /// unmapped.
+        ///
+        /// This request gives the surface the role of a wp_tablet_tool cursor. A
+        /// surface may only ever be used as the cursor surface for one
+        /// wp_tablet_tool. If the surface already has another role or has
+        /// previously been used as cursor surface for a different tool, a
+        /// protocol error is raised.
         set_cursor: struct {
-            serial: u32,
+            serial: u32, // serial of the proximity_in event
             surface: u32,
-            hotspot_x: i32,
-            hotspot_y: i32,
+            hotspot_x: i32, // surface-local x coordinate
+            hotspot_y: i32, // surface-local y coordinate
         },
+        /// This destroys the client's resource for this tool object.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Sets the surface of the cursor used for this tool on the given
@@ -633,19 +634,21 @@ pub const TabletToolV2 = struct {
     /// wp_tablet_tool. If the surface already has another role or has
     /// previously been used as cursor surface for a different tool, a
     /// protocol error is raised.
-    pub fn set_cursor(self: *const TabletToolV2, _serial: u32, _surface: ?wl.Surface, _hotspot_x: i32, _hotspot_y: i32) void {
+    pub fn set_cursor(self: TabletToolV2, client: *Client, _serial: u32, _surface: ?wl.Surface, _hotspot_x: i32, _hotspot_y: i32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
-            .{ .object = if (_surface) |arg| arg.proxy.id else 0 },
+            .{ .object = if (_surface) |arg| @intFromEnum(arg) else 0 },
             .{ .int = _hotspot_x },
             .{ .int = _hotspot_y },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// This destroys the client's resource for this tool object.
-    pub fn destroy(self: *const TabletToolV2) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: TabletToolV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -658,8 +661,8 @@ pub const TabletToolV2 = struct {
 /// pid/vid. These capabilities are sent in an event sequence after the
 /// wp_tablet_seat.tablet_added event. This initial event sequence is
 /// terminated by a wp_tablet.done event.
-pub const TabletV2 = struct {
-    proxy: Proxy,
+pub const TabletV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_v2",
         .version = 1,
@@ -681,14 +684,12 @@ pub const TabletV2 = struct {
         name: struct {
             name: [:0]const u8, // the device name
         },
-
         /// This event is sent in the initial burst of events before the
         /// wp_tablet.done event.
         id: struct {
             vid: u32, // USB vendor id
             pid: u32, // USB product id
         },
-
         /// A system-specific device path that indicates which device is behind
         /// this wp_tablet. This information may be used to gather additional
         /// information about the device, e.g. through libwacom.
@@ -706,7 +707,6 @@ pub const TabletV2 = struct {
         path: struct {
             path: [:0]const u8, // path to local device
         },
-
         /// This event is sent immediately to signal the end of the initial
         /// burst of descriptive events. A client may consider the static
         /// description of the tablet to be complete and finalize initialization
@@ -718,6 +718,7 @@ pub const TabletV2 = struct {
         /// When this event is received, the client must wp_tablet.destroy
         /// the object.
         removed: void,
+
         pub fn from_args(
             opcode: u16,
             args: []Argument,
@@ -745,35 +746,23 @@ pub const TabletV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// This destroys the client's resource for this tablet object.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
 
     /// This destroys the client's resource for this tablet object.
-    pub fn destroy(self: *const TabletV2) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: TabletV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -783,8 +772,8 @@ pub const TabletV2 = struct {
 ///
 /// Events on a ring are logically grouped by the wl_tablet_pad_ring.frame
 /// event.
-pub const TabletPadRingV2 = struct {
-    proxy: Proxy,
+pub const TabletPadRingV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_pad_ring_v2",
         .version = 1,
@@ -819,7 +808,6 @@ pub const TabletPadRingV2 = struct {
         source: struct {
             source: Source, // the event source
         },
-
         /// Sent whenever the angle on a ring changes.
         ///
         /// The angle is provided in degrees clockwise from the logical
@@ -827,7 +815,6 @@ pub const TabletPadRingV2 = struct {
         angle: struct {
             degrees: Fixed, // the current angle in degrees
         },
-
         /// Stop notification for ring events.
         ///
         /// For some wp_tablet_pad_ring.source types, a wp_tablet_pad_ring.stop
@@ -881,34 +868,41 @@ pub const TabletPadRingV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletPadRingV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletPadRingV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletPadRingV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Request that the compositor use the provided feedback string
+        /// associated with this ring. This request should be issued immediately
+        /// after a wp_tablet_pad_group.mode_switch event from the corresponding
+        /// group is received, or whenever the ring is mapped to a different
+        /// action. See wp_tablet_pad_group.mode_switch for more details.
+        ///
+        /// Clients are encouraged to provide context-aware descriptions for
+        /// the actions associated with the ring; compositors may use this
+        /// information to offer visual feedback about the button layout
+        /// (eg. on-screen displays).
+        ///
+        /// The provided string 'description' is a UTF-8 encoded string to be
+        /// associated with this ring, and is considered user-visible; general
+        /// internationalization rules apply.
+        ///
+        /// The serial argument will be that of the last
+        /// wp_tablet_pad_group.mode_switch event received for the group of this
+        /// ring. Requests providing other serials than the most recent one will be
+        /// ignored.
         set_feedback: struct {
-            description: [:0]const u8,
-            serial: u32,
+            description: [:0]const u8, // ring description
+            serial: u32, // serial of the mode switch event
         },
+        /// This destroys the client's resource for this ring object.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Request that the compositor use the provided feedback string
@@ -930,17 +924,19 @@ pub const TabletPadRingV2 = struct {
     /// wp_tablet_pad_group.mode_switch event received for the group of this
     /// ring. Requests providing other serials than the most recent one will be
     /// ignored.
-    pub fn set_feedback(self: *const TabletPadRingV2, _description: [:0]const u8, _serial: u32) void {
+    pub fn set_feedback(self: TabletPadRingV2, client: *Client, _description: [:0]const u8, _serial: u32) void {
         var _args = [_]Argument{
             .{ .string = _description },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// This destroys the client's resource for this ring object.
-    pub fn destroy(self: *const TabletPadRingV2) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: TabletPadRingV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -950,8 +946,8 @@ pub const TabletPadRingV2 = struct {
 ///
 /// Events on a strip are logically grouped by the wl_tablet_pad_strip.frame
 /// event.
-pub const TabletPadStripV2 = struct {
-    proxy: Proxy,
+pub const TabletPadStripV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_pad_strip_v2",
         .version = 1,
@@ -986,7 +982,6 @@ pub const TabletPadStripV2 = struct {
         source: struct {
             source: Source, // the event source
         },
-
         /// Sent whenever the position on a strip changes.
         ///
         /// The position is normalized to a range of [0, 65535], the 0-value
@@ -995,7 +990,6 @@ pub const TabletPadStripV2 = struct {
         position: struct {
             position: u32, // the current position
         },
-
         /// Stop notification for strip events.
         ///
         /// For some wp_tablet_pad_strip.source types, a wp_tablet_pad_strip.stop
@@ -1050,34 +1044,41 @@ pub const TabletPadStripV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletPadStripV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletPadStripV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletPadStripV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Requests the compositor to use the provided feedback string
+        /// associated with this strip. This request should be issued immediately
+        /// after a wp_tablet_pad_group.mode_switch event from the corresponding
+        /// group is received, or whenever the strip is mapped to a different
+        /// action. See wp_tablet_pad_group.mode_switch for more details.
+        ///
+        /// Clients are encouraged to provide context-aware descriptions for
+        /// the actions associated with the strip, and compositors may use this
+        /// information to offer visual feedback about the button layout
+        /// (eg. on-screen displays).
+        ///
+        /// The provided string 'description' is a UTF-8 encoded string to be
+        /// associated with this ring, and is considered user-visible; general
+        /// internationalization rules apply.
+        ///
+        /// The serial argument will be that of the last
+        /// wp_tablet_pad_group.mode_switch event received for the group of this
+        /// strip. Requests providing other serials than the most recent one will be
+        /// ignored.
         set_feedback: struct {
-            description: [:0]const u8,
-            serial: u32,
+            description: [:0]const u8, // strip description
+            serial: u32, // serial of the mode switch event
         },
+        /// This destroys the client's resource for this strip object.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Requests the compositor to use the provided feedback string
@@ -1099,17 +1100,19 @@ pub const TabletPadStripV2 = struct {
     /// wp_tablet_pad_group.mode_switch event received for the group of this
     /// strip. Requests providing other serials than the most recent one will be
     /// ignored.
-    pub fn set_feedback(self: *const TabletPadStripV2, _description: [:0]const u8, _serial: u32) void {
+    pub fn set_feedback(self: TabletPadStripV2, client: *Client, _description: [:0]const u8, _serial: u32) void {
         var _args = [_]Argument{
             .{ .string = _description },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// This destroys the client's resource for this strip object.
-    pub fn destroy(self: *const TabletPadStripV2) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: TabletPadStripV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -1135,8 +1138,8 @@ pub const TabletPadStripV2 = struct {
 /// although it is at clients' discretion whether to actually perform different
 /// actions, and/or issue the respective .set_feedback requests to notify the
 /// compositor. See the wp_tablet_pad_group.mode_switch event for more details.
-pub const TabletPadGroupV2 = struct {
-    proxy: Proxy,
+pub const TabletPadGroupV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_pad_group_v2",
         .version = 1,
@@ -1169,25 +1172,18 @@ pub const TabletPadGroupV2 = struct {
         buttons: struct {
             buttons: *anyopaque, // buttons in this group
         },
-
         /// Sent on wp_tablet_pad_group initialization to announce available rings.
         /// One event is sent for each ring available on this pad group.
         ///
         /// This event is sent in the initial burst of events before the
         /// wp_tablet_pad_group.done event.
-        ring: struct {
-            ring: *TabletPadRingV2,
-        },
-
+        ring: void,
         /// Sent on wp_tablet_pad initialization to announce available strips.
         /// One event is sent for each strip available on this pad group.
         ///
         /// This event is sent in the initial burst of events before the
         /// wp_tablet_pad_group.done event.
-        strip: struct {
-            strip: *TabletPadStripV2,
-        },
-
+        strip: void,
         /// Sent on wp_tablet_pad_group initialization to announce that the pad
         /// group may switch between modes. A client may use a mode to store a
         /// specific configuration for buttons, rings and strips and use the
@@ -1203,7 +1199,6 @@ pub const TabletPadGroupV2 = struct {
         modes: struct {
             modes: u32, // the number of modes
         },
-
         /// This event is sent immediately to signal the end of the initial
         /// burst of descriptive events. A client may consider the static
         /// description of the tablet to be complete and finalize initialization
@@ -1279,36 +1274,25 @@ pub const TabletPadGroupV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletPadGroupV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletPadGroupV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletPadGroupV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Destroy the wp_tablet_pad_group object. Objects created from this object
+        /// are unaffected and should be destroyed separately.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+            };
+        }
     };
 
     /// Destroy the wp_tablet_pad_group object. Objects created from this object
     /// are unaffected and should be destroyed separately.
-    pub fn destroy(self: *const TabletPadGroupV2) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: TabletPadGroupV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -1335,8 +1319,8 @@ pub const TabletPadGroupV2 = struct {
 /// Groups may have multiple modes. Modes allow clients to map multiple
 /// actions to a single pad feature. Only one mode can be active per group,
 /// although different groups may have different active modes.
-pub const TabletPadV2 = struct {
-    proxy: Proxy,
+pub const TabletPadV2 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwp_tablet_pad_v2",
         .version = 1,
@@ -1366,10 +1350,7 @@ pub const TabletPadV2 = struct {
         ///
         /// This event is sent in the initial burst of events before the
         /// wp_tablet_pad.done event. At least one group will be announced.
-        group: struct {
-            pad_group: *TabletPadGroupV2,
-        },
-
+        group: void,
         /// A system-specific device path that indicates which device is behind
         /// this wp_tablet_pad. This information may be used to gather additional
         /// information about the device, e.g. through libwacom.
@@ -1383,7 +1364,6 @@ pub const TabletPadV2 = struct {
         path: struct {
             path: [:0]const u8, // path to local device
         },
-
         /// Sent on wp_tablet_pad initialization to announce the available
         /// buttons.
         ///
@@ -1393,7 +1373,6 @@ pub const TabletPadV2 = struct {
         buttons: struct {
             buttons: u32, // the number of buttons
         },
-
         /// This event signals the end of the initial burst of descriptive
         /// events. A client may consider the static description of the pad to
         /// be complete and finalize initialization of the pad.
@@ -1404,21 +1383,18 @@ pub const TabletPadV2 = struct {
             button: u32, // the index of the button that changed state
             state: ButtonState,
         },
-
         /// Notification that this pad is focused on the specified surface.
         enter: struct {
             serial: u32, // serial number of the enter event
             tablet: ?u32, // the tablet the pad is attached to
             surface: ?u32, // surface the pad is focused on
         },
-
         /// Notification that this pad is no longer focused on the specified
         /// surface.
         leave: struct {
             serial: u32, // serial number of the leave event
             surface: ?u32, // surface the pad is no longer focused on
         },
-
         /// Sent when the pad has been removed from the system. When a tablet
         /// is removed its pad(s) will be removed too.
         ///
@@ -1426,6 +1402,7 @@ pub const TabletPadV2 = struct {
         /// and groups that were offered by this pad, and issue wp_tablet_pad.destroy
         /// the pad itself.
         removed: void,
+
         pub fn from_args(
             opcode: u16,
             args: []Argument,
@@ -1472,35 +1449,48 @@ pub const TabletPadV2 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: TabletPadV2,
-        comptime T: type,
-        comptime _listener: *const fn (TabletPadV2, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    TabletPadV2{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Requests the compositor to use the provided feedback string
+        /// associated with this button. This request should be issued immediately
+        /// after a wp_tablet_pad_group.mode_switch event from the corresponding
+        /// group is received, or whenever a button is mapped to a different
+        /// action. See wp_tablet_pad_group.mode_switch for more details.
+        ///
+        /// Clients are encouraged to provide context-aware descriptions for
+        /// the actions associated with each button, and compositors may use
+        /// this information to offer visual feedback on the button layout
+        /// (e.g. on-screen displays).
+        ///
+        /// Button indices start at 0. Setting the feedback string on a button
+        /// that is reserved by the compositor (i.e. not belonging to any
+        /// wp_tablet_pad_group) does not generate an error but the compositor
+        /// is free to ignore the request.
+        ///
+        /// The provided string 'description' is a UTF-8 encoded string to be
+        /// associated with this ring, and is considered user-visible; general
+        /// internationalization rules apply.
+        ///
+        /// The serial argument will be that of the last
+        /// wp_tablet_pad_group.mode_switch event received for the group of this
+        /// button. Requests providing other serials than the most recent one will
+        /// be ignored.
         set_feedback: struct {
-            button: u32,
-            description: [:0]const u8,
-            serial: u32,
+            button: u32, // button index
+            description: [:0]const u8, // button description
+            serial: u32, // serial of the mode switch event
         },
+        /// Destroy the wp_tablet_pad object. Objects created from this object
+        /// are unaffected and should be destroyed separately.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Requests the compositor to use the provided feedback string
@@ -1527,19 +1517,21 @@ pub const TabletPadV2 = struct {
     /// wp_tablet_pad_group.mode_switch event received for the group of this
     /// button. Requests providing other serials than the most recent one will
     /// be ignored.
-    pub fn set_feedback(self: *const TabletPadV2, _button: u32, _description: [:0]const u8, _serial: u32) void {
+    pub fn set_feedback(self: TabletPadV2, client: *Client, _button: u32, _description: [:0]const u8, _serial: u32) void {
         var _args = [_]Argument{
             .{ .uint = _button },
             .{ .string = _description },
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// Destroy the wp_tablet_pad object. Objects created from this object
     /// are unaffected and should be destroyed separately.
-    pub fn destroy(self: *const TabletPadV2) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: TabletPadV2, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };

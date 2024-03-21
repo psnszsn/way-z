@@ -26,6 +26,7 @@ const Proxy = @import("../proxy.zig").Proxy;
 const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
 
 const wl = @import("wl.zig");
 const xdg = @import("xdg.zig");
@@ -37,8 +38,8 @@ const xdg = @import("xdg.zig");
 /// semantics. This interface should be suitable for the implementation of
 /// many desktop shell components, and a broad number of other applications
 /// that interact with the desktop.
-pub const LayerShellV1 = struct {
-    proxy: Proxy,
+pub const LayerShellV1 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwlr_layer_shell_v1",
         .version = 4,
@@ -59,13 +60,46 @@ pub const LayerShellV1 = struct {
         overlay = 3,
     };
     pub const Request = union(enum) {
+        /// Create a layer surface for an existing surface. This assigns the role of
+        /// layer_surface, or raises a protocol error if another role is already
+        /// assigned.
+        ///
+        /// Creating a layer surface from a wl_surface which has a buffer attached
+        /// or committed is a client error, and any attempts by a client to attach
+        /// or manipulate a buffer prior to the first layer_surface.configure call
+        /// must also be treated as errors.
+        ///
+        /// After creating a layer_surface object and setting it up, the client
+        /// must perform an initial commit without any buffer attached.
+        /// The compositor will reply with a layer_surface.configure event.
+        /// The client must acknowledge it and is then allowed to attach a buffer
+        /// to map the surface.
+        ///
+        /// You may pass NULL for output to allow the compositor to decide which
+        /// output to use. Generally this will be the one that the user most
+        /// recently interacted with.
+        ///
+        /// Clients can specify a namespace that defines the purpose of the layer
+        /// surface.
         get_layer_surface: struct {
             surface: ?u32,
             output: u32,
-            layer: Layer,
-            namespace: [:0]const u8,
+            layer: Layer, // layer to add this surface to
+            namespace: [:0]const u8, // namespace for the layer surface
         },
+        /// This request indicates that the client will not use the layer_shell
+        /// object any more. Objects that have been created through this instance
+        /// are not affected.
         destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => LayerSurfaceV1,
+                1 => void,
+            };
+        }
     };
 
     /// Create a layer surface for an existing surface. This assigns the role of
@@ -89,22 +123,24 @@ pub const LayerShellV1 = struct {
     ///
     /// Clients can specify a namespace that defines the purpose of the layer
     /// surface.
-    pub fn get_layer_surface(self: *const LayerShellV1, _surface: wl.Surface, _output: ?wl.Output, _layer: Layer, _namespace: [:0]const u8) LayerSurfaceV1 {
+    pub fn get_layer_surface(self: LayerShellV1, client: *Client, _surface: wl.Surface, _output: ?wl.Output, _layer: Layer, _namespace: [:0]const u8) LayerSurfaceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _surface.proxy.id },
-            .{ .object = if (_output) |arg| arg.proxy.id else 0 },
+            .{ .object = @intFromEnum(_surface) },
+            .{ .object = if (_output) |arg| @intFromEnum(arg) else 0 },
             .{ .uint = @intCast(@intFromEnum(_layer)) },
             .{ .string = _namespace },
         };
-        return self.proxy.marshal_request_constructor(LayerSurfaceV1, 0, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(LayerSurfaceV1, 0, &_args) catch @panic("buffer full");
     }
 
     /// This request indicates that the client will not use the layer_shell
     /// object any more. Objects that have been created through this instance
     /// are not affected.
-    pub fn destroy(self: *const LayerShellV1) void {
-        self.proxy.marshal_request(1, &.{}) catch unreachable;
+    pub fn destroy(self: LayerShellV1, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 };
@@ -124,8 +160,8 @@ pub const LayerShellV1 = struct {
 /// returns to the state it had right after layer_shell.get_layer_surface.
 /// The client can re-map the surface by performing a commit without any
 /// buffer attached, waiting for a configure event and handling it as usual.
-pub const LayerSurfaceV1 = struct {
-    proxy: Proxy,
+pub const LayerSurfaceV1 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "zwlr_layer_surface_v1",
         .version = 4,
@@ -190,13 +226,13 @@ pub const LayerSurfaceV1 = struct {
             width: u32,
             height: u32,
         },
-
         /// The closed event is sent by the compositor when the surface will no
         /// longer be shown. The output may have been destroyed or the user may
         /// have asked for it to be removed. Further changes to the surface will be
         /// ignored. The client should destroy the resource after receiving this
         /// event, and create a new surface if they so choose.
         closed: void,
+
         pub fn from_args(
             opcode: u16,
             args: []Argument,
@@ -214,58 +250,146 @@ pub const LayerSurfaceV1 = struct {
             };
         }
     };
-
-    pub fn set_listener(
-        self: LayerSurfaceV1,
-        comptime T: type,
-        comptime _listener: *const fn (LayerSurfaceV1, Event, T) void,
-        _data: T,
-    ) void {
-        const w = struct {
-            fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-                const event = Event.from_args(opcode, args);
-
-                @call(.always_inline, _listener, .{
-                    LayerSurfaceV1{ .proxy = proxy },
-                    event,
-                    @as(T, @ptrCast(@alignCast(__data))),
-                });
-            }
-        };
-
-        self.proxy.set(.listener, w.inner);
-        self.proxy.set(.listener_data, _data);
-    }
     pub const Request = union(enum) {
+        /// Sets the size of the surface in surface-local coordinates. The
+        /// compositor will display the surface centered with respect to its
+        /// anchors.
+        ///
+        /// If you pass 0 for either value, the compositor will assign it and
+        /// inform you of the assignment in the configure event. You must set your
+        /// anchor to opposite edges in the dimensions you omit; not doing so is a
+        /// protocol error. Both values are 0 by default.
+        ///
+        /// Size is double-buffered, see wl_surface.commit.
         set_size: struct {
             width: u32,
             height: u32,
         },
+        /// Requests that the compositor anchor the surface to the specified edges
+        /// and corners. If two orthogonal edges are specified (e.g. 'top' and
+        /// 'left'), then the anchor point will be the intersection of the edges
+        /// (e.g. the top left corner of the output); otherwise the anchor point
+        /// will be centered on that edge, or in the center if none is specified.
+        ///
+        /// Anchor is double-buffered, see wl_surface.commit.
         set_anchor: struct {
             anchor: Anchor,
         },
+        /// Requests that the compositor avoids occluding an area with other
+        /// surfaces. The compositor's use of this information is
+        /// implementation-dependent - do not assume that this region will not
+        /// actually be occluded.
+        ///
+        /// A positive value is only meaningful if the surface is anchored to one
+        /// edge or an edge and both perpendicular edges. If the surface is not
+        /// anchored, anchored to only two perpendicular edges (a corner), anchored
+        /// to only two parallel edges or anchored to all edges, a positive value
+        /// will be treated the same as zero.
+        ///
+        /// A positive zone is the distance from the edge in surface-local
+        /// coordinates to consider exclusive.
+        ///
+        /// Surfaces that do not wish to have an exclusive zone may instead specify
+        /// how they should interact with surfaces that do. If set to zero, the
+        /// surface indicates that it would like to be moved to avoid occluding
+        /// surfaces with a positive exclusive zone. If set to -1, the surface
+        /// indicates that it would not like to be moved to accommodate for other
+        /// surfaces, and the compositor should extend it all the way to the edges
+        /// it is anchored to.
+        ///
+        /// For example, a panel might set its exclusive zone to 10, so that
+        /// maximized shell surfaces are not shown on top of it. A notification
+        /// might set its exclusive zone to 0, so that it is moved to avoid
+        /// occluding the panel, but shell surfaces are shown underneath it. A
+        /// wallpaper or lock screen might set their exclusive zone to -1, so that
+        /// they stretch below or over the panel.
+        ///
+        /// The default value is 0.
+        ///
+        /// Exclusive zone is double-buffered, see wl_surface.commit.
         set_exclusive_zone: struct {
             zone: i32,
         },
+        /// Requests that the surface be placed some distance away from the anchor
+        /// point on the output, in surface-local coordinates. Setting this value
+        /// for edges you are not anchored to has no effect.
+        ///
+        /// The exclusive zone includes the margin.
+        ///
+        /// Margin is double-buffered, see wl_surface.commit.
         set_margin: struct {
             top: i32,
             right: i32,
             bottom: i32,
             left: i32,
         },
+        /// Set how keyboard events are delivered to this surface. By default,
+        /// layer shell surfaces do not receive keyboard events; this request can
+        /// be used to change this.
+        ///
+        /// This setting is inherited by child surfaces set by the get_popup
+        /// request.
+        ///
+        /// Layer surfaces receive pointer, touch, and tablet events normally. If
+        /// you do not want to receive them, set the input region on your surface
+        /// to an empty region.
+        ///
+        /// Keyboard interactivity is double-buffered, see wl_surface.commit.
         set_keyboard_interactivity: struct {
             keyboard_interactivity: KeyboardInteractivity,
         },
+        /// This assigns an xdg_popup's parent to this layer_surface.  This popup
+        /// should have been created via xdg_surface::get_popup with the parent set
+        /// to NULL, and this request must be invoked before committing the popup's
+        /// initial state.
+        ///
+        /// See the documentation of xdg_popup for more details about what an
+        /// xdg_popup is and how it is used.
         get_popup: struct {
             popup: ?u32,
         },
+        /// When a configure event is received, if a client commits the
+        /// surface in response to the configure event, then the client
+        /// must make an ack_configure request sometime before the commit
+        /// request, passing along the serial of the configure event.
+        ///
+        /// If the client receives multiple configure events before it
+        /// can respond to one, it only has to ack the last configure event.
+        ///
+        /// A client is not required to commit immediately after sending
+        /// an ack_configure request - it may even ack_configure several times
+        /// before its next surface commit.
+        ///
+        /// A client may send multiple ack_configure requests before committing, but
+        /// only the last request sent before a commit indicates which configure
+        /// event the client really is responding to.
         ack_configure: struct {
-            serial: u32,
+            serial: u32, // the serial from the configure event
         },
+        /// This request destroys the layer surface.
         destroy: void,
+        /// Change the layer that the surface is rendered on.
+        ///
+        /// Layer is double-buffered, see wl_surface.commit.
         set_layer: struct {
-            layer: LayerShellV1.Layer,
+            layer: LayerShellV1.Layer, // layer to move this surface to
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+                2 => void,
+                3 => void,
+                4 => void,
+                5 => void,
+                6 => void,
+                7 => void,
+                8 => void,
+            };
+        }
     };
 
     /// Sets the size of the surface in surface-local coordinates. The
@@ -278,12 +402,13 @@ pub const LayerSurfaceV1 = struct {
     /// protocol error. Both values are 0 by default.
     ///
     /// Size is double-buffered, see wl_surface.commit.
-    pub fn set_size(self: *const LayerSurfaceV1, _width: u32, _height: u32) void {
+    pub fn set_size(self: LayerSurfaceV1, client: *Client, _width: u32, _height: u32) void {
         var _args = [_]Argument{
             .{ .uint = _width },
             .{ .uint = _height },
         };
-        self.proxy.marshal_request(0, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &_args) catch unreachable;
     }
 
     /// Requests that the compositor anchor the surface to the specified edges
@@ -293,11 +418,12 @@ pub const LayerSurfaceV1 = struct {
     /// will be centered on that edge, or in the center if none is specified.
     ///
     /// Anchor is double-buffered, see wl_surface.commit.
-    pub fn set_anchor(self: *const LayerSurfaceV1, _anchor: Anchor) void {
+    pub fn set_anchor(self: LayerSurfaceV1, client: *Client, _anchor: Anchor) void {
         var _args = [_]Argument{
             .{ .uint = @bitCast(_anchor) },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 
     /// Requests that the compositor avoids occluding an area with other
@@ -332,11 +458,12 @@ pub const LayerSurfaceV1 = struct {
     /// The default value is 0.
     ///
     /// Exclusive zone is double-buffered, see wl_surface.commit.
-    pub fn set_exclusive_zone(self: *const LayerSurfaceV1, _zone: i32) void {
+    pub fn set_exclusive_zone(self: LayerSurfaceV1, client: *Client, _zone: i32) void {
         var _args = [_]Argument{
             .{ .int = _zone },
         };
-        self.proxy.marshal_request(2, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(2, &_args) catch unreachable;
     }
 
     /// Requests that the surface be placed some distance away from the anchor
@@ -346,14 +473,15 @@ pub const LayerSurfaceV1 = struct {
     /// The exclusive zone includes the margin.
     ///
     /// Margin is double-buffered, see wl_surface.commit.
-    pub fn set_margin(self: *const LayerSurfaceV1, _top: i32, _right: i32, _bottom: i32, _left: i32) void {
+    pub fn set_margin(self: LayerSurfaceV1, client: *Client, _top: i32, _right: i32, _bottom: i32, _left: i32) void {
         var _args = [_]Argument{
             .{ .int = _top },
             .{ .int = _right },
             .{ .int = _bottom },
             .{ .int = _left },
         };
-        self.proxy.marshal_request(3, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(3, &_args) catch unreachable;
     }
 
     /// Set how keyboard events are delivered to this surface. By default,
@@ -368,11 +496,12 @@ pub const LayerSurfaceV1 = struct {
     /// to an empty region.
     ///
     /// Keyboard interactivity is double-buffered, see wl_surface.commit.
-    pub fn set_keyboard_interactivity(self: *const LayerSurfaceV1, _keyboard_interactivity: KeyboardInteractivity) void {
+    pub fn set_keyboard_interactivity(self: LayerSurfaceV1, client: *Client, _keyboard_interactivity: KeyboardInteractivity) void {
         var _args = [_]Argument{
             .{ .uint = @intCast(@intFromEnum(_keyboard_interactivity)) },
         };
-        self.proxy.marshal_request(4, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(4, &_args) catch unreachable;
     }
 
     /// This assigns an xdg_popup's parent to this layer_surface.  This popup
@@ -382,11 +511,12 @@ pub const LayerSurfaceV1 = struct {
     ///
     /// See the documentation of xdg_popup for more details about what an
     /// xdg_popup is and how it is used.
-    pub fn get_popup(self: *const LayerSurfaceV1, _popup: xdg.Popup) void {
+    pub fn get_popup(self: LayerSurfaceV1, client: *Client, _popup: xdg.Popup) void {
         var _args = [_]Argument{
-            .{ .object = _popup.proxy.id },
+            .{ .object = @intFromEnum(_popup) },
         };
-        self.proxy.marshal_request(5, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(5, &_args) catch unreachable;
     }
 
     /// When a configure event is received, if a client commits the
@@ -404,26 +534,29 @@ pub const LayerSurfaceV1 = struct {
     /// A client may send multiple ack_configure requests before committing, but
     /// only the last request sent before a commit indicates which configure
     /// event the client really is responding to.
-    pub fn ack_configure(self: *const LayerSurfaceV1, _serial: u32) void {
+    pub fn ack_configure(self: LayerSurfaceV1, client: *Client, _serial: u32) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
         };
-        self.proxy.marshal_request(6, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(6, &_args) catch unreachable;
     }
 
     /// This request destroys the layer surface.
-    pub fn destroy(self: *const LayerSurfaceV1) void {
-        self.proxy.marshal_request(7, &.{}) catch unreachable;
+    pub fn destroy(self: LayerSurfaceV1, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(7, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
     /// Change the layer that the surface is rendered on.
     ///
     /// Layer is double-buffered, see wl_surface.commit.
-    pub fn set_layer(self: *const LayerSurfaceV1, _layer: LayerShellV1.Layer) void {
+    pub fn set_layer(self: LayerSurfaceV1, client: *Client, _layer: LayerShellV1.Layer) void {
         var _args = [_]Argument{
             .{ .uint = @intCast(@intFromEnum(_layer)) },
         };
-        self.proxy.marshal_request(8, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(8, &_args) catch unreachable;
     }
 };

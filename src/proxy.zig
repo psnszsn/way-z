@@ -14,7 +14,7 @@ pub const Interface = struct {
 
 pub const ObjectAttrs = struct {
     interface: *const Interface,
-    listener: ?*const fn (Proxy, u16, []Argument, data: ?*anyopaque) void = null,
+    listener: ?*const fn (*Client, u32, u16, []Argument, data: ?*anyopaque) void = null,
     listener_data: ?*anyopaque = undefined,
     is_free: bool = false,
 };
@@ -65,7 +65,7 @@ pub const Proxy = struct {
         }
         // log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
         if (listener) |l| {
-            l(self, opcode, args[0..signature.len], listener_data);
+            l(self.client, self.id, opcode, args[0..signature.len], listener_data);
         }
     }
 
@@ -85,7 +85,7 @@ pub const Proxy = struct {
         }
         try self.marshal_request(opcode, args);
 
-        return T{ .proxy = next_proxy };
+        return @enumFromInt(next_proxy.id);
     }
 
     pub fn marshal_request(self: Proxy, opcode: u16, args: []const Argument) !void {
@@ -141,3 +141,39 @@ pub const Proxy = struct {
         return r;
     }
 };
+
+//     pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
+//         const Payload = std.meta.TagPayload(request_to_args, tag);
+//         const payload_len = std.meta.fields(Payload).len;
+//         return [payload_len]Argument;
+// }
+//
+//
+//     pub fn request_to_args(request: anytype) RequestArgs(@TypeOf(request),std.meta.activeTag(request)){
+//         const Request = @TypeOf(request);
+//         const RT = RequestArgs(@TypeOf(request),std.meta.activeTag(request));
+//
+//         const payload = @field(request, std.meta.activeTag(request));
+//
+//         if (@TypeOf(payload) != void){}
+//         comptime var r: RT = undefined;
+//
+//         inline for (fields, 0..) |f, i| {
+//             if (f.type == void) continue;
+//             const ev_f = std.meta.fields(f.type);
+//             comptime var argts: [ev_f.len]Argument.ArgumentType = undefined;
+//             for (ev_f, 0..) |sf, ii| {
+//                 argts[ii] = switch (sf.type) {
+//                     u32 => .uint,
+//                     i32 => .int,
+//                     [:0]const u8 => .string,
+//                     ?*anyopaque => .object,
+//                     argm.Fixed => .fixed,
+//                     else => .uint,
+//                 };
+//             }
+//             r[i] = &argts;
+//         }
+//         return r;
+//     }
+// };

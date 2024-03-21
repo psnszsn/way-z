@@ -2,6 +2,7 @@ const std = @import("std");
 const linux = std.os.linux;
 const Proxy = @import("proxy.zig").Proxy;
 const ObjectAttrs = @import("proxy.zig").ObjectAttrs;
+const Argument = @import("argument.zig").Argument;
 const xev = @import("xev");
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const wl = @import("generated/wl.zig");
@@ -164,9 +165,7 @@ pub const Client = struct {
         const next = self.next_object();
         next.init(.{ .interface = &wl.Display.interface });
 
-        self.wl_display = wl.Display{
-            .proxy = next,
-        };
+        self.wl_display = @enumFromInt(next.id);
 
         const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
         const wl_display_name = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
@@ -191,7 +190,7 @@ pub const Client = struct {
 
         self.connection = connection;
 
-        self.wl_display.set_listener(?*anyopaque, displayListener, null);
+        self.set_listener(self.wl_display, ?*anyopaque, displayListener, null);
 
         return self;
     }
@@ -242,18 +241,18 @@ pub const Client = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn roundtrip(self: *const Client) !void {
+    pub fn roundtrip(self: *Client) !void {
         const w = struct {
-            fn cbListener(cb: wl.Callback, _: wl.Callback.Event, done: *bool) void {
-                _ = cb;
+            fn cbListener(_: *Client, cb: wl.Callback, _: wl.Callback.Event, done: *bool) void {
+                _ = cb; // autofix
                 done.* = true;
                 // Todo: cb.destroy()
                 // std.log.info("event: {}", .{event});
             }
         };
-        const callblack = self.wl_display.sync();
+        const callblack = self.wl_display.sync(self);
         var done: bool = false;
-        callblack.set_listener(*bool, w.cbListener, &done);
+        self.set_listener(callblack, *bool, w.cbListener, &done);
         self.connection.is_running = false;
         defer self.connection.is_running = true;
         self.connection.send();
@@ -264,51 +263,48 @@ pub const Client = struct {
         }
     }
 
-    // TODO
-    // pub fn set_listener(
-    //     self: *Client,
-    //     object: anytype,
-    //     comptime T: type,
-    //     comptime _listener: *const fn (*Client, @TypeOf(object), @TypeOf(object).Event, T) void,
-    //     _data: T,
-    // ) void {
-    //     _ = _listener; // autofix
-    //     const w = struct {
-    //         fn inner(client: *Client, idx: u32, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
-    //             const event = @TypeOf(object).Event.from_args(opcode, args);
-    //             @call(.always_inline, _listener, .{
-    //                 client,
-    //                 @as(@TypeOf(object), @enumFromInt(idx)),
-    //                 event,
-    //                 @as(T, @ptrCast(@alignCast(__data))),
-    //             });
-    //         }
-    //     };
-    //
-    //     self.set(object, .listener, w.inner);
-    //     self.set(object, .listener_data, _data);
-    // }
-    //
-    // pub fn get(
-    //     self: *Client,
-    //     idx: anytype,
-    //     comptime item: std.meta.FieldEnum(ObjectAttrs),
-    // ) std.meta.FieldType(ObjectAttrs, item) {
-    //     return self.client.objects.items(item)[@intFromEnum(idx)];
-    // }
-    //
-    // pub fn set(
-    //     self: *Client,
-    //     idx: anytype,
-    //     comptime item: std.meta.FieldEnum(ObjectAttrs),
-    //     value: std.meta.FieldType(ObjectAttrs, item),
-    // ) void {
-    //     self.client.objects.items(item)[@intFromEnum(idx)] = value;
-    // }
+    pub fn set_listener(
+        self: *Client,
+        object: anytype,
+        comptime T: type,
+        comptime _listener: *const fn (*Client, @TypeOf(object), @TypeOf(object).Event, T) void,
+        _data: T,
+    ) void {
+        const w = struct {
+            fn inner(client: *Client, idx: u32, opcode: u16, args: []Argument, __data: ?*anyopaque) void {
+                const event = @TypeOf(object).Event.from_args(opcode, args);
+                @call(.always_inline, _listener, .{
+                    client,
+                    @as(@TypeOf(object), @enumFromInt(idx)),
+                    event,
+                    @as(T, @ptrCast(@alignCast(__data))),
+                });
+            }
+        };
+
+        self.set(object, .listener, w.inner);
+        self.set(object, .listener_data, _data);
+    }
+
+    pub fn get(
+        self: *Client,
+        idx: anytype,
+        comptime item: std.meta.FieldEnum(ObjectAttrs),
+    ) std.meta.FieldType(ObjectAttrs, item) {
+        return self.objects.items(item)[@intFromEnum(idx)];
+    }
+
+    pub fn set(
+        self: *Client,
+        idx: anytype,
+        comptime item: std.meta.FieldEnum(ObjectAttrs),
+        value: std.meta.FieldType(ObjectAttrs, item),
+    ) void {
+        self.objects.items(item)[@intFromEnum(idx)] = value;
+    }
 };
 
-fn displayListener(displ: wl.Display, event: wl.Display.Event, _: ?*anyopaque) void {
-    const client = displ.proxy.client;
+fn displayListener(client: *Client, _: wl.Display, event: wl.Display.Event, _: ?*anyopaque) void {
     switch (event) {
         .@"error" => |e| {
             std.log.err("Wayland error {}: {s}", .{ e.code, e.message });

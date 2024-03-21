@@ -37,14 +37,16 @@ class ZigUnion(Zig):
     class Varinat(NamedTuple):
         name: str
         payload: Zig | None
+        doc_comment: str | None = None
 
     variants: list[Varinat]
-    extra: list[Zig] = []
+    extra: list[Zig] = field(default_factory=list)
 
     def zig_it(self) -> str:
         out = io.StringIO()
         out.write("union(enum) {")
         for variant in self.variants:
+            emit_description(variant.doc_comment, out)
             out.write(f'''@"{variant.name}"''')
             out.write(": ")
             if variant.payload:
@@ -53,7 +55,8 @@ class ZigUnion(Zig):
                 out.write("void")
             out.write(",")
         for decl in self.extra:
-            decl.zig_it()
+            out.write("\n")
+            out.write(decl.zig_it())
         out.write("}")
         return out.getvalue()
 
@@ -63,6 +66,7 @@ class ZigStruct(Zig):
     class Field(NamedTuple):
         name: str
         typ: str
+        comment: str | None = None
 
     fields: list[Field]
 
@@ -74,6 +78,10 @@ class ZigStruct(Zig):
             out.write(": ")
             out.write(field.typ)
             out.write(",")
+            if field.comment:
+                out.write(" // ")
+                out.write(field.comment)
+                out.write("\n")
         out.write("}")
         return out.getvalue()
 
@@ -209,7 +217,9 @@ class Arg:
             return ZigStruct.Field(self.name, f"{interface}")
         else:
             qm = "?" if self.type == "object" and not self.allow_null else ""
-            return ZigStruct.Field(self.name, qm + self.zig_type())
+            return ZigStruct.Field(
+                self.name, qm + self.zig_type(), comment=self.summary
+            )
         # if self.summary:
         #     fd.write(f"// {self.summary}\n")
 
@@ -307,20 +317,39 @@ class Request:
         return "{}.{}".format(self.interface.name, self.name)
 
     def zig_union_variant(self) -> ZigUnion.Varinat:
-        # emit_description(self.description, fd)
-        # asdf = ZigAssignment(self.name, ZigUnion([]))
-
         zig_struct = ZigStruct(
             [arg.zig_struct_field() for arg in self.args if arg.type != "new_id"]
         )
         return ZigUnion.Varinat(
-            name=self.name, payload=zig_struct if zig_struct.fields else None
+            name=self.name,
+            payload=zig_struct if zig_struct.fields else None,
+            doc_comment=self.description,
         )
+
+    def zig_return_type(self) -> str:
+        match self.type:
+            case "constructor":
+                creates_interface = next(
+                    (
+                        arg.interface
+                        for arg in self.args
+                        if arg.type == "new_id" and arg.interface
+                    ),
+                    None,
+                )
+                if creates_interface:
+                    interface = self.interface.protocol.interfaces[creates_interface]
+                    return f"{title_case(interface.name)}"
+                else:
+                    return '@compileError("BIND")'
+            case _:
+                return "void"
 
     def emit_fn(self, fd: TextIO):
         emit_description(self.description, fd)
-
-        fd.write(f"pub fn {self.name}(self: *const {self.interface.zig_type()}")
+        fd.write(
+            f"pub fn {self.name}(self: {self.interface.zig_type()}, client: *Client"
+        )
 
         for arg in self.args:
             if arg.type == "new_id":
@@ -364,10 +393,10 @@ class Request:
 
                     case "object" if arg.allow_null:
                         fd.write(
-                            f".{{ .object = if(_{arg.name})|arg| arg.proxy.id else 0 }},"
+                            f".{{ .object = if(_{arg.name})|arg| @intFromEnum(arg) else 0 }},"
                         )
                     case "object":
-                        fd.write(f".{{ .object = _{arg.name}.proxy.id }},")
+                        fd.write(f".{{ .object = @intFromEnum(_{arg.name}) }},")
                     case "uint" if arg.enum:
                         enum = self.interface.find_enum(arg.enum)
                         if enum.bitfield:
@@ -380,21 +409,22 @@ class Request:
                         fd.write(f".{{ .{other} = _{arg.name} }},")
             fd.write("};\n")
 
+        fd.write("const proxy = Proxy{.client = client, .id = @intFromEnum(self)};")
         args_ref = "&_args" if self.args else "&.{}"
         match self.type:
             case "normal":
                 fd.write(
-                    f"self.proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
+                    f"proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
                 )
             case "destructor":
                 fd.write(
-                    f"self.proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
+                    f"proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
                 )
                 fd.write("// self.proxy.destroy();\n")
             case "constructor":
                 ret_t = interface.zig_type() if interface else "T"
                 fd.write(
-                    f'return self.proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args) catch @panic("buffer full");\n'
+                    f'return proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args) catch @panic("buffer full");\n'
                 )
             case _:
                 assert False, self
@@ -512,30 +542,15 @@ class Event:
     def __str__(self):
         return "{}::{}".format(self.interface, self.name)
 
-    def emit_field(self, fd: TextIO):
-        emit_description(self.description, fd)
-        fd.write(f'''@"{self.name}"''')
-        if not self.args:
-            fd.write(": void,")
-            return
-
-        fd.write(": struct{")
-        for arg in self.args:
-            if arg.type == "new_id":
-                assert arg.interface
-                interface = self.interface.protocol.interfaces[arg.interface].zig_type()
-                fd.write(f"{arg.name}: *{interface}")
-                assert not arg.allow_null
-            else:
-                fd.write(f"{arg.name}: ")
-                if arg.type == "object" and not arg.allow_null:
-                    fd.write("?")
-                fd.write(arg.zig_type())
-            fd.write(", ")
-            if arg.summary:
-                fd.write(f"// {arg.summary}\n")
-
-        fd.write("},\n")
+    def zig_union_variant(self) -> ZigUnion.Varinat:
+        zig_struct = ZigStruct(
+            [arg.zig_struct_field() for arg in self.args if arg.type != "new_id"]
+        )
+        return ZigUnion.Varinat(
+            name=self.name,
+            payload=zig_struct if zig_struct.fields else None,
+            doc_comment=self.description,
+        )
 
 
 @dataclass(slots=True)
@@ -601,122 +616,123 @@ class Interface:
             return interface.enums[parts[1]]
         assert False, "unreachable"
 
+    def interface_impl(self) -> str:
+        val = ZigStructInit(
+            "Interface",
+            [
+                ZigStructInit.Field("name", f'"{self.prefix}_{self.name}"'),
+                ZigStructInit.Field("version", str(self.version)),
+            ],
+        )
+        if self.events:
+            val.fields.append(
+                ZigStructInit.Field("event_signatures", "&Proxy.genEventArgs(Event)")
+            )
+            event_names = "".join(f'"{event.name}",' for event in self.events.values())
+            val.fields.append(
+                ZigStructInit.Field("event_names", f"&.{{{event_names}}}")
+            )
+
+        if self.requests:
+            request_names = "".join(f'"{req.name}",' for req in self.requests.values())
+            val.fields.append(
+                ZigStructInit.Field("request_names", f"&.{{{request_names}}}")
+            )
+
+        return ZigAssignment("interface", val).zig_it()
+
+    def from_args_fn(self) -> ZigFn:
+        def getv(e: Event) -> str:
+
+            f_fields: list[ZigStructInit.Field] = []
+            for arg_i, arg in enumerate(e.args):
+                match arg.type:
+                    case "array":
+                        val = "undefined"
+                    case "uint" if arg.enum:
+                        enum = self.find_enum(arg.enum)
+                        if enum.bitfield:
+                            val = f"@bitCast(args[{arg_i}].uint)"
+                        else:
+                            val = f"@enumFromInt(args[{arg_i}].uint)"
+                    case "object":
+                        val = f"args[{arg_i}].uint"
+                    case t:
+                        val = f"args[{arg_i}].{t}"
+                f_fields.append(ZigStructInit.Field(name=arg.name, value=val))
+
+            f = ZigStructInit(None, f_fields)
+            zs = ZigStructInit(
+                "Event",
+                [ZigStructInit.Field(name=e.name, value=f.zig_it())],
+            )
+
+            if f_fields:
+                return zs.zig_it()
+            else:
+                return f'Event.@"{e.name}"'
+
+        switch_cases = [(str(i), getv(e)) for i, e in enumerate(self.events.values())]
+        switch_cases.append(("else", "unreachable"))
+
+        args_is_unused = all(not e.args for e in self.events.values())
+        return ZigFn(
+            "from_args",
+            args=[
+                ("opcode", "u16"),
+                ("_" if args_is_unused else "args", "[]Argument"),
+            ],
+            return_type="Event",
+            body=ZigReturn(ZigSwitch("opcode", switch_cases)),
+        )
+
     def emit(self, fd: TextIO):
         emit_description(self.description, fd)
 
         name_camel = "".join(w.capitalize() for w in self.name.split("_"))
         fd.write(
-            f"""pub const {name_camel} = struct {{
-            proxy: Proxy,
-            pub const interface = Interface{{
-               .name = "{self.prefix}_{self.name}",
-               .version = {self.version},
+            f"""pub const {name_camel} = enum(u32) {{
+            _,
             """
         )
-        if self.events:
-            fd.write(".event_signatures = &Proxy.genEventArgs(Event),\n")
-            event_names = "".join(f'"{event.name}",' for event in self.events.values())
-            fd.write(f".event_names = &.{{{event_names}}},\n")
 
-        if self.requests:
-            request_names = "".join(f'"{req.name}",' for req in self.requests.values())
-            fd.write(f".request_names = &.{{{request_names}}},\n")
-
-        fd.write("};")
+        fd.write(self.interface_impl())
 
         for enum in self.enums.values():
             enum.emit(fd)
 
         if self.events:
-            fd.write("pub const Event = union(enum) {\n")
-            for e in self.events.values():
-                e.emit_field(fd)
-
-            def getv(e: Event) -> str:
-
-                f_fields: list[ZigStructInit.Field] = []
-                for arg_i, arg in enumerate(e.args):
-                    match arg.type:
-                        case "array":
-                            val = "undefined"
-                        case "uint" if arg.enum:
-                            enum = self.find_enum(arg.enum)
-                            if enum.bitfield:
-                                val = f"@bitCast(args[{arg_i}].uint)"
-                            else:
-                                val = f"@enumFromInt(args[{arg_i}].uint)"
-                        case "object":
-                            val = f"args[{arg_i}].uint"
-                        case t:
-                            val = f"args[{arg_i}].{t}"
-                    f_fields.append(ZigStructInit.Field(name=arg.name, value=val))
-
-                f = ZigStructInit(None, f_fields)
-                zs = ZigStructInit(
-                    "Event",
-                    [ZigStructInit.Field(name=e.name, value=f.zig_it())],
-                )
-
-                if f_fields:
-                    return zs.zig_it()
-                else:
-                    return f'Event.@"{e.name}"'
-
-            switch_cases = [
-                (str(i), getv(e)) for i, e in enumerate(self.events.values())
-            ]
-            switch_cases.append(("else", "unreachable"))
-
-            args_is_unused = all(not e.args for e in self.events.values())
-            from_args = ZigFn(
-                "from_args",
-                args=[
-                    ("opcode", "u16"),
-                    ("_" if args_is_unused else "args", "[]Argument"),
-                ],
-                return_type="Event",
-                body=ZigReturn(ZigSwitch("opcode", switch_cases)),
+            ev_asgn = ZigAssignment(
+                name="Event",
+                value=ZigUnion(
+                    [e.zig_union_variant() for e in self.events.values()],
+                    extra=[self.from_args_fn()],
+                ),
             )
-
-            fd.write(from_args.zig_it())
-
-            fd.write("};\n")
-
-            fd.write(
-                f"""
-                pub fn set_listener(
-                    self: {name_camel},
-                    comptime T: type,
-                    comptime _listener: *const fn ({name_camel}, Event, T) void,
-                    _data: T,
-                ) void {{
-                    const w = struct{{
-                        fn inner(proxy: Proxy, opcode: u16, args: []Argument, __data: ?*anyopaque) void {{
-                            const event = Event.from_args(opcode, args);
-                        """
-            )
-            fd.write(
-                f"""
-                        @call(.always_inline, _listener, .{{
-                            {name_camel}{{.proxy = proxy}},
-                            event,
-                            @as(T, @ptrCast(@alignCast(__data))),
-                        }});
-                    }}
-                }};
-
-                self.proxy.set(.listener, w.inner);
-                self.proxy.set(.listener_data, _data);
-
-            }}
-            """
-            )
+            fd.write(ev_asgn.zig_it())
 
         req_asgn = ZigAssignment(
             name="Request",
             value=ZigUnion(
                 [e.zig_union_variant() for e in self.requests.values()],
-                extra=[],
+                extra=[
+                    ZigFn(
+                        "ReturnType",
+                        args=[
+                            ("request", "std.meta.Tag(Request)"),
+                        ],
+                        return_type="type",
+                        body=ZigReturn(
+                            ZigSwitch(
+                                "request",
+                                variants=[
+                                    (str(i), e.zig_return_type())
+                                    for i, e in enumerate(self.requests.values())
+                                ],
+                            )
+                        ),
+                    )
+                ],
             ),
         )
 
@@ -783,6 +799,7 @@ class Protocol:
             const Interface = @import("../proxy.zig").Interface;
             const Argument = @import("../argument.zig").Argument;
             const Fixed = @import("../argument.zig").Fixed;
+            const Client = @import("../client.zig").Client;
 
             """
         )

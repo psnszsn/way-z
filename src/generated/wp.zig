@@ -23,6 +23,7 @@ const Proxy = @import("../proxy.zig").Proxy;
 const Interface = @import("../proxy.zig").Interface;
 const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
 
 const wl = @import("wl.zig");
 const zwp = @import("zwp.zig");
@@ -35,8 +36,8 @@ const zwp = @import("zwp.zig");
 /// phase. Backward compatible changes may be added together with the
 /// corresponding interface version bump. Backward incompatible changes can
 /// only be done by creating a new major version of the extension.
-pub const CursorShapeManagerV1 = struct {
-    proxy: Proxy,
+pub const CursorShapeManagerV1 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wp_cursor_shape_manager_v1",
         .version = 1,
@@ -47,44 +48,60 @@ pub const CursorShapeManagerV1 = struct {
         },
     };
     pub const Request = union(enum) {
+        /// Destroy the cursor shape manager.
         destroy: void,
+        /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
         get_pointer: struct {
             pointer: ?u32,
         },
+        /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
         get_tablet_tool_v2: struct {
             tablet_tool: ?u32,
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => CursorShapeDeviceV1,
+                2 => CursorShapeDeviceV1,
+            };
+        }
     };
 
     /// Destroy the cursor shape manager.
-    pub fn destroy(self: *const CursorShapeManagerV1) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: CursorShapeManagerV1, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
     /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
-    pub fn get_pointer(self: *const CursorShapeManagerV1, _pointer: wl.Pointer) CursorShapeDeviceV1 {
+    pub fn get_pointer(self: CursorShapeManagerV1, client: *Client, _pointer: wl.Pointer) CursorShapeDeviceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _pointer.proxy.id },
+            .{ .object = @intFromEnum(_pointer) },
         };
-        return self.proxy.marshal_request_constructor(CursorShapeDeviceV1, 1, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(CursorShapeDeviceV1, 1, &_args) catch @panic("buffer full");
     }
 
     /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
-    pub fn get_tablet_tool_v2(self: *const CursorShapeManagerV1, _tablet_tool: zwp.TabletToolV2) CursorShapeDeviceV1 {
+    pub fn get_tablet_tool_v2(self: CursorShapeManagerV1, client: *Client, _tablet_tool: zwp.TabletToolV2) CursorShapeDeviceV1 {
         var _args = [_]Argument{
             .{ .new_id = 0 },
-            .{ .object = _tablet_tool.proxy.id },
+            .{ .object = @intFromEnum(_tablet_tool) },
         };
-        return self.proxy.marshal_request_constructor(CursorShapeDeviceV1, 2, &_args) catch @panic("buffer full");
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        return proxy.marshal_request_constructor(CursorShapeDeviceV1, 2, &_args) catch @panic("buffer full");
     }
 };
 
 /// This interface advertises the list of supported cursor shapes for a
 /// device, and allows clients to set the cursor shape.
-pub const CursorShapeDeviceV1 = struct {
-    proxy: Proxy,
+pub const CursorShapeDeviceV1 = enum(u32) {
+    _,
     pub const interface = Interface{
         .name = "wp_cursor_shape_device_v1",
         .version = 1,
@@ -133,18 +150,49 @@ pub const CursorShapeDeviceV1 = struct {
         invalid_shape = 1,
     };
     pub const Request = union(enum) {
+        /// Destroy the cursor shape device.
+        ///
+        /// The device cursor shape remains unchanged.
         destroy: void,
+        /// Sets the device cursor to the specified shape. The compositor will
+        /// change the cursor image based on the specified shape.
+        ///
+        /// The cursor actually changes only if the input device focus is one of
+        /// the requesting client's surfaces. If any, the previous cursor image
+        /// (surface or shape) is replaced.
+        ///
+        /// The "shape" argument must be a valid enum entry, otherwise the
+        /// invalid_shape protocol error is raised.
+        ///
+        /// This is similar to the wl_pointer.set_cursor and
+        /// zwp_tablet_tool_v2.set_cursor requests, but this request accepts a
+        /// shape instead of contents in the form of a surface. Clients can mix
+        /// set_cursor and set_shape requests.
+        ///
+        /// The serial parameter must match the latest wl_pointer.enter or
+        /// zwp_tablet_tool_v2.proximity_in serial number sent to the client.
+        /// Otherwise the request will be ignored.
         set_shape: struct {
-            serial: u32,
+            serial: u32, // serial number of the enter event
             shape: Shape,
         },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                0 => void,
+                1 => void,
+            };
+        }
     };
 
     /// Destroy the cursor shape device.
     ///
     /// The device cursor shape remains unchanged.
-    pub fn destroy(self: *const CursorShapeDeviceV1) void {
-        self.proxy.marshal_request(0, &.{}) catch unreachable;
+    pub fn destroy(self: CursorShapeDeviceV1, client: *Client) void {
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(0, &.{}) catch unreachable;
         // self.proxy.destroy();
     }
 
@@ -166,11 +214,12 @@ pub const CursorShapeDeviceV1 = struct {
     /// The serial parameter must match the latest wl_pointer.enter or
     /// zwp_tablet_tool_v2.proximity_in serial number sent to the client.
     /// Otherwise the request will be ignored.
-    pub fn set_shape(self: *const CursorShapeDeviceV1, _serial: u32, _shape: Shape) void {
+    pub fn set_shape(self: CursorShapeDeviceV1, client: *Client, _serial: u32, _shape: Shape) void {
         var _args = [_]Argument{
             .{ .uint = _serial },
             .{ .uint = @intCast(@intFromEnum(_shape)) },
         };
-        self.proxy.marshal_request(1, &_args) catch unreachable;
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
+        proxy.marshal_request(1, &_args) catch unreachable;
     }
 };

@@ -38,7 +38,7 @@ running: bool = true,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
     const client = try wayland.Client.connect(alloc);
-    const registry = client.wl_display.get_registry();
+    const registry = client.wl_display.get_registry(client);
 
     // TODO: remove allocation
     const app = try alloc.create(App);
@@ -50,7 +50,7 @@ pub fn new(alloc: std.mem.Allocator) !*App {
         .font = try font.cozette(alloc),
     };
 
-    registry.set_listener(*App, App.registryListener, app);
+    client.set_listener(registry, *App, App.registryListener, app);
     try client.roundtrip();
 
     std.debug.assert(app.shm != null);
@@ -61,29 +61,30 @@ pub fn new(alloc: std.mem.Allocator) !*App {
 }
 
 pub fn new_window(app: *App, shell: WindowType) !*Window {
-    const wl_surface = app.compositor.?.create_surface();
-    errdefer wl_surface.destroy();
+    const client = app.client;
+    const wl_surface = app.compositor.?.create_surface(client);
+    errdefer wl_surface.destroy(client);
 
     // TODO: remove allocation
     const window = try app.client.allocator.create(Window);
 
     const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
-        const layer_surface = app.layer_shell.?.get_layer_surface(wl_surface, null, .top, "");
-        errdefer layer_surface.destroy();
-        layer_surface.set_size(0, 30);
-        layer_surface.set_anchor(.{ .top = true, .left = true, .right = true });
-        layer_surface.set_exclusive_zone(35);
-        layer_surface.set_listener(*Window, Window.layer_suface_listener, window);
+        const layer_surface = app.layer_shell.?.get_layer_surface(client, wl_surface, null, .top, "");
+        errdefer layer_surface.destroy(client);
+        layer_surface.set_size(client, 0, 30);
+        layer_surface.set_anchor(client, .{ .top = true, .left = true, .right = true });
+        layer_surface.set_exclusive_zone(client, 35);
+        client.set_listener(layer_surface, *Window, Window.layer_suface_listener, window);
         break :b .{ .wlr_layer_shell = layer_surface };
     } else b: {
-        const xdg_surface = app.wm_base.?.get_xdg_surface(wl_surface);
-        errdefer xdg_surface.destroy();
-        const xdg_toplevel = xdg_surface.get_toplevel();
-        errdefer xdg_toplevel.destroy();
+        const xdg_surface = app.wm_base.?.get_xdg_surface(client, wl_surface);
+        errdefer xdg_surface.destroy(client);
+        const xdg_toplevel = xdg_surface.get_toplevel(client);
+        errdefer xdg_toplevel.destroy(client);
 
-        xdg_surface.set_listener(*Window, Window.xdg_surface_listener, window);
-        xdg_toplevel.set_listener(*Window, Window.xdg_toplevel_listener, window);
-        xdg_toplevel.set_title("Demo");
+        client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
+        client.set_listener(xdg_toplevel, *Window, Window.xdg_toplevel_listener, window);
+        xdg_toplevel.set_title(client, "Demo");
 
         break :b .{ .xdg_shell = .{
             .xdg_surface = xdg_surface,
@@ -102,7 +103,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
 
     app.window = window;
 
-    wl_surface.commit();
+    wl_surface.commit(client);
     try app.client.roundtrip();
 
     return window;
@@ -132,6 +133,7 @@ pub const Window = struct {
     layout: Layout = .{},
 
     pub fn set_root_widget(self: *Window, idx: WidgetIdx) void {
+        const c = self.app.client;
         const min_size = Size{ .width = 10, .height = 10 };
         std.log.info("idx {}", .{idx});
         const size = self.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
@@ -140,24 +142,26 @@ pub const Window = struct {
 
         std.log.info("min size {}", .{size});
         if (self.wl == .xdg_shell) {
-            self.wl.xdg_shell.xdg_toplevel.set_min_size(@intCast(size.width), @intCast(size.height));
+            self.wl.xdg_shell.xdg_toplevel.set_min_size(c, @intCast(size.width), @intCast(size.height));
         }
-        self.wl_surface.commit();
+        self.wl_surface.commit(c);
         self.layout.root = idx;
     }
     pub fn schedule_redraw(self: *Window) void {
         if (!self.frame_done) return;
-        const frame_cb = self.wl_surface.frame();
-        frame_cb.set_listener(*Window, frame_listener, self);
-        self.wl_surface.commit();
+        const client = self.app.client;
+        const frame_cb = self.wl_surface.frame(client);
+        client.set_listener(frame_cb, *Window, frame_listener, self);
+        self.wl_surface.commit(client);
         self.frame_done = false;
     }
 
     pub fn draw(self: *Window) void {
         std.log.info("draw", .{});
+        const client = self.app.client;
         if (self.width == 0) return;
         if (self.height == 0) return;
-        const buf = Buffer.get(self.app.shm.?, self.width, self.height) catch unreachable;
+        const buf = Buffer.get(self.app.client, self.app.shm.?, self.width, self.height) catch unreachable;
         const ctx = PaintCtx{
             .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
             .width = buf.width,
@@ -165,15 +169,15 @@ pub const Window = struct {
         };
         @memset(buf.pool.mmap, 155);
         self.layout.draw(ctx);
-        self.wl_surface.attach(buf.wl_buffer, 0, 0);
-        self.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
-        self.wl_surface.commit();
+        self.wl_surface.attach(client, buf.wl_buffer, 0, 0);
+        self.wl_surface.damage(client, 0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
+        self.wl_surface.commit(client);
     }
 
-    fn layer_suface_listener(layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
+    fn layer_suface_listener(client: *wayland.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
         switch (event) {
             .configure => |configure| {
-                layer_suface.ack_configure(configure.serial);
+                layer_suface.ack_configure(client, configure.serial);
 
                 window.width = configure.width;
                 window.height = configure.height;
@@ -195,7 +199,8 @@ pub const Window = struct {
         }
     }
 
-    fn frame_listener(cb: wl.Callback, event: wl.Callback.Event, window: *Window) void {
+    fn frame_listener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Event, window: *Window) void {
+        _ = client; // autofix
         _ = cb;
         switch (event) {
             .done => |done| {
@@ -206,14 +211,15 @@ pub const Window = struct {
         }
     }
 
-    fn xdg_surface_listener(xdg_surface: xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
+    fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
         switch (event) {
             .configure => |configure| {
-                xdg_surface.ack_configure(configure.serial);
+                xdg_surface.ack_configure(client, configure.serial);
             },
         }
     }
-    fn xdg_toplevel_listener(_: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
+    fn xdg_toplevel_listener(client: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
+        _ = client; // autofix
         switch (event) {
             .configure => |configure| {
                 if (configure.width == 0) return;
@@ -242,29 +248,29 @@ pub const Window = struct {
     }
 };
 
-pub fn registryListener(registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
+pub fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = registry.bind(global.name, wl.Compositor, 1);
+                context.compositor = registry.bind(client, global.name, wl.Compositor, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = registry.bind(global.name, wl.Shm, 1);
+                context.shm = registry.bind(client, global.name, wl.Shm, 1);
             } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = registry.bind(global.name, xdg.WmBase, 1);
+                context.wm_base = registry.bind(client, global.name, xdg.WmBase, 1);
             } else if (mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                context.layer_shell = registry.bind(global.name, zwlr.LayerShellV1, 1);
+                context.layer_shell = registry.bind(client, global.name, zwlr.LayerShellV1, 1);
             } else if (mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
-                context.cursor_shape_manager = registry.bind(global.name, wp.CursorShapeManagerV1, 1);
+                context.cursor_shape_manager = registry.bind(client, global.name, wp.CursorShapeManagerV1, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
-                context.seat = registry.bind(global.name, wl.Seat, 1);
-                context.seat.?.set_listener(*App, seat_listener, context);
+                context.seat = registry.bind(client, global.name, wl.Seat, 1);
+                client.set_listener(context.seat.?, *App, seat_listener, context);
             }
         },
         .global_remove => {},
     }
 }
 
-fn seat_listener(seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
+fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
@@ -275,10 +281,10 @@ fn seat_listener(seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
 
             if (data.capabilities.pointer) {
                 if (app.pointer == null) {
-                    app.pointer = seat.get_pointer();
-                    app.pointer.?.set_listener(*App, pointer_listener, app);
+                    app.pointer = seat.get_pointer(client);
+                    client.set_listener(app.pointer.?, *App, pointer_listener, app);
                     if (app.cursor_shape_manager) |csm| {
-                        app.cursor_shape_device = csm.get_pointer(app.pointer.?);
+                        app.cursor_shape_device = csm.get_pointer(client, app.pointer.?);
                     }
                 }
             }
@@ -289,7 +295,7 @@ fn seat_listener(seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
     }
 }
 
-fn pointer_listener(_: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
+fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const win = app.window;
     const event: ?Event.PointerEvent = switch (_event) {
         .enter => |ev| blk: {
@@ -339,5 +345,5 @@ fn pointer_listener(_: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
             }
         }
     }
-    if (old_shape != app.cursor_shape) app.cursor_shape_device.?.set_shape(app.pointer_enter_serial, app.cursor_shape);
+    if (old_shape != app.cursor_shape) app.cursor_shape_device.?.set_shape(client, app.pointer_enter_serial, app.cursor_shape);
 }
