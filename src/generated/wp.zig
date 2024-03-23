@@ -69,33 +69,6 @@ pub const CursorShapeManagerV1 = enum(u32) {
             };
         }
     };
-
-    /// Destroy the cursor shape manager.
-    pub fn destroy(self: CursorShapeManagerV1, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
-
-    /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
-    pub fn get_pointer(self: CursorShapeManagerV1, client: *Client, _pointer: wl.Pointer) CursorShapeDeviceV1 {
-        var _args = [_]Argument{
-            .{ .new_id = 0 },
-            .{ .object = @intFromEnum(_pointer) },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        return proxy.marshal_request_constructor(CursorShapeDeviceV1, 1, &_args) catch @panic("buffer full");
-    }
-
-    /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
-    pub fn get_tablet_tool_v2(self: CursorShapeManagerV1, client: *Client, _tablet_tool: zwp.TabletToolV2) CursorShapeDeviceV1 {
-        var _args = [_]Argument{
-            .{ .new_id = 0 },
-            .{ .object = @intFromEnum(_tablet_tool) },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        return proxy.marshal_request_constructor(CursorShapeDeviceV1, 2, &_args) catch @panic("buffer full");
-    }
 };
 
 /// This interface advertises the list of supported cursor shapes for a
@@ -186,40 +159,4 @@ pub const CursorShapeDeviceV1 = enum(u32) {
             };
         }
     };
-
-    /// Destroy the cursor shape device.
-    ///
-    /// The device cursor shape remains unchanged.
-    pub fn destroy(self: CursorShapeDeviceV1, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
-
-    /// Sets the device cursor to the specified shape. The compositor will
-    /// change the cursor image based on the specified shape.
-    ///
-    /// The cursor actually changes only if the input device focus is one of
-    /// the requesting client's surfaces. If any, the previous cursor image
-    /// (surface or shape) is replaced.
-    ///
-    /// The "shape" argument must be a valid enum entry, otherwise the
-    /// invalid_shape protocol error is raised.
-    ///
-    /// This is similar to the wl_pointer.set_cursor and
-    /// zwp_tablet_tool_v2.set_cursor requests, but this request accepts a
-    /// shape instead of contents in the form of a surface. Clients can mix
-    /// set_cursor and set_shape requests.
-    ///
-    /// The serial parameter must match the latest wl_pointer.enter or
-    /// zwp_tablet_tool_v2.proximity_in serial number sent to the client.
-    /// Otherwise the request will be ignored.
-    pub fn set_shape(self: CursorShapeDeviceV1, client: *Client, _serial: u32, _shape: Shape) void {
-        var _args = [_]Argument{
-            .{ .uint = _serial },
-            .{ .uint = @intCast(@intFromEnum(_shape)) },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &_args) catch unreachable;
-    }
 };

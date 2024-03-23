@@ -25,7 +25,7 @@ pub const Pool = struct {
         const client = @fieldParentPtr(Buffer, "pool", self).client;
         if (newsize > self.size) {
             try os.ftruncate(self.backing_fd, newsize);
-            self.wl_pool.resize(client, @intCast(newsize));
+            client.request(self.wl_pool, .resize, .{ .size = @intCast(newsize) });
             self.size = newsize;
             os.munmap(self.mmap);
             self.mmap = try os.mmap(null, newsize, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, self.backing_fd, 0);
@@ -68,10 +68,16 @@ pub const Buffer = struct {
         const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0);
         // os.munmap(data);
 
-        const pool = shm.create_pool(client, fd, @intCast(size));
+        const pool = client.request(shm, .create_pool, .{ .fd = fd, .size = @intCast(size) });
         // defer pool.destroy();
 
-        const buffer = pool.create_buffer(client, 0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
+        const buffer = client.request(pool, .create_buffer, .{
+            .offset = 0,
+            .width = @intCast(width),
+            .height = @intCast(height),
+            .stride = @intCast(stride),
+            .format = wl.Shm.Format.argb8888,
+        });
 
         return Buffer{
             .client = client,
@@ -93,8 +99,14 @@ pub const Buffer = struct {
         const newsize = stride * height;
         try self.pool.resize(newsize);
         if (self.width != width or self.height != height) {
-            self.wl_buffer.destroy(self.client);
-            self.wl_buffer = self.pool.wl_pool.create_buffer(self.client, 0, @intCast(width), @intCast(height), @intCast(stride), wl.Shm.Format.argb8888);
+            self.client.request(self.wl_buffer, .destroy, {});
+            self.wl_buffer = self.client.request(self.pool.wl_pool, .create_buffer, .{
+                .offset = 0,
+                .width = @intCast(width),
+                .height = @intCast(height),
+                .stride = @intCast(stride),
+                .format = wl.Shm.Format.argb8888,
+            });
             self.client.set_listener(self.wl_buffer, *Buffer, bufferListener, self);
             self.width = width;
             self.height = height;

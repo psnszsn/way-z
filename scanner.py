@@ -267,7 +267,7 @@ class Arg:
             case "array":
                 return "*anyopaque"
             case "fd":
-                return "i32"
+                return "std.posix.fd_t"
             case _:
                 assert False, self.type
 
@@ -574,6 +574,8 @@ class Interface:
                             val = f"@enumFromInt(args[{arg_i}].uint)"
                     case "object" if arg.interface:
                         val = f"@enumFromInt(args[{arg_i}].uint)"
+                    case "object":
+                        val = f"args[{arg_i}].uint"
                     case t:
                         val = f"args[{arg_i}].{t}"
                 f_fields.append(ZigStructInit.Field(name=arg.name, value=val))

@@ -176,14 +176,23 @@ pub fn request_to_args(
         // std.log.info("f:{}", .{field_value});
         args[i] = switch (@TypeOf(field_value)) {
             u32 => .{ .uint = field_value },
-            i32 => .{ .int = field_value },
+            i32 => b: {
+                if (std.mem.eql(u8, f.name, "fd")) {
+                    break :b .{ .fd = field_value };
+                }
+                break :b .{ .int = field_value };
+            },
             [:0]const u8 => .{ .string = field_value },
             ?*anyopaque => .{ .object = if (field_value) |v| @intFromEnum(v) else 0 },
             *anyopaque => .{ .object = @intFromEnum(field_value) },
             argm.Fixed => .{ .fixed = field_value },
             else => |v| switch (@typeInfo(v)) {
                 .Optional => .{ .object = if (field_value) |b| @intFromEnum(b) else 0 },
-                .Struct => .{ .object = @bitCast(field_value) },
+                .Struct => |s| if (s.layout == .@"packed") .{
+                    .object = @bitCast(field_value),
+                } else .{
+                    .uint = @bitCast(field_value),
+                },
                 // TODO: packed struct -> uint
                 .Enum => .{ .uint = @intCast(@intFromEnum(field_value)) },
                 else => unreachable,

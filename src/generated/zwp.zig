@@ -63,25 +63,6 @@ pub const TabletManagerV2 = enum(u32) {
             };
         }
     };
-
-    /// Get the wp_tablet_seat object for the given seat. This object
-    /// provides access to all graphics tablets in this seat.
-    pub fn get_tablet_seat(self: TabletManagerV2, client: *Client, _seat: wl.Seat) TabletSeatV2 {
-        var _args = [_]Argument{
-            .{ .new_id = 0 },
-            .{ .object = @intFromEnum(_seat) },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        return proxy.marshal_request_constructor(TabletSeatV2, 0, &_args) catch @panic("buffer full");
-    }
-
-    /// Destroy the wp_tablet_manager object. Objects created from this
-    /// object are unaffected and should be destroyed separately.
-    pub fn destroy(self: TabletManagerV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// An object that provides access to the graphics tablets available on this
@@ -162,14 +143,6 @@ pub const TabletSeatV2 = enum(u32) {
             };
         }
     };
-
-    /// Destroy the wp_tablet_seat object. Objects created from this
-    /// object are unaffected and should be destroyed separately.
-    pub fn destroy(self: TabletSeatV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// An object that represents a physical tool that has been, or is
@@ -603,54 +576,6 @@ pub const TabletToolV2 = enum(u32) {
             };
         }
     };
-
-    /// Sets the surface of the cursor used for this tool on the given
-    /// tablet. This request only takes effect if the tool is in proximity
-    /// of one of the requesting client's surfaces or the surface parameter
-    /// is the current pointer surface. If there was a previous surface set
-    /// with this request it is replaced. If surface is NULL, the cursor
-    /// image is hidden.
-    ///
-    /// The parameters hotspot_x and hotspot_y define the position of the
-    /// pointer surface relative to the pointer location. Its top-left corner
-    /// is always at (x, y) - (hotspot_x, hotspot_y), where (x, y) are the
-    /// coordinates of the pointer location, in surface-local coordinates.
-    ///
-    /// On surface.attach requests to the pointer surface, hotspot_x and
-    /// hotspot_y are decremented by the x and y parameters passed to the
-    /// request. Attach must be confirmed by wl_surface.commit as usual.
-    ///
-    /// The hotspot can also be updated by passing the currently set pointer
-    /// surface to this request with new values for hotspot_x and hotspot_y.
-    ///
-    /// The current and pending input regions of the wl_surface are cleared,
-    /// and wl_surface.set_input_region is ignored until the wl_surface is no
-    /// longer used as the cursor. When the use as a cursor ends, the current
-    /// and pending input regions become undefined, and the wl_surface is
-    /// unmapped.
-    ///
-    /// This request gives the surface the role of a wp_tablet_tool cursor. A
-    /// surface may only ever be used as the cursor surface for one
-    /// wp_tablet_tool. If the surface already has another role or has
-    /// previously been used as cursor surface for a different tool, a
-    /// protocol error is raised.
-    pub fn set_cursor(self: TabletToolV2, client: *Client, _serial: u32, _surface: ?wl.Surface, _hotspot_x: i32, _hotspot_y: i32) void {
-        var _args = [_]Argument{
-            .{ .uint = _serial },
-            .{ .object = if (_surface) |arg| @intFromEnum(arg) else 0 },
-            .{ .int = _hotspot_x },
-            .{ .int = _hotspot_y },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &_args) catch unreachable;
-    }
-
-    /// This destroys the client's resource for this tool object.
-    pub fn destroy(self: TabletToolV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// The wp_tablet interface represents one graphics tablet device. The
@@ -758,13 +683,6 @@ pub const TabletV2 = enum(u32) {
             };
         }
     };
-
-    /// This destroys the client's resource for this tablet object.
-    pub fn destroy(self: TabletV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// A circular interaction area, such as the touch ring on the Wacom Intuos
@@ -904,41 +822,6 @@ pub const TabletPadRingV2 = enum(u32) {
             };
         }
     };
-
-    /// Request that the compositor use the provided feedback string
-    /// associated with this ring. This request should be issued immediately
-    /// after a wp_tablet_pad_group.mode_switch event from the corresponding
-    /// group is received, or whenever the ring is mapped to a different
-    /// action. See wp_tablet_pad_group.mode_switch for more details.
-    ///
-    /// Clients are encouraged to provide context-aware descriptions for
-    /// the actions associated with the ring; compositors may use this
-    /// information to offer visual feedback about the button layout
-    /// (eg. on-screen displays).
-    ///
-    /// The provided string 'description' is a UTF-8 encoded string to be
-    /// associated with this ring, and is considered user-visible; general
-    /// internationalization rules apply.
-    ///
-    /// The serial argument will be that of the last
-    /// wp_tablet_pad_group.mode_switch event received for the group of this
-    /// ring. Requests providing other serials than the most recent one will be
-    /// ignored.
-    pub fn set_feedback(self: TabletPadRingV2, client: *Client, _description: [:0]const u8, _serial: u32) void {
-        var _args = [_]Argument{
-            .{ .string = _description },
-            .{ .uint = _serial },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &_args) catch unreachable;
-    }
-
-    /// This destroys the client's resource for this ring object.
-    pub fn destroy(self: TabletPadRingV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// A linear interaction area, such as the strips found in Wacom Cintiq
@@ -1080,41 +963,6 @@ pub const TabletPadStripV2 = enum(u32) {
             };
         }
     };
-
-    /// Requests the compositor to use the provided feedback string
-    /// associated with this strip. This request should be issued immediately
-    /// after a wp_tablet_pad_group.mode_switch event from the corresponding
-    /// group is received, or whenever the strip is mapped to a different
-    /// action. See wp_tablet_pad_group.mode_switch for more details.
-    ///
-    /// Clients are encouraged to provide context-aware descriptions for
-    /// the actions associated with the strip, and compositors may use this
-    /// information to offer visual feedback about the button layout
-    /// (eg. on-screen displays).
-    ///
-    /// The provided string 'description' is a UTF-8 encoded string to be
-    /// associated with this ring, and is considered user-visible; general
-    /// internationalization rules apply.
-    ///
-    /// The serial argument will be that of the last
-    /// wp_tablet_pad_group.mode_switch event received for the group of this
-    /// strip. Requests providing other serials than the most recent one will be
-    /// ignored.
-    pub fn set_feedback(self: TabletPadStripV2, client: *Client, _description: [:0]const u8, _serial: u32) void {
-        var _args = [_]Argument{
-            .{ .string = _description },
-            .{ .uint = _serial },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &_args) catch unreachable;
-    }
-
-    /// This destroys the client's resource for this strip object.
-    pub fn destroy(self: TabletPadStripV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// A pad group describes a distinct (sub)set of buttons, rings and strips
@@ -1287,14 +1135,6 @@ pub const TabletPadGroupV2 = enum(u32) {
             };
         }
     };
-
-    /// Destroy the wp_tablet_pad_group object. Objects created from this object
-    /// are unaffected and should be destroyed separately.
-    pub fn destroy(self: TabletPadGroupV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };
 
 /// A pad device is a set of buttons, rings and strips
@@ -1492,46 +1332,4 @@ pub const TabletPadV2 = enum(u32) {
             };
         }
     };
-
-    /// Requests the compositor to use the provided feedback string
-    /// associated with this button. This request should be issued immediately
-    /// after a wp_tablet_pad_group.mode_switch event from the corresponding
-    /// group is received, or whenever a button is mapped to a different
-    /// action. See wp_tablet_pad_group.mode_switch for more details.
-    ///
-    /// Clients are encouraged to provide context-aware descriptions for
-    /// the actions associated with each button, and compositors may use
-    /// this information to offer visual feedback on the button layout
-    /// (e.g. on-screen displays).
-    ///
-    /// Button indices start at 0. Setting the feedback string on a button
-    /// that is reserved by the compositor (i.e. not belonging to any
-    /// wp_tablet_pad_group) does not generate an error but the compositor
-    /// is free to ignore the request.
-    ///
-    /// The provided string 'description' is a UTF-8 encoded string to be
-    /// associated with this ring, and is considered user-visible; general
-    /// internationalization rules apply.
-    ///
-    /// The serial argument will be that of the last
-    /// wp_tablet_pad_group.mode_switch event received for the group of this
-    /// button. Requests providing other serials than the most recent one will
-    /// be ignored.
-    pub fn set_feedback(self: TabletPadV2, client: *Client, _button: u32, _description: [:0]const u8, _serial: u32) void {
-        var _args = [_]Argument{
-            .{ .uint = _button },
-            .{ .string = _description },
-            .{ .uint = _serial },
-        };
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(0, &_args) catch unreachable;
-    }
-
-    /// Destroy the wp_tablet_pad object. Objects created from this object
-    /// are unaffected and should be destroyed separately.
-    pub fn destroy(self: TabletPadV2, client: *Client) void {
-        const proxy = Proxy{ .client = client, .id = @intFromEnum(self) };
-        proxy.marshal_request(1, &.{}) catch unreachable;
-        // self.proxy.destroy();
-    }
 };

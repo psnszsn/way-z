@@ -250,7 +250,7 @@ pub const Client = struct {
                 // std.log.info("event: {}", .{event});
             }
         };
-        const callblack = self.wl_display.sync(self);
+        const callblack = self.request(self.wl_display, .sync, {});
         var done: bool = false;
         self.set_listener(callblack, *bool, w.cbListener, &done);
         self.connection.is_running = false;

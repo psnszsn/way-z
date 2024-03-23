@@ -83,7 +83,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
         client.set_listener(layer_surface, *Window, Window.layer_suface_listener, window);
         break :b .{ .wlr_layer_shell = layer_surface };
     } else b: {
-        const xdg_surface = app.wm_base.?.get_xdg_surface(client, wl_surface);
+        const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
         // const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
         errdefer client.request(xdg_surface, .destroy, {});
         const xdg_toplevel = client.request(xdg_surface, .get_toplevel, {});
@@ -149,17 +149,20 @@ pub const Window = struct {
 
         std.log.info("min size {}", .{size});
         if (self.wl == .xdg_shell) {
-            self.wl.xdg_shell.xdg_toplevel.set_min_size(c, @intCast(size.width), @intCast(size.height));
+            c.request(self.wl.xdg_shell.xdg_toplevel, .set_min_size, .{
+                .width = @intCast(size.width),
+                .height = @intCast(size.height),
+            });
         }
-        self.wl_surface.commit(c);
+        c.request(self.wl_surface, .commit, {});
         self.layout.root = idx;
     }
     pub fn schedule_redraw(self: *Window) void {
         if (!self.frame_done) return;
         const client = self.app.client;
-        const frame_cb = self.wl_surface.frame(client);
+        const frame_cb = client.request(self.wl_surface, .frame, {});
         client.set_listener(frame_cb, *Window, frame_listener, self);
-        self.wl_surface.commit(client);
+        client.request(self.wl_surface, .commit, {});
         self.frame_done = false;
     }
 
@@ -176,9 +179,14 @@ pub const Window = struct {
         };
         @memset(buf.pool.mmap, 155);
         self.layout.draw(ctx);
-        self.wl_surface.attach(client, buf.wl_buffer, 0, 0);
-        self.wl_surface.damage(client, 0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
-        self.wl_surface.commit(client);
+        client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
+        client.request(self.wl_surface, .damage, .{
+            .x = 0,
+            .y = 0,
+            .width = std.math.maxInt(i32),
+            .height = std.math.maxInt(i32),
+        });
+        client.request(self.wl_surface, .commit, {});
     }
 
     fn layer_suface_listener(client: *wayland.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
