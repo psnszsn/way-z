@@ -58,6 +58,7 @@ pub const Argument = union(enum) {
         return @intCast(l);
     }
     pub fn marshal(self: *const Argument, writer: anytype) !void {
+        // std.log.info("arg: {}", .{self});
         switch (self.*) {
             .new_id,
             .object,

@@ -66,7 +66,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             self.count -= size;
         }
 
-        pub fn get_read_iovecs(self: *Self) [2]std.os.iovec_const {
+        pub fn get_read_iovecs(self: *Self) [2]std.posix.iovec_const {
             const pre_wrap_count = @min(self.count, self.bfr.len - self.index);
             const post_wrap_count = self.count - pre_wrap_count;
 
@@ -75,7 +75,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
                 .{ .iov_base = &self.bfr, .iov_len = post_wrap_count },
             };
         }
-        pub fn get_write_iovecs(self: *Self) [2]std.os.iovec {
+        pub fn get_write_iovecs(self: *Self) [2]std.posix.iovec {
             const max_bytes = self.bfr.len - self.count;
 
             // if (self.count + max_bytes > self.bfr.len) return error.NoSpaceLeft;
@@ -91,7 +91,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
     };
 }
 const Connection = struct {
-    socket_fd: std.os.socket_t,
+    socket_fd: std.posix.socket_t,
     in: RingBuffer(512),
 };
 

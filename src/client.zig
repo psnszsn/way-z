@@ -9,7 +9,7 @@ const wl = @import("generated/wl.zig");
 const Cmsghdr = @import("cmsghdr.zig").Cmsghdr;
 
 pub const Connection = struct {
-    socket_fd: std.os.socket_t,
+    socket_fd: std.posix.socket_t,
     in: RingBuffer(1024) = .{},
     out: RingBuffer(1024) = .{},
     fd_in: RingBuffer(512) = .{},
@@ -19,19 +19,19 @@ pub const Connection = struct {
 
     recv_c: xev.Completion = .{},
     recv_cancel_c: xev.Completion = .{},
-    recv_iovecs: [2]std.os.iovec = undefined,
-    recv_msghdr: std.os.msghdr = undefined,
+    recv_iovecs: [2]std.posix.iovec = undefined,
+    recv_msghdr: std.posix.msghdr = undefined,
 
     send_c: xev.Completion = .{},
-    send_iovecs: [2]std.os.iovec_const = undefined,
-    send_msghdr: std.os.msghdr_const = undefined,
-    send_cmsg: Cmsghdr([5]std.os.fd_t) = undefined,
+    send_iovecs: [2]std.posix.iovec_const = undefined,
+    send_msghdr: std.posix.msghdr_const = undefined,
+    send_cmsg: Cmsghdr([5]std.posix.fd_t) = undefined,
 
     is_running: bool = true,
 
     pub fn recv(self: *Connection) void {
         self.recv_iovecs = self.in.get_write_iovecs();
-        self.recv_msghdr = std.os.msghdr{
+        self.recv_msghdr = std.posix.msghdr{
             .name = null,
             .namelen = 0,
             .iov = &self.recv_iovecs,
@@ -78,8 +78,8 @@ pub const Connection = struct {
         if (self.send_c.state() == .active) unreachable;
         if (self.out.count == 0 and self.fd_out.count == 0) return;
         self.send_iovecs = self.out.get_read_iovecs();
-        self.send_cmsg = Cmsghdr([5]std.os.fd_t).init(.{
-            .level = std.os.SOL.SOCKET,
+        self.send_cmsg = Cmsghdr([5]std.posix.fd_t).init(.{
+            .level = std.posix.SOL.SOCKET,
             .type = 1, //SCM_RIGHTS
         });
         const len = self.fd_out.copy(std.mem.asBytes(self.send_cmsg.dataPtr()));
@@ -88,7 +88,7 @@ pub const Connection = struct {
         self.send_cmsg.headerPtr().len = cmsg_len;
         // std.debug.print("fd len {}\n", .{len});
 
-        self.send_msghdr = std.os.msghdr_const{
+        self.send_msghdr = std.posix.msghdr_const{
             .name = null,
             .namelen = 0,
             .iov = &self.send_iovecs,
@@ -167,15 +167,15 @@ pub const Client = struct {
 
         self.wl_display = @enumFromInt(next.id);
 
-        const xdg_runtime_dir = std.os.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
-        const wl_display_name = std.os.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
+        const xdg_runtime_dir = std.posix.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
+        const wl_display_name = std.posix.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
 
-        const fd = try std.os.socket(linux.AF.UNIX, linux.SOCK.STREAM, 0);
-        var buf: [std.os.PATH_MAX]u8 = undefined;
+        const fd = try std.posix.socket(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+        var buf: [std.posix.PATH_MAX]u8 = undefined;
         const a = try std.fmt.bufPrint(&buf, "{s}/{s}", .{ xdg_runtime_dir, wl_display_name });
 
         var addr = try std.net.Address.initUnix(a);
-        try std.os.connect(fd, &addr.any, addr.getOsSockLen());
+        try std.posix.connect(fd, &addr.any, addr.getOsSockLen());
 
         const connection = try allocator.create(Connection);
         connection.* = .{
@@ -234,7 +234,7 @@ pub const Client = struct {
     }
 
     pub fn deinit(self: *Client) void {
-        std.os.close(self.connection.socket_fd);
+        std.posix.close(self.connection.socket_fd);
         self.objects.deinit(self.allocator);
         self.unused_oids.deinit(self.allocator);
         self.allocator.destroy(self.connection);
@@ -301,6 +301,38 @@ pub const Client = struct {
         value: std.meta.FieldType(ObjectAttrs, item),
     ) void {
         self.objects.items(item)[@intFromEnum(idx)] = value;
+    }
+
+    const prx = @import("proxy.zig");
+
+    pub fn request(
+        self: *Client,
+        idx: anytype,
+        comptime tag: std.meta.Tag(@TypeOf(idx).Request),
+        payload: std.meta.TagPayload(@TypeOf(idx).Request, tag),
+    ) @TypeOf(idx).Request.ReturnType(tag) {
+        const T = @TypeOf(idx);
+        var _args = @import("proxy.zig").request_to_args(T.Request, tag, payload);
+        std.log.info("{} args: {any}", .{ tag, _args });
+
+        const proxy = Proxy{ .client = self, .id = @intFromEnum(idx) };
+
+        const RT = T.Request.ReturnType(tag);
+        if (RT == void) {
+            return proxy.marshal_request(@intFromEnum(tag), &_args) catch unreachable;
+        } else {
+            return proxy.marshal_request_constructor(RT, @intFromEnum(tag), &_args) catch @panic("buffer full");
+        }
+    }
+    pub fn bind(client: *Client, idx: wl.Registry, _name: u32, comptime T: type, _version: u32) T {
+        var _args = [_]Argument{
+            .{ .uint = _name },
+            .{ .string = T.interface.name },
+            .{ .uint = _version },
+            .{ .new_id = 0 },
+        };
+        const proxy = Proxy{ .client = client, .id = @intFromEnum(idx) };
+        return proxy.marshal_request_constructor(T, 0, &_args) catch @panic("buffer full");
     }
 };
 

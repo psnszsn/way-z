@@ -38,7 +38,7 @@ running: bool = true,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
     const client = try wayland.Client.connect(alloc);
-    const registry = client.wl_display.get_registry(client);
+    const registry = client.request(client.wl_display, .get_registry, {});
 
     // TODO: remove allocation
     const app = try alloc.create(App);
@@ -62,29 +62,36 @@ pub fn new(alloc: std.mem.Allocator) !*App {
 
 pub fn new_window(app: *App, shell: WindowType) !*Window {
     const client = app.client;
-    const wl_surface = app.compositor.?.create_surface(client);
-    errdefer wl_surface.destroy(client);
+    // const wl_surface = app.compositor.?.create_surface(client);
+    const wl_surface = client.request(app.compositor.?, .create_surface, {});
+    errdefer client.request(wl_surface, .destroy, {});
 
     // TODO: remove allocation
     const window = try app.client.allocator.create(Window);
 
     const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
-        const layer_surface = app.layer_shell.?.get_layer_surface(client, wl_surface, null, .top, "");
-        errdefer layer_surface.destroy(client);
-        layer_surface.set_size(client, 0, 30);
-        layer_surface.set_anchor(client, .{ .top = true, .left = true, .right = true });
-        layer_surface.set_exclusive_zone(client, 35);
+        const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
+            .surface = wl_surface,
+            .output = null,
+            .layer = .top,
+            .namespace = "",
+        });
+        errdefer client.request(layer_surface, .destroy, {});
+        client.request(layer_surface, .set_size, .{ .width = 0, .height = 30 });
+        client.request(layer_surface, .set_anchor, .{ .anchor = .{ .top = true, .left = true, .right = true } });
+        client.request(layer_surface, .set_exclusive_zone, .{ .zone = 35 });
         client.set_listener(layer_surface, *Window, Window.layer_suface_listener, window);
         break :b .{ .wlr_layer_shell = layer_surface };
     } else b: {
         const xdg_surface = app.wm_base.?.get_xdg_surface(client, wl_surface);
-        errdefer xdg_surface.destroy(client);
-        const xdg_toplevel = xdg_surface.get_toplevel(client);
-        errdefer xdg_toplevel.destroy(client);
+        // const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
+        errdefer client.request(xdg_surface, .destroy, {});
+        const xdg_toplevel = client.request(xdg_surface, .get_toplevel, {});
+        errdefer client.request(xdg_toplevel, .destroy, {});
 
         client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
         client.set_listener(xdg_toplevel, *Window, Window.xdg_toplevel_listener, window);
-        xdg_toplevel.set_title(client, "Demo");
+        client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
 
         break :b .{ .xdg_shell = .{
             .xdg_surface = xdg_surface,
@@ -103,7 +110,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
 
     app.window = window;
 
-    wl_surface.commit(client);
+    client.request(wl_surface, .commit, {});
     try app.client.roundtrip();
 
     return window;
@@ -177,7 +184,7 @@ pub const Window = struct {
     fn layer_suface_listener(client: *wayland.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
         switch (event) {
             .configure => |configure| {
-                layer_suface.ack_configure(client, configure.serial);
+                client.request(layer_suface, .ack_configure, .{ .serial = configure.serial });
 
                 window.width = configure.width;
                 window.height = configure.height;
@@ -214,7 +221,7 @@ pub const Window = struct {
     fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
         switch (event) {
             .configure => |configure| {
-                xdg_surface.ack_configure(client, configure.serial);
+                client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
             },
         }
     }
@@ -252,17 +259,17 @@ pub fn registryListener(client: *wayland.Client, registry: wl.Registry, event: w
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = registry.bind(client, global.name, wl.Compositor, 1);
+                context.compositor = client.bind(registry, global.name, wl.Compositor, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = registry.bind(client, global.name, wl.Shm, 1);
+                context.shm = client.bind(registry, global.name, wl.Shm, 1);
             } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = registry.bind(client, global.name, xdg.WmBase, 1);
+                context.wm_base = client.bind(registry, global.name, xdg.WmBase, 1);
             } else if (mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                context.layer_shell = registry.bind(client, global.name, zwlr.LayerShellV1, 1);
+                context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, 1);
             } else if (mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
-                context.cursor_shape_manager = registry.bind(client, global.name, wp.CursorShapeManagerV1, 1);
+                context.cursor_shape_manager = client.bind(registry, global.name, wp.CursorShapeManagerV1, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
-                context.seat = registry.bind(client, global.name, wl.Seat, 1);
+                context.seat = client.bind(registry, global.name, wl.Seat, 1);
                 client.set_listener(context.seat.?, *App, seat_listener, context);
             }
         },
@@ -281,10 +288,10 @@ fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, a
 
             if (data.capabilities.pointer) {
                 if (app.pointer == null) {
-                    app.pointer = seat.get_pointer(client);
+                    app.pointer = client.request(seat, .get_pointer, {});
                     client.set_listener(app.pointer.?, *App, pointer_listener, app);
                     if (app.cursor_shape_manager) |csm| {
-                        app.cursor_shape_device = csm.get_pointer(client, app.pointer.?);
+                        app.cursor_shape_device = client.request(csm, .get_pointer, .{ .pointer = app.pointer.? });
                     }
                 }
             }
@@ -345,5 +352,8 @@ fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.E
             }
         }
     }
-    if (old_shape != app.cursor_shape) app.cursor_shape_device.?.set_shape(client, app.pointer_enter_serial, app.cursor_shape);
+    if (old_shape != app.cursor_shape) client.request(app.cursor_shape_device.?, .set_shape, .{
+        .serial = app.pointer_enter_serial,
+        .shape = app.cursor_shape,
+    });
 }

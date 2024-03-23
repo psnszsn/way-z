@@ -142,38 +142,55 @@ pub const Proxy = struct {
     }
 };
 
-//     pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
-//         const Payload = std.meta.TagPayload(request_to_args, tag);
-//         const payload_len = std.meta.fields(Payload).len;
-//         return [payload_len]Argument;
-// }
-//
-//
-//     pub fn request_to_args(request: anytype) RequestArgs(@TypeOf(request),std.meta.activeTag(request)){
-//         const Request = @TypeOf(request);
-//         const RT = RequestArgs(@TypeOf(request),std.meta.activeTag(request));
-//
-//         const payload = @field(request, std.meta.activeTag(request));
-//
-//         if (@TypeOf(payload) != void){}
-//         comptime var r: RT = undefined;
-//
-//         inline for (fields, 0..) |f, i| {
-//             if (f.type == void) continue;
-//             const ev_f = std.meta.fields(f.type);
-//             comptime var argts: [ev_f.len]Argument.ArgumentType = undefined;
-//             for (ev_f, 0..) |sf, ii| {
-//                 argts[ii] = switch (sf.type) {
-//                     u32 => .uint,
-//                     i32 => .int,
-//                     [:0]const u8 => .string,
-//                     ?*anyopaque => .object,
-//                     argm.Fixed => .fixed,
-//                     else => .uint,
-//                 };
-//             }
-//             r[i] = &argts;
-//         }
-//         return r;
-//     }
-// };
+pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
+    const Payload = std.meta.TagPayload(Request, tag);
+    comptime var payload_len = if (Payload == void) 0 else std.meta.fields(Payload).len;
+    const RT = Request.ReturnType(tag);
+    if (RT != void) payload_len += 1;
+    return [payload_len]Argument;
+}
+
+pub fn request_to_args(
+    comptime RequestType: type,
+    comptime tag: std.meta.Tag(RequestType),
+    payload: std.meta.TagPayload(RequestType, tag),
+    // request: std.meta.Tag(Request),
+) RequestArgs(RequestType, tag) {
+    const RA = RequestArgs(RequestType, tag);
+    const RT = RequestType.ReturnType(tag);
+
+    if (@TypeOf(payload) != void) {}
+    var args: RA = undefined;
+    const len = @typeInfo(RA).Array.len;
+    _ = len; // autofix
+    const payload_fields = if (@TypeOf(payload) == void) .{} else std.meta.fields(@TypeOf(payload));
+
+    comptime var i = 0;
+    if (RT != void) {
+        args[0] = .{ .new_id = 0 };
+        i += 1;
+    }
+
+    inline for (payload_fields) |f| {
+        const field_value = @field(payload, f.name);
+        // std.log.info("f:{}", .{field_value});
+        args[i] = switch (@TypeOf(field_value)) {
+            u32 => .{ .uint = field_value },
+            i32 => .{ .int = field_value },
+            [:0]const u8 => .{ .string = field_value },
+            ?*anyopaque => .{ .object = if (field_value) |v| @intFromEnum(v) else 0 },
+            *anyopaque => .{ .object = @intFromEnum(field_value) },
+            argm.Fixed => .{ .fixed = field_value },
+            else => |v| switch (@typeInfo(v)) {
+                .Optional => .{ .object = if (field_value) |b| @intFromEnum(b) else 0 },
+                .Struct => .{ .object = @bitCast(field_value) },
+                // TODO: packed struct -> uint
+                .Enum => .{ .uint = @intCast(@intFromEnum(field_value)) },
+                else => unreachable,
+            },
+        };
+        i += 1;
+    }
+    // std.log.warn("Z: {any}", .{args});
+    return args;
+}

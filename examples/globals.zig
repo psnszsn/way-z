@@ -9,6 +9,9 @@ pub fn main() !void {
 
     const client = try wayland.Client.connect(allocator);
     const registry = client.wl_display.get_registry(client);
+
+    _ = client.request(client.wl_display, .sync, {});
+
     var foo: u32 = 42;
     client.set_listener(registry, *u32, listener, &foo);
     try client.roundtrip();

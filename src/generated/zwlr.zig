@@ -82,8 +82,8 @@ pub const LayerShellV1 = enum(u32) {
         /// Clients can specify a namespace that defines the purpose of the layer
         /// surface.
         get_layer_surface: struct {
-            surface: ?u32,
-            output: u32,
+            surface: ?wl.Surface,
+            output: ?wl.Output,
             layer: Layer, // layer to add this surface to
             namespace: [:0]const u8, // namespace for the layer surface
         },
@@ -96,8 +96,8 @@ pub const LayerShellV1 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => LayerSurfaceV1,
-                1 => void,
+                .get_layer_surface => LayerSurfaceV1,
+                .destroy => void,
             };
         }
     };
@@ -346,7 +346,7 @@ pub const LayerSurfaceV1 = enum(u32) {
         /// See the documentation of xdg_popup for more details about what an
         /// xdg_popup is and how it is used.
         get_popup: struct {
-            popup: ?u32,
+            popup: ?xdg.Popup,
         },
         /// When a configure event is received, if a client commits the
         /// surface in response to the configure event, then the client
@@ -379,15 +379,15 @@ pub const LayerSurfaceV1 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
-                5 => void,
-                6 => void,
-                7 => void,
-                8 => void,
+                .set_size => void,
+                .set_anchor => void,
+                .set_exclusive_zone => void,
+                .set_margin => void,
+                .set_keyboard_interactivity => void,
+                .get_popup => void,
+                .ack_configure => void,
+                .destroy => void,
+                .set_layer => void,
             };
         }
     };

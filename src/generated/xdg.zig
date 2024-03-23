@@ -120,7 +120,7 @@ pub const WmBase = enum(u32) {
         /// See the documentation of xdg_surface for more details about what an
         /// xdg_surface is and how it is used.
         get_xdg_surface: struct {
-            surface: ?u32,
+            surface: ?wl.Surface,
         },
         /// A client must respond to a ping event with a pong request or
         /// the client may be deemed unresponsive. See xdg_wm_base.ping
@@ -133,10 +133,10 @@ pub const WmBase = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => Positioner,
-                2 => Surface,
-                3 => void,
+                .destroy => void,
+                .create_positioner => Positioner,
+                .get_xdg_surface => Surface,
+                .pong => void,
             };
         }
     };
@@ -376,16 +376,16 @@ pub const Positioner = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
-                5 => void,
-                6 => void,
-                7 => void,
-                8 => void,
-                9 => void,
+                .destroy => void,
+                .set_size => void,
+                .set_anchor_rect => void,
+                .set_anchor => void,
+                .set_gravity => void,
+                .set_constraint_adjustment => void,
+                .set_offset => void,
+                .set_reactive => void,
+                .set_parent_size => void,
+                .set_parent_configure => void,
             };
         }
     };
@@ -669,8 +669,8 @@ pub const Surface = enum(u32) {
         /// See the documentation of xdg_popup for more details about what an
         /// xdg_popup is and how it is used.
         get_popup: struct {
-            parent: u32,
-            positioner: ?u32,
+            parent: ?Surface,
+            positioner: ?Positioner,
         },
         /// The window geometry of a surface is its "visible bounds" from the
         /// user's perspective. Client-side decorations often have invisible
@@ -756,11 +756,11 @@ pub const Surface = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => Toplevel,
-                2 => Popup,
-                3 => void,
-                4 => void,
+                .destroy => void,
+                .get_toplevel => Toplevel,
+                .get_popup => Popup,
+                .set_window_geometry => void,
+                .ack_configure => void,
             };
         }
     };
@@ -1108,7 +1108,7 @@ pub const Toplevel = enum(u32) {
         /// descendants, and the parent must be different from the child toplevel,
         /// otherwise the invalid_parent protocol error is raised.
         set_parent: struct {
-            parent: u32,
+            parent: ?Toplevel,
         },
         /// Set a short title for the surface.
         ///
@@ -1159,7 +1159,7 @@ pub const Toplevel = enum(u32) {
         /// This request must be used in response to some sort of user action
         /// like a button press, key press, or touch down event.
         show_window_menu: struct {
-            seat: ?u32, // the wl_seat of the user event
+            seat: ?wl.Seat, // the wl_seat of the user event
             serial: u32, // the serial of the user event
             x: i32, // the x position to pop up the window menu at
             y: i32, // the y position to pop up the window menu at
@@ -1181,7 +1181,7 @@ pub const Toplevel = enum(u32) {
         /// updating a pointer cursor, during the move. There is no guarantee
         /// that the device focus will return when the move is completed.
         move: struct {
-            seat: ?u32, // the wl_seat of the user event
+            seat: ?wl.Seat, // the wl_seat of the user event
             serial: u32, // the serial of the user event
         },
         /// Start a user-driven, interactive resize of the surface.
@@ -1216,7 +1216,7 @@ pub const Toplevel = enum(u32) {
         /// use this information to adapt its behavior, e.g. choose an appropriate
         /// cursor image.
         resize: struct {
-            seat: ?u32, // the wl_seat of the user event
+            seat: ?wl.Seat, // the wl_seat of the user event
             serial: u32, // the serial of the user event
             edges: ResizeEdge, // which edge or corner is being dragged
         },
@@ -1362,7 +1362,7 @@ pub const Toplevel = enum(u32) {
         /// up of subsurfaces, popups or similarly coupled surfaces) are not
         /// visible below the fullscreened surface.
         set_fullscreen: struct {
-            output: u32,
+            output: ?wl.Output,
         },
         /// Make the surface no longer fullscreen.
         ///
@@ -1396,20 +1396,20 @@ pub const Toplevel = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
-                5 => void,
-                6 => void,
-                7 => void,
-                8 => void,
-                9 => void,
-                10 => void,
-                11 => void,
-                12 => void,
-                13 => void,
+                .destroy => void,
+                .set_parent => void,
+                .set_title => void,
+                .set_app_id => void,
+                .show_window_menu => void,
+                .move => void,
+                .resize => void,
+                .set_max_size => void,
+                .set_min_size => void,
+                .set_maximized => void,
+                .unset_maximized => void,
+                .set_fullscreen => void,
+                .unset_fullscreen => void,
+                .set_minimized => void,
             };
         }
     };
@@ -1942,7 +1942,7 @@ pub const Popup = enum(u32) {
         /// "owner-events" grab in X11 parlance), while the top most grabbing popup
         /// will always have keyboard focus.
         grab: struct {
-            seat: ?u32, // the wl_seat of the user event
+            seat: ?wl.Seat, // the wl_seat of the user event
             serial: u32, // the serial of the user event
         },
         /// Reposition an already-mapped popup. The popup will be placed given the
@@ -1969,7 +1969,7 @@ pub const Popup = enum(u32) {
         /// resized, but not in response to a configure event, the client should
         /// send an xdg_positioner.set_parent_size request.
         reposition: struct {
-            positioner: ?u32,
+            positioner: ?Positioner,
             token: u32, // reposition request token
         },
 
@@ -1977,9 +1977,9 @@ pub const Popup = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
+                .destroy => void,
+                .grab => void,
+                .reposition => void,
             };
         }
     };

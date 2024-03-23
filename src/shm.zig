@@ -1,5 +1,5 @@
 const std = @import("std");
-const os = std.os;
+const os = std.posix;
 const wl = @import("generated/wl.zig");
 const way = @import("lib.zig");
 

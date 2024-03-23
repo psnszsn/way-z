@@ -218,7 +218,7 @@ class Arg:
         else:
             qm = "?" if self.type == "object" and not self.allow_null else ""
             return ZigStruct.Field(
-                self.name, qm + self.zig_type(), comment=self.summary
+                self.name, qm + self.zig_type(obj_use_ptr=True), comment=self.summary
             )
         # if self.summary:
         #     fd.write(f"// {self.summary}\n")
@@ -256,7 +256,7 @@ class Arg:
                     return "u32"
                 qs = "?" if self.allow_null else ""
                 if not self.interface:
-                    return qs + "anyopaque"
+                    return qs + "u32"
                 interface = protocol.find_interface(self.interface)
                 prefix = (
                     interface.prefix + "."
@@ -327,6 +327,9 @@ class Request:
         )
 
     def zig_return_type(self) -> str:
+        if any(arg.type == "new_id" for arg in self.args):
+            self.type = "constructor"
+
         match self.type:
             case "constructor":
                 creates_interface = next(
@@ -344,92 +347,6 @@ class Request:
                     return '@compileError("BIND")'
             case _:
                 return "void"
-
-    def emit_fn(self, fd: TextIO):
-        emit_description(self.description, fd)
-        fd.write(
-            f"pub fn {self.name}(self: {self.interface.zig_type()}, client: *Client"
-        )
-
-        for arg in self.args:
-            if arg.type == "new_id":
-                self.type = "constructor"
-                if not arg.interface:
-                    fd.write(f", comptime T: type, _version: u32")
-            else:
-                fd.write(f", _{arg.name}: {arg.zig_type(obj_use_ptr=True)}")
-
-        fd.write(")")
-
-        interface = None
-        match self.type:
-            case "constructor":
-                creates_interface = next(
-                    (
-                        arg.interface
-                        for arg in self.args
-                        if arg.type == "new_id" and arg.interface
-                    ),
-                    None,
-                )
-                if creates_interface:
-                    interface = self.interface.protocol.interfaces[creates_interface]
-                    fd.write(f"{title_case(interface.name)}")
-                else:
-                    fd.write("T")
-            case _:
-                fd.write("void")
-        fd.write("{\n")
-
-        if self.args:
-            fd.write("var _args = [_]Argument{")
-            for arg in self.args:
-                match arg.type:
-                    case "new_id":
-                        if not interface:
-                            fd.write(".{ .string = T.interface.name },")
-                            fd.write(".{ .uint = _version },")
-                        fd.write(".{ .new_id = 0 },")
-
-                    case "object" if arg.allow_null:
-                        fd.write(
-                            f".{{ .object = if(_{arg.name})|arg| @intFromEnum(arg) else 0 }},"
-                        )
-                    case "object":
-                        fd.write(f".{{ .object = @intFromEnum(_{arg.name}) }},")
-                    case "uint" if arg.enum:
-                        enum = self.interface.find_enum(arg.enum)
-                        if enum.bitfield:
-                            fd.write(f".{{ .uint = @bitCast(_{arg.name}) }},")
-                        else:
-                            fd.write(
-                                f".{{ .uint = @intCast(@intFromEnum(_{arg.name})) }},"
-                            )
-                    case other:
-                        fd.write(f".{{ .{other} = _{arg.name} }},")
-            fd.write("};\n")
-
-        fd.write("const proxy = Proxy{.client = client, .id = @intFromEnum(self)};")
-        args_ref = "&_args" if self.args else "&.{}"
-        match self.type:
-            case "normal":
-                fd.write(
-                    f"proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
-                )
-            case "destructor":
-                fd.write(
-                    f"proxy.marshal_request({self.opcode}, {args_ref}) catch unreachable;\n"
-                )
-                fd.write("// self.proxy.destroy();\n")
-            case "constructor":
-                ret_t = interface.zig_type() if interface else "T"
-                fd.write(
-                    f'return proxy.marshal_request_constructor({ret_t}, {self.opcode}, &_args) catch @panic("buffer full");\n'
-                )
-            case _:
-                assert False, self
-
-        fd.write("}\n")
 
 
 @dataclass(slots=True)
@@ -655,8 +572,8 @@ class Interface:
                             val = f"@bitCast(args[{arg_i}].uint)"
                         else:
                             val = f"@enumFromInt(args[{arg_i}].uint)"
-                    case "object":
-                        val = f"args[{arg_i}].uint"
+                    case "object" if arg.interface:
+                        val = f"@enumFromInt(args[{arg_i}].uint)"
                     case t:
                         val = f"args[{arg_i}].{t}"
                 f_fields.append(ZigStructInit.Field(name=arg.name, value=val))
@@ -726,8 +643,8 @@ class Interface:
                             ZigSwitch(
                                 "request",
                                 variants=[
-                                    (str(i), e.zig_return_type())
-                                    for i, e in enumerate(self.requests.values())
+                                    ("." + e.name, e.zig_return_type())
+                                    for _, e in enumerate(self.requests.values())
                                 ],
                             )
                         ),
@@ -737,9 +654,6 @@ class Interface:
         )
 
         fd.write(req_asgn.zig_it())
-
-        for e in self.requests.values():
-            e.emit_fn(fd)
 
         fd.write("};\n")
 

@@ -82,7 +82,7 @@ pub const Display = enum(u32) {
             return switch (opcode) {
                 0 => Event{
                     .@"error" = .{
-                        .object_id = args[0].uint,
+                        .object_id = args[0].object,
                         .code = args[1].uint,
                         .message = args[2].string,
                     },
@@ -124,8 +124,8 @@ pub const Display = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => Callback,
-                1 => Registry,
+                .sync => Callback,
+                .get_registry => Registry,
             };
         }
     };
@@ -258,7 +258,7 @@ pub const Registry = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => @compileError("BIND"),
+                .bind => @compileError("BIND"),
             };
         }
     };
@@ -344,8 +344,8 @@ pub const Compositor = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => Surface,
-                1 => Region,
+                .create_surface => Surface,
+                .create_region => Region,
             };
         }
     };
@@ -430,9 +430,9 @@ pub const ShmPool = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => Buffer,
-                1 => void,
-                2 => void,
+                .create_buffer => Buffer,
+                .destroy => void,
+                .resize => void,
             };
         }
     };
@@ -665,7 +665,7 @@ pub const Shm = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => ShmPool,
+                .create_pool => ShmPool,
             };
         }
     };
@@ -748,7 +748,7 @@ pub const Buffer = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .destroy => void,
             };
         }
     };
@@ -966,11 +966,11 @@ pub const DataOffer = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
+                .accept => void,
+                .receive => void,
+                .destroy => void,
+                .finish => void,
+                .set_actions => void,
             };
         }
     };
@@ -1257,9 +1257,9 @@ pub const DataSource = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
+                .offer => void,
+                .destroy => void,
+                .set_actions => void,
             };
         }
     };
@@ -1347,10 +1347,10 @@ pub const DataDevice = enum(u32) {
         /// coordinates.
         enter: struct {
             serial: u32, // serial number of the enter event
-            surface: ?u32, // client surface entered
+            surface: ?Surface, // client surface entered
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
-            id: u32, // source data_offer object
+            id: ?DataOffer, // source data_offer object
         },
         /// This event is sent when the drag-and-drop pointer leaves the
         /// surface and the session ends.  The client must destroy the
@@ -1392,7 +1392,7 @@ pub const DataDevice = enum(u32) {
         /// will be sent.  The client must destroy the previous selection
         /// data_offer, if any, upon receiving this event.
         selection: struct {
-            id: u32, // selection data_offer object
+            id: ?DataOffer, // selection data_offer object
         },
 
         pub fn from_args(
@@ -1408,10 +1408,10 @@ pub const DataDevice = enum(u32) {
                 1 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                         .x = args[2].fixed,
                         .y = args[3].fixed,
-                        .id = args[4].uint,
+                        .id = @enumFromInt(args[4].uint),
                     },
                 },
                 2 => Event.leave,
@@ -1425,7 +1425,7 @@ pub const DataDevice = enum(u32) {
                 4 => Event.drop,
                 5 => Event{
                     .selection = .{
-                        .id = args[0].uint,
+                        .id = @enumFromInt(args[0].uint),
                     },
                 },
                 else => unreachable,
@@ -1459,9 +1459,9 @@ pub const DataDevice = enum(u32) {
         /// The input region is ignored for wl_surfaces with the role of a
         /// drag-and-drop icon.
         start_drag: struct {
-            source: u32, // data source for the eventual transfer
-            origin: ?u32, // surface where the drag originates
-            icon: u32, // drag-and-drop icon surface
+            source: ?DataSource, // data source for the eventual transfer
+            origin: ?Surface, // surface where the drag originates
+            icon: ?Surface, // drag-and-drop icon surface
             serial: u32, // serial number of the implicit grab on the origin
         },
         /// This request asks the compositor to set the selection
@@ -1469,7 +1469,7 @@ pub const DataDevice = enum(u32) {
         ///
         /// To unset the selection, set the source to NULL.
         set_selection: struct {
-            source: u32, // data source for the selection
+            source: ?DataSource, // data source for the selection
             serial: u32, // serial number of the event that triggered this request
         },
         /// This request destroys the data device.
@@ -1479,9 +1479,9 @@ pub const DataDevice = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
+                .start_drag => void,
+                .set_selection => void,
+                .release => void,
             };
         }
     };
@@ -1574,15 +1574,15 @@ pub const DataDeviceManager = enum(u32) {
         create_data_source: void,
         /// Create a new data device for a given seat.
         get_data_device: struct {
-            seat: ?u32, // seat associated with the data device
+            seat: ?Seat, // seat associated with the data device
         },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => DataSource,
-                1 => DataDevice,
+                .create_data_source => DataSource,
+                .get_data_device => DataDevice,
             };
         }
     };
@@ -1635,14 +1635,14 @@ pub const Shell = enum(u32) {
         ///
         /// Only one shell surface can be associated with a given surface.
         get_shell_surface: struct {
-            surface: ?u32, // surface to be given the shell surface role
+            surface: ?Surface, // surface to be given the shell surface role
         },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => ShellSurface,
+                .get_shell_surface => ShellSurface,
             };
         }
     };
@@ -1781,7 +1781,7 @@ pub const ShellSurface = enum(u32) {
         /// The server may ignore move requests depending on the state of
         /// the surface (e.g. fullscreen or maximized).
         move: struct {
-            seat: ?u32, // seat whose pointer is used
+            seat: ?Seat, // seat whose pointer is used
             serial: u32, // serial number of the implicit grab on the pointer
         },
         /// Start a pointer-driven resizing of the surface.
@@ -1790,7 +1790,7 @@ pub const ShellSurface = enum(u32) {
         /// The server may ignore resize requests depending on the state of
         /// the surface (e.g. fullscreen or maximized).
         resize: struct {
-            seat: ?u32, // seat whose pointer is used
+            seat: ?Seat, // seat whose pointer is used
             serial: u32, // serial number of the implicit grab on the pointer
             edges: Resize, // which edge or corner is being dragged
         },
@@ -1806,7 +1806,7 @@ pub const ShellSurface = enum(u32) {
         ///
         /// The flags argument controls details of the transient behaviour.
         set_transient: struct {
-            parent: ?u32, // parent surface
+            parent: ?Surface, // parent surface
             x: i32, // surface-local x coordinate
             y: i32, // surface-local y coordinate
             flags: Transient, // transient surface behavior
@@ -1847,7 +1847,7 @@ pub const ShellSurface = enum(u32) {
         set_fullscreen: struct {
             method: FullscreenMethod, // method for resolving size conflict
             framerate: u32, // framerate in mHz
-            output: u32, // output on which the surface is to be fullscreen
+            output: ?Output, // output on which the surface is to be fullscreen
         },
         /// Map the surface as a popup.
         ///
@@ -1869,9 +1869,9 @@ pub const ShellSurface = enum(u32) {
         /// corner of the surface relative to the upper left corner of the
         /// parent surface, in surface-local coordinates.
         set_popup: struct {
-            seat: ?u32, // seat whose pointer is used
+            seat: ?Seat, // seat whose pointer is used
             serial: u32, // serial number of the implicit grab on the pointer
-            parent: ?u32, // parent surface
+            parent: ?Surface, // parent surface
             x: i32, // surface-local x coordinate
             y: i32, // surface-local y coordinate
             flags: Transient, // transient surface behavior
@@ -1895,7 +1895,7 @@ pub const ShellSurface = enum(u32) {
         ///
         /// The details depend on the compositor implementation.
         set_maximized: struct {
-            output: u32, // output on which the surface is to be maximized
+            output: ?Output, // output on which the surface is to be maximized
         },
         /// Set a short title for the surface.
         ///
@@ -1921,16 +1921,16 @@ pub const ShellSurface = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
-                5 => void,
-                6 => void,
-                7 => void,
-                8 => void,
-                9 => void,
+                .pong => void,
+                .move => void,
+                .resize => void,
+                .set_toplevel => void,
+                .set_transient => void,
+                .set_fullscreen => void,
+                .set_popup => void,
+                .set_maximized => void,
+                .set_title => void,
+                .set_class => void,
             };
         }
     };
@@ -2213,7 +2213,7 @@ pub const Surface = enum(u32) {
         ///
         /// Note that a surface may be overlapping with zero or more outputs.
         enter: struct {
-            output: ?u32, // output entered by the surface
+            output: ?Output, // output entered by the surface
         },
         /// This is emitted whenever a surface's creation, movement, or resizing
         /// results in it no longer having any part of it within the scanout region
@@ -2225,7 +2225,7 @@ pub const Surface = enum(u32) {
         /// updates even if no enter event has been sent. The frame event should be
         /// used instead.
         leave: struct {
-            output: ?u32, // output left by the surface
+            output: ?Output, // output left by the surface
         },
         /// This event indicates the preferred buffer scale for this surface. It is
         /// sent whenever the compositor's preference changes.
@@ -2254,12 +2254,12 @@ pub const Surface = enum(u32) {
             return switch (opcode) {
                 0 => Event{
                     .enter = .{
-                        .output = args[0].uint,
+                        .output = @enumFromInt(args[0].uint),
                     },
                 },
                 1 => Event{
                     .leave = .{
-                        .output = args[0].uint,
+                        .output = @enumFromInt(args[0].uint),
                     },
                 },
                 2 => Event{
@@ -2337,7 +2337,7 @@ pub const Surface = enum(u32) {
         /// If wl_surface.attach is sent with a NULL wl_buffer, the
         /// following wl_surface.commit will remove the surface content.
         attach: struct {
-            buffer: u32, // buffer of surface contents
+            buffer: ?Buffer, // buffer of surface contents
             x: i32, // surface-local x coordinate
             y: i32, // surface-local y coordinate
         },
@@ -2426,7 +2426,7 @@ pub const Surface = enum(u32) {
         /// destroyed immediately. A NULL wl_region causes the pending opaque
         /// region to be set to empty.
         set_opaque_region: struct {
-            region: u32, // opaque region of the surface
+            region: ?Region, // opaque region of the surface
         },
         /// This request sets the region of the surface that can receive
         /// pointer and touch events.
@@ -2451,7 +2451,7 @@ pub const Surface = enum(u32) {
         /// immediately. A NULL wl_region causes the input region to be set
         /// to infinite.
         set_input_region: struct {
-            region: u32, // input region of the surface
+            region: ?Region, // input region of the surface
         },
         /// Surface state (input, opaque, and damage regions, attached buffers,
         /// etc.) is double-buffered. Protocol requests modify the pending state,
@@ -2588,17 +2588,17 @@ pub const Surface = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => Callback,
-                4 => void,
-                5 => void,
-                6 => void,
-                7 => void,
-                8 => void,
-                9 => void,
-                10 => void,
+                .destroy => void,
+                .attach => void,
+                .damage => void,
+                .frame => Callback,
+                .set_opaque_region => void,
+                .set_input_region => void,
+                .commit => void,
+                .set_buffer_transform => void,
+                .set_buffer_scale => void,
+                .damage_buffer => void,
+                .offset => void,
             };
         }
     };
@@ -3099,10 +3099,10 @@ pub const Seat = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => Pointer,
-                1 => Keyboard,
-                2 => Touch,
-                3 => void,
+                .get_pointer => Pointer,
+                .get_keyboard => Keyboard,
+                .get_touch => Touch,
+                .release => void,
             };
         }
     };
@@ -3226,7 +3226,7 @@ pub const Pointer = enum(u32) {
         /// an appropriate pointer image with the set_cursor request.
         enter: struct {
             serial: u32, // serial number of the enter event
-            surface: ?u32, // surface entered by the pointer
+            surface: ?Surface, // surface entered by the pointer
             surface_x: Fixed, // surface-local x coordinate
             surface_y: Fixed, // surface-local y coordinate
         },
@@ -3237,7 +3237,7 @@ pub const Pointer = enum(u32) {
         /// for the new focus.
         leave: struct {
             serial: u32, // serial number of the leave event
-            surface: ?u32, // surface left by the pointer
+            surface: ?Surface, // surface left by the pointer
         },
         /// Notification of pointer location change. The arguments
         /// surface_x and surface_y are the location relative to the
@@ -3476,7 +3476,7 @@ pub const Pointer = enum(u32) {
                 0 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                         .surface_x = args[2].fixed,
                         .surface_y = args[3].fixed,
                     },
@@ -3484,7 +3484,7 @@ pub const Pointer = enum(u32) {
                 1 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                     },
                 },
                 2 => Event{
@@ -3579,7 +3579,7 @@ pub const Pointer = enum(u32) {
         /// ignored.
         set_cursor: struct {
             serial: u32, // serial number of the enter event
-            surface: u32, // pointer surface
+            surface: ?Surface, // pointer surface
             hotspot_x: i32, // surface-local x coordinate
             hotspot_y: i32, // surface-local y coordinate
         },
@@ -3594,8 +3594,8 @@ pub const Pointer = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .set_cursor => void,
+                .release => void,
             };
         }
     };
@@ -3703,7 +3703,7 @@ pub const Keyboard = enum(u32) {
         /// event.
         enter: struct {
             serial: u32, // serial number of the enter event
-            surface: ?u32, // surface gaining keyboard focus
+            surface: ?Surface, // surface gaining keyboard focus
             keys: *anyopaque, // the currently pressed keys
         },
         /// Notification that this seat's keyboard focus is no longer on
@@ -3716,7 +3716,7 @@ pub const Keyboard = enum(u32) {
         /// are lifted and also it must stop key repeating if there's some going on.
         leave: struct {
             serial: u32, // serial number of the leave event
-            surface: ?u32, // surface that lost keyboard focus
+            surface: ?Surface, // surface that lost keyboard focus
         },
         /// A key was pressed or released.
         /// The time argument is a timestamp with millisecond
@@ -3774,14 +3774,14 @@ pub const Keyboard = enum(u32) {
                 1 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                         .keys = undefined,
                     },
                 },
                 2 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                     },
                 },
                 3 => Event{
@@ -3818,7 +3818,7 @@ pub const Keyboard = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .release => void,
             };
         }
     };
@@ -3864,7 +3864,7 @@ pub const Touch = enum(u32) {
         down: struct {
             serial: u32, // serial number of the touch down event
             time: u32, // timestamp with millisecond granularity
-            surface: ?u32, // surface touched
+            surface: ?Surface, // surface touched
             id: i32, // the unique ID of this touch point
             x: Fixed, // surface-local x coordinate
             y: Fixed, // surface-local y coordinate
@@ -3967,7 +3967,7 @@ pub const Touch = enum(u32) {
                     .down = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
-                        .surface = args[2].uint,
+                        .surface = @enumFromInt(args[2].uint),
                         .id = args[3].int,
                         .x = args[4].fixed,
                         .y = args[5].fixed,
@@ -4014,7 +4014,7 @@ pub const Touch = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .release => void,
             };
         }
     };
@@ -4270,7 +4270,7 @@ pub const Output = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .release => void,
             };
         }
     };
@@ -4321,9 +4321,9 @@ pub const Region = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
+                .destroy => void,
+                .add => void,
+                .subtract => void,
             };
         }
     };
@@ -4418,16 +4418,16 @@ pub const Subcompositor = enum(u32) {
         /// This request modifies the behaviour of wl_surface.commit request on
         /// the sub-surface, see the documentation on wl_subsurface interface.
         get_subsurface: struct {
-            surface: ?u32, // the surface to be turned into a sub-surface
-            parent: ?u32, // the parent surface
+            surface: ?Surface, // the surface to be turned into a sub-surface
+            parent: ?Surface, // the parent surface
         },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => Subsurface,
+                .destroy => void,
+                .get_subsurface => Subsurface,
             };
         }
     };
@@ -4577,12 +4577,12 @@ pub const Subsurface = enum(u32) {
         /// A new sub-surface is initially added as the top-most in the stack
         /// of its siblings and parent.
         place_above: struct {
-            sibling: ?u32, // the reference surface
+            sibling: ?Surface, // the reference surface
         },
         /// The sub-surface is placed just below the reference surface.
         /// See wl_subsurface.place_above.
         place_below: struct {
-            sibling: ?u32, // the reference surface
+            sibling: ?Surface, // the reference surface
         },
         /// Change the commit behaviour of the sub-surface to synchronized
         /// mode, also described as the parent dependent mode.
@@ -4623,12 +4623,12 @@ pub const Subsurface = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
-                2 => void,
-                3 => void,
-                4 => void,
-                5 => void,
+                .destroy => void,
+                .set_position => void,
+                .place_above => void,
+                .place_below => void,
+                .set_sync => void,
+                .set_desync => void,
             };
         }
     };

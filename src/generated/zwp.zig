@@ -48,7 +48,7 @@ pub const TabletManagerV2 = enum(u32) {
         /// Get the wp_tablet_seat object for the given seat. This object
         /// provides access to all graphics tablets in this seat.
         get_tablet_seat: struct {
-            seat: ?u32, // The wl_seat object to retrieve the tablets for
+            seat: ?wl.Seat, // The wl_seat object to retrieve the tablets for
         },
         /// Destroy the wp_tablet_manager object. Objects created from this
         /// object are unaffected and should be destroyed separately.
@@ -58,8 +58,8 @@ pub const TabletManagerV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => TabletSeatV2,
-                1 => void,
+                .get_tablet_seat => TabletSeatV2,
+                .destroy => void,
             };
         }
     };
@@ -158,7 +158,7 @@ pub const TabletSeatV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .destroy => void,
             };
         }
     };
@@ -331,8 +331,8 @@ pub const TabletToolV2 = enum(u32) {
         /// within the same frame as the proximity_in event.
         proximity_in: struct {
             serial: u32,
-            tablet: ?u32, // The tablet the tool is in proximity of
-            surface: ?u32, // The current surface the tablet tool is over
+            tablet: ?TabletV2, // The tablet the tool is in proximity of
+            surface: ?wl.Surface, // The current surface the tablet tool is over
         },
         /// Notification that this tool has either left proximity, or is no
         /// longer focused on a certain surface.
@@ -489,8 +489,8 @@ pub const TabletToolV2 = enum(u32) {
                 6 => Event{
                     .proximity_in = .{
                         .serial = args[0].uint,
-                        .tablet = args[1].uint,
-                        .surface = args[2].uint,
+                        .tablet = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[2].uint),
                     },
                 },
                 7 => Event.proximity_out,
@@ -587,7 +587,7 @@ pub const TabletToolV2 = enum(u32) {
         /// protocol error is raised.
         set_cursor: struct {
             serial: u32, // serial of the proximity_in event
-            surface: u32,
+            surface: ?wl.Surface,
             hotspot_x: i32, // surface-local x coordinate
             hotspot_y: i32, // surface-local y coordinate
         },
@@ -598,8 +598,8 @@ pub const TabletToolV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .set_cursor => void,
+                .destroy => void,
             };
         }
     };
@@ -754,7 +754,7 @@ pub const TabletV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .destroy => void,
             };
         }
     };
@@ -899,8 +899,8 @@ pub const TabletPadRingV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .set_feedback => void,
+                .destroy => void,
             };
         }
     };
@@ -1075,8 +1075,8 @@ pub const TabletPadStripV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .set_feedback => void,
+                .destroy => void,
             };
         }
     };
@@ -1283,7 +1283,7 @@ pub const TabletPadGroupV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
+                .destroy => void,
             };
         }
     };
@@ -1386,14 +1386,14 @@ pub const TabletPadV2 = enum(u32) {
         /// Notification that this pad is focused on the specified surface.
         enter: struct {
             serial: u32, // serial number of the enter event
-            tablet: ?u32, // the tablet the pad is attached to
-            surface: ?u32, // surface the pad is focused on
+            tablet: ?TabletV2, // the tablet the pad is attached to
+            surface: ?wl.Surface, // surface the pad is focused on
         },
         /// Notification that this pad is no longer focused on the specified
         /// surface.
         leave: struct {
             serial: u32, // serial number of the leave event
-            surface: ?u32, // surface the pad is no longer focused on
+            surface: ?wl.Surface, // surface the pad is no longer focused on
         },
         /// Sent when the pad has been removed from the system. When a tablet
         /// is removed its pad(s) will be removed too.
@@ -1434,14 +1434,14 @@ pub const TabletPadV2 = enum(u32) {
                 5 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .tablet = args[1].uint,
-                        .surface = args[2].uint,
+                        .tablet = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[2].uint),
                     },
                 },
                 6 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = args[1].uint,
+                        .surface = @enumFromInt(args[1].uint),
                     },
                 },
                 7 => Event.removed,
@@ -1487,8 +1487,8 @@ pub const TabletPadV2 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .set_feedback => void,
+                .destroy => void,
             };
         }
     };

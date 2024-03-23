@@ -30,7 +30,7 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {
         //     layout.set_cursor_shape(.default);
         // },
         else => {
-            std.log.info("event: {}", .{event});
+            // std.log.info("event: {any}", .{event});
         },
     }
 }

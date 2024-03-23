@@ -52,20 +52,20 @@ pub const CursorShapeManagerV1 = enum(u32) {
         destroy: void,
         /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
         get_pointer: struct {
-            pointer: ?u32,
+            pointer: ?wl.Pointer,
         },
         /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
         get_tablet_tool_v2: struct {
-            tablet_tool: ?u32,
+            tablet_tool: ?zwp.TabletToolV2,
         },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => CursorShapeDeviceV1,
-                2 => CursorShapeDeviceV1,
+                .destroy => void,
+                .get_pointer => CursorShapeDeviceV1,
+                .get_tablet_tool_v2 => CursorShapeDeviceV1,
             };
         }
     };
@@ -181,8 +181,8 @@ pub const CursorShapeDeviceV1 = enum(u32) {
             request: std.meta.Tag(Request),
         ) type {
             return switch (request) {
-                0 => void,
-                1 => void,
+                .destroy => void,
+                .set_shape => void,
             };
         }
     };
