@@ -62,7 +62,6 @@ pub fn new(alloc: std.mem.Allocator) !*App {
 
 pub fn new_window(app: *App, shell: WindowType) !*Window {
     const client = app.client;
-    // const wl_surface = app.compositor.?.create_surface(client);
     const wl_surface = client.request(app.compositor.?, .create_surface, {});
     errdefer client.request(wl_surface, .destroy, {});
 
@@ -84,7 +83,6 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
         break :b .{ .wlr_layer_shell = layer_surface };
     } else b: {
         const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
-        // const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
         errdefer client.request(xdg_surface, .destroy, {});
         const xdg_toplevel = client.request(xdg_surface, .get_toplevel, {});
         errdefer client.request(xdg_toplevel, .destroy, {});

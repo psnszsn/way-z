@@ -13,7 +13,6 @@ pub fn Cmsghdr(comptime T: type) type {
         type: c_int,
     };
 
-
     return extern struct {
         const data_align = @sizeOf(usize);
         pub const data_offset = std.mem.alignForward(usize, @sizeOf(Header), data_align);

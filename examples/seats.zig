@@ -8,27 +8,27 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = client.wl_display.get_registry();
-    registry.set_listener(?*anyopaque, listener, null);
+    const registry = client.request(client.wl_display, .get_registry, {});
+    client.set_listener(registry, ?*anyopaque, listener, null);
     try client.roundtrip();
     try client.roundtrip();
     client.deinit();
 }
 
-fn listener(registry: wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
+fn listener(client: *wayland.Client, registry: wl.Registry, event: wl.Registry.Event, _: ?*anyopaque) void {
     switch (event) {
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, "wl_seat") == .eq) {
                 std.debug.print("global: {}\n", .{global});
-                const seat = registry.bind(global.name, wl.Seat, global.version);
-                seat.set_listener(?*anyopaque, seatListener, null);
+                const seat = client.bind(registry, global.name, wl.Seat, global.version);
+                client.set_listener(seat, ?*anyopaque, seatListener, null);
             }
         },
         .global_remove => {},
     }
 }
 
-fn seatListener(_: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
+fn seatListener(_: *wayland.Client, _: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{

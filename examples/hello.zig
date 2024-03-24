@@ -35,7 +35,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = client.wl_display.get_registry();
+    const registry = client.request(client.wl_display, .get_registry, {});
 
     var context = App{
         .shm = null,
@@ -43,7 +43,7 @@ pub fn main() !void {
         .wm_base = null,
     };
 
-    registry.set_listener(*App, registryListener, &context);
+    client.set_listener(registry, *App, registryListener, &context);
     try client.roundtrip();
 
     const shm = context.shm orelse return error.NoWlShm;
@@ -62,41 +62,44 @@ pub fn main() !void {
         .ctx = &context,
     };
 
-    surface.wl_surface = compositor.create_surface();
-    defer surface.wl_surface.destroy();
-    surface.xdg_surface = wm_base.get_xdg_surface(surface.wl_surface);
-    defer surface.xdg_surface.destroy();
-    surface.xdg_toplevel = surface.xdg_surface.get_toplevel();
-    defer surface.xdg_toplevel.destroy();
+    surface.wl_surface = client.request(compositor, .create_surface, {});
+    defer client.request(surface.wl_surface, .destroy, {});
 
-    surface.xdg_surface.set_listener(*SurfaceCtx, xdgSurfaceListener, &surface);
-    surface.xdg_toplevel.set_listener(*SurfaceCtx, xdgToplevelListener, &surface);
-    surface.xdg_toplevel.set_min_size(500, 200);
-    surface.xdg_toplevel.set_title("Demo");
-    surface.wl_surface.commit();
+    surface.xdg_surface = client.request(wm_base, .get_xdg_surface, .{ .surface = surface.wl_surface });
+    errdefer client.request(surface.xdg_surface, .destroy, {});
+    surface.xdg_toplevel = client.request(surface.xdg_surface, .get_toplevel, {});
+    errdefer client.request(surface.xdg_toplevel, .destroy, {});
+
+    client.set_listener(surface.xdg_surface, *SurfaceCtx, xdgSurfaceListener, &surface);
+    client.set_listener(surface.xdg_toplevel, *SurfaceCtx, xdgToplevelListener, &surface);
+    client.request(surface.xdg_toplevel, .set_min_size, .{ .width = 500, .height = 200 });
+    client.request(surface.xdg_toplevel, .set_title, .{ .title = "Demo" });
+
+    client.request(surface.wl_surface, .commit, {});
     try client.roundtrip();
 
-    const buf = try Buffer.get(surface.ctx.shm.?, surface.width, surface.height);
-    surface.wl_surface.attach(buf.wl_buffer, 0, 0);
-    surface.wl_surface.commit();
+    const buf = try Buffer.get(client, surface.ctx.shm.?, surface.width, surface.height);
+    client.request(surface.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
+
+    client.request(surface.wl_surface, .commit, {});
     try client.roundtrip();
 
-    const frame_cb = surface.wl_surface.frame();
-    frame_cb.set_listener(*SurfaceCtx, frameListener, &surface);
-    surface.wl_surface.commit();
+    const frame_cb = client.request(surface.wl_surface, .frame, {});
+    client.set_listener(frame_cb, *SurfaceCtx, frameListener, &surface);
+    client.request(surface.wl_surface, .commit, {});
 
     try client.recvEvents();
 }
 
-fn registryListener(registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
+fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = registry.bind(global.name, wl.Compositor, 1);
+                context.compositor = client.bind(registry, global.name, wl.Compositor, 1);
             } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = registry.bind(global.name, wl.Shm, 1);
+                context.shm = client.bind(registry, global.name, wl.Shm, 1);
             } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = registry.bind(global.name, xdg.WmBase, 1);
+                context.wm_base = client.bind(registry, global.name, xdg.WmBase, 1);
             }
         },
         .global_remove => {},
@@ -135,16 +138,16 @@ fn draw2(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
     }
 }
 
-fn xdgSurfaceListener(xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
+fn xdgSurfaceListener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
     _ = surf;
     switch (event) {
         .configure => |configure| {
-            xdg_surface.ack_configure(configure.serial);
+            client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
         },
     }
 }
 
-fn xdgToplevelListener(_: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
+fn xdgToplevelListener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
     switch (event) {
         .configure => |configure| {
             std.log.warn("new size {} {}", .{ configure.width, configure.height });
@@ -158,7 +161,7 @@ fn xdgToplevelListener(_: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *Surfac
     }
 }
 
-fn seatListener(_: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
+fn seatListener(_: *wayland.Client, _: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
@@ -173,26 +176,33 @@ fn seatListener(_: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
     }
 }
 
-fn frameListener(cb: wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
+fn frameListener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
     _ = cb;
     switch (event) {
         .done => |done| {
             const time = done.callback_data;
             defer surf.last_frame = time;
 
-            const frame_cb = surf.wl_surface.frame();
-            frame_cb.set_listener(*SurfaceCtx, frameListener, surf);
+            const frame_cb = client.request(surf.wl_surface, .frame, {});
+
+            client.set_listener(frame_cb, *SurfaceCtx, frameListener, surf);
 
             if (surf.last_frame != 0) {
                 const elapsed: f32 = @floatFromInt(time - surf.last_frame);
                 surf.offset += elapsed / 1000.0 * 24;
             }
 
-            defer surf.wl_surface.commit();
-            const buf = Buffer.get(surf.ctx.shm.?, surf.width, surf.height) catch return;
+            defer client.request(surf.wl_surface, .commit, {});
+
+            const buf = Buffer.get(client, surf.ctx.shm.?, surf.width, surf.height) catch return;
             draw(buf.pool.mmap, surf.width, surf.height, surf.offset);
-            surf.wl_surface.attach(buf.wl_buffer, 0, 0);
-            surf.wl_surface.damage(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
+            client.request(surf.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
+            client.request(surf.wl_surface, .damage, .{
+                .x = 0,
+                .y = 0,
+                .width = std.math.maxInt(i32),
+                .height = std.math.maxInt(i32),
+            });
         },
     }
 }
