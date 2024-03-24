@@ -142,10 +142,11 @@ pub const FontMap = struct {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // defer std.debug.assert(gpa.deinit() == .ok);
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var app = try App.new(allocator);
+    defer app.deinit();
     var bar = try app.new_window(.xdg_shell);
     _ = &bar; // autofix
 

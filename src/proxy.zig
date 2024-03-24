@@ -90,7 +90,7 @@ pub const Proxy = struct {
 
     pub fn marshal_request(self: Proxy, opcode: u16, args: []const Argument) !void {
         const connection = self.client.connection;
-        try connection.out.pushSlice(&std.mem.toBytes(self.id + 1));
+        try connection.out.pushSlice(&std.mem.toBytes(self.id));
         try connection.out.pushSlice(std.mem.asBytes(&opcode));
         var size: u16 = 0;
         for (args) |arg| {

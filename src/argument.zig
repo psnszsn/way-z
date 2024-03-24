@@ -63,7 +63,7 @@ pub const Argument = union(enum) {
             .new_id,
             .object,
             => |inner| {
-                try writer.writeInt(u32, inner + 1, .little);
+                try writer.writeInt(u32, inner, .little);
             },
             .uint,
             => |inner| {
@@ -79,9 +79,6 @@ pub const Argument = union(enum) {
                 try writer.writeByteNTimes(0, self.len() - (4 + inner.len));
             },
             .fd => {},
-            // .object => |o| {
-            //     try writer.writeInt(u32, @intFromPtr(o), .little);
-            // },
             else => {
                 std.debug.print("arg {}", .{self});
                 unreachable;

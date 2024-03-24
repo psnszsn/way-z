@@ -81,6 +81,10 @@ pub const Layout = struct {
         const widget_data = try alloc.alloc(u8, 100);
         self.widget_alloc = std.heap.FixedBufferAllocator.init(widget_data);
     }
+    pub fn deinit(self: *Layout, alloc: std.mem.Allocator) void {
+        alloc.free(self.widget_alloc.buffer);
+        self.widgets.deinit(alloc);
+    }
 
     pub fn add2(self: *Layout, comptime t: WidgetType, wdata: WidgetData(t)) WidgetIdx {
         const idx = self.add(.{ .type = t });

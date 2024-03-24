@@ -7,6 +7,15 @@ jobs:
       - uses: actions/checkout@v3
       - uses: goto-bus-stop/setup-zig@v2
       - run: zig build 
+
+      - name: Bar
+        working-directory: apps/bar
+        run: zig build 
+
+      - name: Font Viewer
+        working-directory: apps/fontviewer
+        run: zig build 
+
   format:
     runs-on: ubuntu-latest
     steps:

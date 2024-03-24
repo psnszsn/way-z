@@ -162,10 +162,13 @@ pub const Client = struct {
 
         try self.objects.ensureTotalCapacity(allocator, 1000);
 
-        const next = self.next_object();
-        next.init(.{ .interface = &wl.Display.interface });
+        _ = self.next_id(); //discard
 
-        self.wl_display = @enumFromInt(next.id);
+        const idx = self.next_id();
+
+        self.objects.set(idx, .{ .interface = &wl.Display.interface });
+
+        self.wl_display = @enumFromInt(idx);
 
         const xdg_runtime_dir = std.posix.getenv("XDG_RUNTIME_DIR") orelse return error.NoXdgRuntimeDir;
         const wl_display_name = std.posix.getenv("WAYLAND_DISPLAY") orelse "wayland-0";
@@ -209,7 +212,7 @@ pub const Client = struct {
 
             if (self.connection.in.count < header.size) break;
             const proxy = Proxy{
-                .id = header.id - 1,
+                .id = header.id,
                 .client = @constCast(self),
             };
 
@@ -243,11 +246,8 @@ pub const Client = struct {
 
     pub fn roundtrip(self: *Client) !void {
         const w = struct {
-            fn cbListener(_: *Client, cb: wl.Callback, _: wl.Callback.Event, done: *bool) void {
-                _ = cb; // autofix
+            fn cbListener(_: *Client, _: wl.Callback, _: wl.Callback.Event, done: *bool) void {
                 done.* = true;
-                // Todo: cb.destroy()
-                // std.log.info("event: {}", .{event});
             }
         };
         const callblack = self.request(self.wl_display, .sync, {});
@@ -313,7 +313,7 @@ pub const Client = struct {
     ) @TypeOf(idx).Request.ReturnType(tag) {
         const T = @TypeOf(idx);
         var _args = @import("proxy.zig").request_to_args(T.Request, tag, payload);
-        // std.log.info("{} args: {any}", .{ tag, _args });
+        std.log.info("{} {s} {} args: {any}", .{ idx, @tagName(tag), @intFromEnum(tag), _args });
 
         const proxy = Proxy{ .client = self, .id = @intFromEnum(idx) };
 
@@ -342,7 +342,7 @@ fn displayListener(client: *Client, _: wl.Display, event: wl.Display.Event, _: ?
             std.log.err("Wayland error {}: {s}", .{ e.code, e.message });
         },
         .delete_id => |del| {
-            const id = del.id - 1;
+            const id = del.id;
             std.debug.assert(client.objects.items(.is_free)[id] == false);
             client.objects.items(.is_free)[id] = true;
         },

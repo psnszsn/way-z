@@ -1,37 +1,20 @@
-const std = @import("std");
-const mem = std.mem;
-
-const wayland = @import("wayland");
-const wl = wayland.wl;
-const xdg = wayland.xdg;
-const zwlr = wayland.zwlr;
-const wp = wayland.wp;
-const App = @This();
-
-const font = @import("font/bdf.zig");
-
-const Buffer = wayland.shm.Buffer;
-const PaintCtx = @import("paint.zig").PaintCtxU32;
-const Size = @import("paint/Size.zig");
-const Point = @import("paint/Point.zig");
-const w = @import("widget.zig");
-const WidgetIdx = w.WidgetIdx;
-const Layout = w.Layout;
-const Event = @import("event.zig").Event;
-
 client: *wayland.Client,
-shm: ?wl.Shm = null,
-compositor: ?wl.Compositor = null,
-wm_base: ?xdg.WmBase = null,
-layer_shell: ?zwlr.LayerShellV1 = null,
+
+// Wayland object ids
+// zig fmt: off
+shm                 : ?wl.Shm                  = null,
+compositor          : ?wl.Compositor           = null,
+wm_base             : ?xdg.WmBase              = null,
+layer_shell         : ?zwlr.LayerShellV1       = null,
+seat                : ?wl.Seat                 = null,
 cursor_shape_manager: ?wp.CursorShapeManagerV1 = null,
-seat: ?wl.Seat = null,
-cursor_shape_device: ?wp.CursorShapeDeviceV1 = null,
-cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
-pointer_enter_serial: u32 = 0,
-pointer: ?wl.Pointer = null,
+cursor_shape_device : ?wp.CursorShapeDeviceV1  = null,
+pointer             : ?wl.Pointer              = null,
+// zig fmt: on
 
 font: *font.Font,
+pointer_enter_serial: u32 = 0,
+cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
 window: *Window = undefined,
 running: bool = true,
@@ -56,8 +39,15 @@ pub fn new(alloc: std.mem.Allocator) !*App {
     std.debug.assert(app.shm != null);
     std.debug.assert(app.compositor != null);
     std.debug.assert(app.wm_base != null);
-    std.debug.assert(app.layer_shell != null);
     return app;
+}
+pub fn deinit(app: *App) void {
+    const alloc = app.client.allocator;
+    app.client.deinit();
+    app.window.layout.deinit(alloc);
+    alloc.destroy(app.font);
+    alloc.destroy(app.window);
+    alloc.destroy(app);
 }
 
 pub fn new_window(app: *App, shell: WindowType) !*Window {
@@ -69,10 +59,11 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
     const window = try app.client.allocator.create(Window);
 
     const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
+        std.debug.assert(app.layer_shell != null);
         const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
             .surface = wl_surface,
             .output = null,
-            .layer = .top,
+            .layer = .bottom,
             .namespace = "",
         });
         errdefer client.request(layer_surface, .destroy, {});
@@ -212,9 +203,7 @@ pub const Window = struct {
         }
     }
 
-    fn frame_listener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Event, window: *Window) void {
-        _ = client; // autofix
-        _ = cb;
+    fn frame_listener(_: *wayland.Client, _: wl.Callback, event: wl.Callback.Event, window: *Window) void {
         switch (event) {
             .done => |done| {
                 window.draw();
@@ -231,8 +220,7 @@ pub const Window = struct {
             },
         }
     }
-    fn xdg_toplevel_listener(client: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
-        _ = client; // autofix
+    fn xdg_toplevel_listener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
         switch (event) {
             .configure => |configure| {
                 if (configure.width == 0) return;
@@ -254,7 +242,7 @@ pub const Window = struct {
                 std.log.info("w: {} h: {}", .{ win.width, win.height });
             },
             .close => {
-                win.app.running = false;
+                win.app.client.connection.is_running = false;
             },
             else => {},
         }
@@ -264,17 +252,17 @@ pub const Window = struct {
 pub fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
-            if (mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
+            if (std.mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
                 context.compositor = client.bind(registry, global.name, wl.Compositor, 1);
-            } else if (mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
+            } else if (std.mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
                 context.shm = client.bind(registry, global.name, wl.Shm, 1);
-            } else if (mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
+            } else if (std.mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
                 context.wm_base = client.bind(registry, global.name, xdg.WmBase, 1);
-            } else if (mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
+            } else if (std.mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
                 context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, 1);
-            } else if (mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
+            } else if (std.mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
                 context.cursor_shape_manager = client.bind(registry, global.name, wp.CursorShapeManagerV1, 1);
-            } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
+            } else if (std.mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
                 context.seat = client.bind(registry, global.name, wl.Seat, 1);
                 client.set_listener(context.seat.?, *App, seat_listener, context);
             }
@@ -363,3 +351,23 @@ fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.E
         .shape = app.cursor_shape,
     });
 }
+
+const std = @import("std");
+
+const App = @This();
+const PaintCtx = @import("paint.zig").PaintCtxU32;
+const Point = @import("paint/Point.zig");
+const Size = @import("paint/Size.zig");
+const font = @import("font/bdf.zig");
+const Event = @import("event.zig").Event;
+
+const w = @import("widget.zig");
+const Layout = w.Layout;
+const WidgetIdx = w.WidgetIdx;
+
+const wayland = @import("wayland");
+const wl = wayland.wl;
+const wp = wayland.wp;
+const xdg = wayland.xdg;
+const zwlr = wayland.zwlr;
+const Buffer = wayland.shm.Buffer;
