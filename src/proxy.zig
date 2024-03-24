@@ -144,9 +144,7 @@ pub const Proxy = struct {
 
 pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
     const Payload = std.meta.TagPayload(Request, tag);
-    comptime var payload_len = if (Payload == void) 0 else std.meta.fields(Payload).len;
-    const RT = Request.ReturnType(tag);
-    if (RT != void) payload_len += 1;
+    const payload_len = if (Payload == void) 0 else std.meta.fields(Payload).len;
     return [payload_len]Argument;
 }
 
@@ -166,10 +164,10 @@ pub fn request_to_args(
     const payload_fields = if (@TypeOf(payload) == void) .{} else std.meta.fields(@TypeOf(payload));
 
     comptime var i = 0;
-    if (RT != void) {
-        args[0] = .{ .new_id = 0 };
-        i += 1;
-    }
+    // if (RT != void) {
+    //     args[0] = .{ .new_id = 0 };
+    //     i += 1;
+    // }
 
     inline for (payload_fields) |f| {
         const field_value = @field(payload, f.name);
@@ -194,7 +192,10 @@ pub fn request_to_args(
                     .uint = @bitCast(field_value),
                 },
                 // TODO: packed struct -> uint
-                .Enum => .{ .uint = @intCast(@intFromEnum(field_value)) },
+                .Enum => if (v == RT) b: {
+                    std.debug.assert(i == 0);
+                    break :b .{ .new_id = @intFromEnum(field_value) };
+                } else .{ .uint = @intCast(@intFromEnum(field_value)) },
                 else => unreachable,
             },
         };

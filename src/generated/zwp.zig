@@ -48,6 +48,7 @@ pub const TabletManagerV2 = enum(u32) {
         /// Get the wp_tablet_seat object for the given seat. This object
         /// provides access to all graphics tablets in this seat.
         get_tablet_seat: struct {
+            tablet_seat: TabletSeatV2 = @enumFromInt(0),
             seat: ?wl.Seat, // The wl_seat object to retrieve the tablets for
         },
         /// Destroy the wp_tablet_manager object. Objects created from this

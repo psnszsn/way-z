@@ -52,10 +52,12 @@ pub const CursorShapeManagerV1 = enum(u32) {
         destroy: void,
         /// Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
         get_pointer: struct {
+            cursor_shape_device: CursorShapeDeviceV1 = @enumFromInt(0),
             pointer: ?wl.Pointer,
         },
         /// Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
         get_tablet_tool_v2: struct {
+            cursor_shape_device: CursorShapeDeviceV1 = @enumFromInt(0),
             tablet_tool: ?zwp.TabletToolV2,
         },
 

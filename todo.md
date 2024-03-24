@@ -4,4 +4,5 @@
 - [ ] destroy()
 - [ ] shared buffer management
 - [ ] zero allocations
-- [ ] proxy types are enum(u32)
+- [x] proxy types are enum(u32)
+- [ ] write() for Request, read() for Event

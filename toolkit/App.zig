@@ -21,7 +21,7 @@ running: bool = true,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
     const client = try wayland.Client.connect(alloc);
-    const registry = client.request(client.wl_display, .get_registry, {});
+    const registry = client.request(client.wl_display, .get_registry, .{});
 
     // TODO: remove allocation
     const app = try alloc.create(App);
@@ -52,7 +52,7 @@ pub fn deinit(app: *App) void {
 
 pub fn new_window(app: *App, shell: WindowType) !*Window {
     const client = app.client;
-    const wl_surface = client.request(app.compositor.?, .create_surface, {});
+    const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
     // TODO: remove allocation
@@ -75,7 +75,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
     } else b: {
         const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
         errdefer client.request(xdg_surface, .destroy, {});
-        const xdg_toplevel = client.request(xdg_surface, .get_toplevel, {});
+        const xdg_toplevel = client.request(xdg_surface, .get_toplevel, .{});
         errdefer client.request(xdg_toplevel, .destroy, {});
 
         client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
@@ -149,7 +149,7 @@ pub const Window = struct {
     pub fn schedule_redraw(self: *Window) void {
         if (!self.frame_done) return;
         const client = self.app.client;
-        const frame_cb = client.request(self.wl_surface, .frame, {});
+        const frame_cb = client.request(self.wl_surface, .frame, .{});
         client.set_listener(frame_cb, *Window, frame_listener, self);
         client.request(self.wl_surface, .commit, {});
         self.frame_done = false;
@@ -282,7 +282,7 @@ fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, a
 
             if (data.capabilities.pointer) {
                 if (app.pointer == null) {
-                    app.pointer = client.request(seat, .get_pointer, {});
+                    app.pointer = client.request(seat, .get_pointer, .{});
                     client.set_listener(app.pointer.?, *App, pointer_listener, app);
                     if (app.cursor_shape_manager) |csm| {
                         app.cursor_shape_device = client.request(csm, .get_pointer, .{ .pointer = app.pointer.? });

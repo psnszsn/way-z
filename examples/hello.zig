@@ -35,7 +35,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const client = try wayland.Client.connect(allocator);
-    const registry = client.request(client.wl_display, .get_registry, {});
+    const registry = client.request(client.wl_display, .get_registry, .{});
 
     var context = App{
         .shm = null,
@@ -62,12 +62,12 @@ pub fn main() !void {
         .ctx = &context,
     };
 
-    surface.wl_surface = client.request(compositor, .create_surface, {});
+    surface.wl_surface = client.request(compositor, .create_surface, .{});
     defer client.request(surface.wl_surface, .destroy, {});
 
     surface.xdg_surface = client.request(wm_base, .get_xdg_surface, .{ .surface = surface.wl_surface });
     errdefer client.request(surface.xdg_surface, .destroy, {});
-    surface.xdg_toplevel = client.request(surface.xdg_surface, .get_toplevel, {});
+    surface.xdg_toplevel = client.request(surface.xdg_surface, .get_toplevel, .{});
     errdefer client.request(surface.xdg_toplevel, .destroy, {});
 
     client.set_listener(surface.xdg_surface, *SurfaceCtx, xdgSurfaceListener, &surface);
@@ -84,7 +84,7 @@ pub fn main() !void {
     client.request(surface.wl_surface, .commit, {});
     try client.roundtrip();
 
-    const frame_cb = client.request(surface.wl_surface, .frame, {});
+    const frame_cb = client.request(surface.wl_surface, .frame, .{});
     client.set_listener(frame_cb, *SurfaceCtx, frameListener, &surface);
     client.request(surface.wl_surface, .commit, {});
 
@@ -183,7 +183,7 @@ fn frameListener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Ev
             const time = done.callback_data;
             defer surf.last_frame = time;
 
-            const frame_cb = client.request(surf.wl_surface, .frame, {});
+            const frame_cb = client.request(surf.wl_surface, .frame, .{});
 
             client.set_listener(frame_cb, *SurfaceCtx, frameListener, surf);
 

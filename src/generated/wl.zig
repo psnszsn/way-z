@@ -108,7 +108,9 @@ pub const Display = enum(u32) {
         /// attempt to use it after that point.
         ///
         /// The callback_data passed in the callback is the event serial.
-        sync: void,
+        sync: struct {
+            callback: Callback = @enumFromInt(0), // callback object for the sync request
+        },
         /// This request creates a registry object that allows the client
         /// to list and bind the global objects available from the
         /// compositor.
@@ -118,7 +120,9 @@ pub const Display = enum(u32) {
         /// client disconnects, not when the client side proxy is destroyed.
         /// Therefore, clients should invoke get_registry as infrequently as
         /// possible to avoid wasting memory.
-        get_registry: void,
+        get_registry: struct {
+            registry: Registry = @enumFromInt(0), // global registry object
+        },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
@@ -216,6 +220,7 @@ pub const Registry = enum(u32) {
         /// specified name as the identifier.
         bind: struct {
             name: u32, // unique numeric name of the object
+            id: u32 = 0, // bounded object
         },
 
         pub fn ReturnType(
@@ -287,9 +292,13 @@ pub const Compositor = enum(u32) {
     };
     pub const Request = union(enum) {
         /// Ask the compositor to create a new surface.
-        create_surface: void,
+        create_surface: struct {
+            id: Surface = @enumFromInt(0), // the new surface
+        },
         /// Ask the compositor to create a new region.
-        create_region: void,
+        create_region: struct {
+            id: Region = @enumFromInt(0), // the new region
+        },
 
         pub fn ReturnType(
             request: std.meta.Tag(Request),
@@ -333,6 +342,7 @@ pub const ShmPool = enum(u32) {
         /// so it is valid to destroy the pool immediately after creating
         /// a buffer from it.
         create_buffer: struct {
+            id: Buffer = @enumFromInt(0), // buffer to create
             offset: i32, // buffer byte offset within the pool
             width: i32, // buffer width, in pixels
             height: i32, // buffer height, in pixels
@@ -537,6 +547,7 @@ pub const Shm = enum(u32) {
         /// objects.  The server will mmap size bytes of the passed file
         /// descriptor, to use as backing memory for the pool.
         create_pool: struct {
+            id: ShmPool = @enumFromInt(0), // pool to create
             fd: std.posix.fd_t, // file descriptor for the pool
             size: i32, // pool size, in bytes
         },
@@ -1218,9 +1229,12 @@ pub const DataDeviceManager = enum(u32) {
     };
     pub const Request = union(enum) {
         /// Create a new data source.
-        create_data_source: void,
+        create_data_source: struct {
+            id: DataSource = @enumFromInt(0), // data source to create
+        },
         /// Create a new data device for a given seat.
         get_data_device: struct {
+            id: DataDevice = @enumFromInt(0), // data device to create
             seat: ?Seat, // seat associated with the data device
         },
 
@@ -1263,6 +1277,7 @@ pub const Shell = enum(u32) {
         ///
         /// Only one shell surface can be associated with a given surface.
         get_shell_surface: struct {
+            id: ShellSurface = @enumFromInt(0), // shell surface to create
             surface: ?Surface, // surface to be given the shell surface role
         },
 
@@ -1819,7 +1834,9 @@ pub const Surface = enum(u32) {
         ///
         /// The callback_data passed in the callback is the current time, in
         /// milliseconds, with an undefined base.
-        frame: void,
+        frame: struct {
+            callback: Callback = @enumFromInt(0), // callback object for the frame request
+        },
         /// This request sets the region of the surface that contains
         /// opaque content.
         ///
@@ -2129,7 +2146,9 @@ pub const Seat = enum(u32) {
         /// It is a protocol violation to issue this request on a seat that has
         /// never had the pointer capability. The missing_capability error will
         /// be sent in this case.
-        get_pointer: void,
+        get_pointer: struct {
+            id: Pointer = @enumFromInt(0), // seat pointer
+        },
         /// The ID provided will be initialized to the wl_keyboard interface
         /// for this seat.
         ///
@@ -2138,7 +2157,9 @@ pub const Seat = enum(u32) {
         /// It is a protocol violation to issue this request on a seat that has
         /// never had the keyboard capability. The missing_capability error will
         /// be sent in this case.
-        get_keyboard: void,
+        get_keyboard: struct {
+            id: Keyboard = @enumFromInt(0), // seat keyboard
+        },
         /// The ID provided will be initialized to the wl_touch interface
         /// for this seat.
         ///
@@ -2147,7 +2168,9 @@ pub const Seat = enum(u32) {
         /// It is a protocol violation to issue this request on a seat that has
         /// never had the touch capability. The missing_capability error will
         /// be sent in this case.
-        get_touch: void,
+        get_touch: struct {
+            id: Touch = @enumFromInt(0), // seat touch interface
+        },
         /// Using this request a client can tell the server that it is not going to
         /// use the seat object anymore.
         release: void,
@@ -3315,6 +3338,7 @@ pub const Subcompositor = enum(u32) {
         /// This request modifies the behaviour of wl_surface.commit request on
         /// the sub-surface, see the documentation on wl_subsurface interface.
         get_subsurface: struct {
+            id: Subsurface = @enumFromInt(0), // the new sub-surface object ID
             surface: ?Surface, // the surface to be turned into a sub-surface
             parent: ?Surface, // the parent surface
         },

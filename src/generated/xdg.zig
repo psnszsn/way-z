@@ -105,7 +105,9 @@ pub const WmBase = enum(u32) {
         /// Create a positioner object. A positioner object is used to position
         /// surfaces relative to some parent surface. See the interface description
         /// and xdg_surface.get_popup for details.
-        create_positioner: void,
+        create_positioner: struct {
+            id: Positioner = @enumFromInt(0),
+        },
         /// This creates an xdg_surface for the given surface. While xdg_surface
         /// itself is not a role, the corresponding surface may only be assigned
         /// a role extending xdg_surface, such as xdg_toplevel or xdg_popup. It is
@@ -120,6 +122,7 @@ pub const WmBase = enum(u32) {
         /// See the documentation of xdg_surface for more details about what an
         /// xdg_surface is and how it is used.
         get_xdg_surface: struct {
+            id: Surface = @enumFromInt(0),
             surface: ?wl.Surface,
         },
         /// A client must respond to a ping event with a pong request or
@@ -453,7 +456,9 @@ pub const Surface = enum(u32) {
         ///
         /// See the documentation of xdg_toplevel for more details about what an
         /// xdg_toplevel is and how it is used.
-        get_toplevel: void,
+        get_toplevel: struct {
+            id: Toplevel = @enumFromInt(0),
+        },
         /// This creates an xdg_popup object for the given xdg_surface and gives
         /// the associated wl_surface the xdg_popup role.
         ///
@@ -463,6 +468,7 @@ pub const Surface = enum(u32) {
         /// See the documentation of xdg_popup for more details about what an
         /// xdg_popup is and how it is used.
         get_popup: struct {
+            id: Popup = @enumFromInt(0),
             parent: ?Surface,
             positioner: ?Positioner,
         },

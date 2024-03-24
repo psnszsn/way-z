@@ -67,6 +67,7 @@ class ZigStruct(Zig):
         name: str
         typ: str
         comment: str | None = None
+        default_value: str | None = None
 
     fields: list[Field]
 
@@ -77,6 +78,9 @@ class ZigStruct(Zig):
             out.write(f'''@"{field.name}"''')
             out.write(": ")
             out.write(field.typ)
+            if field.default_value:
+                out.write(" = ")
+                out.write(field.default_value)
             out.write(",")
             if field.comment:
                 out.write(" // ")
@@ -211,10 +215,12 @@ class Arg:
                 interface = self.parent.interface.protocol.interfaces[
                     self.interface
                 ].zig_type()
+                default = "@enumFromInt(0)"
             else:
                 interface = "u32"
+                default = "0"
             assert not self.allow_null
-            return ZigStruct.Field(self.name, f"{interface}")
+            return ZigStruct.Field(self.name, interface, default_value=default, comment=self.summary)
         else:
             qm = "?" if self.type == "object" and not self.allow_null else ""
             return ZigStruct.Field(
@@ -318,7 +324,7 @@ class Request:
 
     def zig_union_variant(self) -> ZigUnion.Varinat:
         zig_struct = ZigStruct(
-            [arg.zig_struct_field() for arg in self.args if arg.type != "new_id"]
+            [arg.zig_struct_field() for arg in self.args]
         )
         return ZigUnion.Varinat(
             name=self.name,

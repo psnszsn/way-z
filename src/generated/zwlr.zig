@@ -82,6 +82,7 @@ pub const LayerShellV1 = enum(u32) {
         /// Clients can specify a namespace that defines the purpose of the layer
         /// surface.
         get_layer_surface: struct {
+            id: LayerSurfaceV1 = @enumFromInt(0),
             surface: ?wl.Surface,
             output: ?wl.Output,
             layer: Layer, // layer to add this surface to
