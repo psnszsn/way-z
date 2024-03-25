@@ -313,7 +313,7 @@ pub const Client = struct {
     ) @TypeOf(idx).Request.ReturnType(tag) {
         const T = @TypeOf(idx);
         var _args = @import("proxy.zig").request_to_args(T.Request, tag, payload);
-        std.log.info("{} {s} {} args: {any}", .{ idx, @tagName(tag), @intFromEnum(tag), _args });
+        // std.log.info("{} {s} {} args: {any}", .{ idx, @tagName(tag), @intFromEnum(tag), _args });
 
         const proxy = Proxy{ .client = self, .id = @intFromEnum(idx) };
 

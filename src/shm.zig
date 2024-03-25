@@ -7,13 +7,15 @@ fn bufferListener(_: *way.Client, wl_buffer: wl.Buffer, event: wl.Buffer.Event, 
     _ = wl_buffer; // autofix
     switch (event) {
         .release => {
+            // std.log.warn("release", .{});
             std.debug.assert(buffer.busy == true);
             buffer.busy = false;
         },
     }
 }
 
-var buf: ?Buffer = undefined;
+var bufs_init = false;
+var bufs: [2]Buffer = undefined;
 
 pub const Pool = struct {
     wl_pool: wl.ShmPool,
@@ -45,17 +47,20 @@ pub const Buffer = struct {
         const width = if (_width == 0) 300 else _width;
         const height = if (_height == 0) 300 else _height;
 
-        if (buf == null) {
-            buf = try Buffer.init(client, shm, width, height);
-            client.set_listener(buf.?.wl_buffer, *Buffer, bufferListener, &buf.?);
+        if (bufs_init == false) {
+            for (&bufs) |*buf| {
+                buf.* = try Buffer.init(client, shm, width, height);
+                client.set_listener(buf.wl_buffer, *Buffer, bufferListener, buf);
+            }
+            bufs_init = true;
         }
-        if (buf) |*b| {
-            if (b.busy) return error.BufferBuzy;
-            try b.resize(width, height);
-            b.busy = true;
-            return b;
+        for (&bufs) |*buf| {
+            if (buf.busy) continue;
+            try buf.resize(width, height);
+            buf.busy = true;
+            return buf;
         }
-        unreachable;
+        return error.BufferBuzy;
     }
 
     pub fn init(client: *way.Client, shm: wl.Shm, width: u32, height: u32) !Buffer {

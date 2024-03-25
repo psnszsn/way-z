@@ -110,13 +110,14 @@ pub const FontMap = struct {
         const self = layout.data(idx, FontMap);
         const font = layout.get_window().app.font;
         const rect = layout.get(idx, .rect);
+        const app = layout.get_app();
         switch (event.pointer) {
             .enter => layout.set_cursor_shape(.pointer),
             .button => |_| {
                 for (0..256) |_glyph| {
                     const glyph: u8 = @intCast(_glyph);
                     var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
-                    if (outer_rect.contains(layout.pointer_position.x, layout.pointer_position.y)) {
+                    if (outer_rect.contains(app.pointer_position.x, app.pointer_position.y)) {
                         self.selected_code_point = glyph;
                         layout.request_draw(idx);
                         // self.onGlyphSelected.?(self);
@@ -148,18 +149,23 @@ pub fn main() !void {
     var app = try App.new(allocator);
     defer app.deinit();
     var bar = try app.new_window(.xdg_shell);
-    _ = &bar; // autofix
 
-    try bar.layout.init(app.client.allocator);
-    const flex = bar.layout.add2(.flex, .{ .orientation = .vertical });
-    const btn = bar.layout.add(.{ .type = .button });
+    try app.layout.init(app.client.allocator);
 
-    const font_view = bar.layout.add2(.font_view, .{});
-    const font_map = bar.layout.add2(.font_map, .{ .columns = 32, .subscriber = font_view });
+    const flex = app.layout.add2(.flex, .{ .orientation = .vertical });
+    const btn = app.layout.add(.{ .type = .button });
+
+    const font_view = app.layout.add2(.font_view, .{});
+    const font_map = app.layout.add2(.font_map, .{ .columns = 32, .subscriber = font_view });
 
     // children[2] = bar.layout.add(.{ .type = .button });
-    bar.layout.set(flex, .children, &.{ btn, font_map, font_view });
+    app.layout.set(flex, .children, &.{ btn, font_map, font_view });
     bar.set_root_widget(flex);
+
+    var popup = try app.new_popup(bar);
+    const popup_btn = app.layout.add2(.font_map, .{ .columns = 32, .subscriber = font_view });
+    popup.set_root_widget(popup_btn);
+    popup.draw();
 
     bar.draw();
 

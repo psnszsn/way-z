@@ -10,6 +10,7 @@ const WidgetAttrs = struct {
     pressed: bool = false,
     dirty: bool = false,
     children: []const WidgetIdx = &.{},
+    parent: ?WidgetIdx = null,
     data: usize = undefined,
 };
 
@@ -73,8 +74,6 @@ pub const WidgetFn = enum {
 pub const Layout = struct {
     widgets: std.MultiArrayList(WidgetAttrs) = .{},
     widget_alloc: std.heap.FixedBufferAllocator = undefined,
-    root: WidgetIdx = undefined,
-    pointer_position: Point = Point.ZERO,
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
         try self.widgets.ensureTotalCapacity(alloc, 100);
@@ -146,10 +145,22 @@ pub const Layout = struct {
     }
 
     const Window = @import("App.zig").Window;
+    const App = @import("App.zig");
     pub fn get_window(
         self: *const Layout,
     ) *Window {
-        return @constCast(@fieldParentPtr(Window, "layout", self));
+        const app = @constCast(@fieldParentPtr(App, "layout", self));
+        if (app.active_surface) |active| {
+            // std.log.warn("::::: {}", .{active.root});
+            return active;
+        }
+        return &app.surfaces.items[0];
+    }
+
+    pub fn get_app(
+        self: *const Layout,
+    ) *App {
+        return @constCast(@fieldParentPtr(App, "layout", self));
     }
 
     pub fn request_draw(
@@ -164,22 +175,97 @@ pub const Layout = struct {
         self: *const Layout,
         shape: @import("wayland").wp.CursorShapeDeviceV1.Shape,
     ) void {
-        const app = self.get_window().app;
+        const app = self.get_app();
         if (app.cursor_shape == shape) return;
         app.cursor_shape = shape;
     }
 
-    pub fn draw(layout: *Layout, ctx: PaintCtx) void {
-        layout.widgets.items(.rect)[@intFromEnum(layout.root)] = .{
-            .x = 0,
-            .y = 0,
-            .width = ctx.width,
-            .height = ctx.height,
+    pub fn child_iterator(
+        layout: *Layout,
+        idx: WidgetIdx,
+    ) ChildWidgetIterator {
+        return ChildWidgetIterator{
+            .layout = layout,
+            .parent = idx,
         };
-
-        _ = layout.call(layout.root, .draw, .{ layout.get(layout.root, .rect), ctx });
     }
 };
+
+const ChildWidgetIterator = struct {
+    layout: *Layout,
+    parent: WidgetIdx,
+    depth: u8 = 0,
+    next_child_stack: [5]usize = .{0} ** 5,
+
+    pub fn next(it: *ChildWidgetIterator) ?WidgetIdx {
+        if (it.depth == 0 and it.next_child_stack[0] == 0) {
+            it.depth += 1;
+            return it.parent;
+        }
+
+        const parent_children = it.layout.get(it.parent, .children);
+        if (it.next_child_stack[it.depth] < parent_children.len) {
+            const new = parent_children[it.next_child_stack[it.depth]];
+            const new_children = it.layout.get(new, .children);
+            it.next_child_stack[it.depth] += 1;
+            it.layout.set(new, .parent, it.parent);
+            if (new_children.len > 0) {
+                it.parent = new;
+                it.depth += 1;
+            }
+            return new;
+        }
+        // if there are no children, next is the first ancestor's sibling
+        while (it.depth > 1) {
+            it.depth -= 1;
+            const grand_parent = it.layout.get(it.parent, .parent).?;
+            const grandparent_children = it.layout.get(grand_parent, .children);
+            defer it.parent = grand_parent;
+            if (it.next_child_stack[it.depth] < grandparent_children.len) {
+                defer it.next_child_stack[it.depth] += 1;
+                return grandparent_children[it.next_child_stack[it.depth]];
+            }
+        }
+
+        return null;
+    }
+};
+
+test ChildWidgetIterator {
+    var layout = Layout{};
+    try layout.init(std.testing.allocator);
+    defer layout.deinit(std.testing.allocator);
+
+    const flex = layout.add2(.flex, .{});
+    const btn1 = layout.add2(.button, .{});
+    const btn2 = layout.add2(.button, .{});
+    const btn3 = layout.add2(.button, .{});
+    const btn4 = layout.add2(.button, .{});
+
+    layout.set(flex, .children, &.{ btn1, btn2, btn3, btn4 });
+
+    const btn3_c1 = layout.add2(.button, .{});
+    const btn3_c2 = layout.add2(.button, .{});
+
+    layout.set(btn3, .children, &.{ btn3_c1, btn3_c2 });
+
+    const btn3_c1_c1 = layout.add2(.button, .{});
+    const btn3_c1_c2 = layout.add2(.button, .{});
+
+    layout.set(btn3_c1, .children, &.{ btn3_c1_c1, btn3_c1_c2 });
+
+    var iter = layout.child_iterator(flex);
+    try std.testing.expectEqual(iter.next(), flex);
+    try std.testing.expectEqual(iter.next(), btn1);
+    try std.testing.expectEqual(iter.next(), btn2);
+    try std.testing.expectEqual(iter.next(), btn3);
+    try std.testing.expectEqual(iter.next(), btn3_c1);
+    try std.testing.expectEqual(iter.next(), btn3_c1_c1);
+    try std.testing.expectEqual(iter.next(), btn3_c1_c2);
+    try std.testing.expectEqual(iter.next(), btn3_c2);
+    try std.testing.expectEqual(iter.next(), btn4);
+    try std.testing.expectEqual(iter.next(), null);
+}
 
 const std = @import("std");
 const PaintCtx = @import("paint.zig").PaintCtxU32;

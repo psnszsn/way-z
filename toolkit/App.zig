@@ -16,8 +16,11 @@ font: *font.Font,
 pointer_enter_serial: u32 = 0,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
-window: *Window = undefined,
-running: bool = true,
+surfaces: std.ArrayListUnmanaged(Window) = .{},
+active_surface: ?*Window = null,
+
+layout: Layout = .{},
+pointer_position: Point = Point.ZERO,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
     const client = try wayland.Client.connect(alloc);
@@ -44,9 +47,9 @@ pub fn new(alloc: std.mem.Allocator) !*App {
 pub fn deinit(app: *App) void {
     const alloc = app.client.allocator;
     app.client.deinit();
-    app.window.layout.deinit(alloc);
+    app.layout.deinit(alloc);
     alloc.destroy(app.font);
-    alloc.destroy(app.window);
+    app.surfaces.deinit(alloc);
     alloc.destroy(app);
 }
 
@@ -55,8 +58,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
-    // TODO: remove allocation
-    const window = try app.client.allocator.create(Window);
+    const window = try app.surfaces.addOne(app.client.allocator);
 
     const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
         std.debug.assert(app.layer_shell != null);
@@ -97,7 +99,54 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
         .last_frame = 0,
     };
 
-    app.window = window;
+    client.request(wl_surface, .commit, {});
+    try app.client.roundtrip();
+
+    return window;
+}
+
+pub fn new_popup(app: *App, parent: *Window) !*Window {
+    const client = app.client;
+    const wl_surface = client.request(app.compositor.?, .create_surface, .{});
+    errdefer client.request(wl_surface, .destroy, {});
+
+    const window = try app.surfaces.addOne(app.client.allocator);
+
+    const wl_if: std.meta.FieldType(Window, .wl) = b: {
+        const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
+        errdefer client.request(xdg_surface, .destroy, {});
+
+        const positioner = client.request(app.wm_base.?, .create_positioner, .{});
+        defer client.request(positioner, .destroy, {});
+
+        client.request(positioner, .set_size, .{ .width = 200, .height = 200 });
+        client.request(positioner, .set_anchor_rect, .{ .x = 10, .y = 10, .width = 200, .height = 200 });
+        client.request(positioner, .set_anchor, .{ .anchor = .bottom });
+        client.request(positioner, .set_gravity, .{ .gravity = .bottom });
+
+        const xdg_popup = client.request(xdg_surface, .get_popup, .{
+            .parent = parent.wl.xdg_shell.xdg_surface,
+            .positioner = positioner,
+        });
+        errdefer client.request(xdg_popup, .destroy, {});
+
+        client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
+        client.set_listener(xdg_popup, *Window, Window.xdg_popup_listener, window);
+
+        break :b .{ .xdg_popup = .{
+            .xdg_surface = xdg_surface,
+            .xdg_popup = xdg_popup,
+        } };
+    };
+
+    window.* = .{
+        .app = app,
+        .wl_surface = wl_surface,
+        .wl = wl_if,
+        .width = 300,
+        .height = 300,
+        .last_frame = 0,
+    };
 
     client.request(wl_surface, .commit, {});
     try app.client.roundtrip();
@@ -107,17 +156,23 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
 
 const WindowType = enum {
     xdg_shell,
+    xdg_popup,
     wlr_layer_shell,
 };
 
 pub const Window = struct {
     app: *App,
+    root: WidgetIdx = undefined,
 
     wl_surface: wl.Surface,
     wl: union(WindowType) {
         xdg_shell: struct {
             xdg_surface: xdg.Surface,
             xdg_toplevel: xdg.Toplevel,
+        },
+        xdg_popup: struct {
+            xdg_surface: xdg.Surface,
+            xdg_popup: xdg.Popup,
         },
         wlr_layer_shell: zwlr.LayerSurfaceV1,
     },
@@ -126,13 +181,11 @@ pub const Window = struct {
     last_frame: u32,
     frame_done: bool = true,
 
-    layout: Layout = .{},
-
     pub fn set_root_widget(self: *Window, idx: WidgetIdx) void {
         const c = self.app.client;
         const min_size = Size{ .width = 10, .height = 10 };
         std.log.info("idx {}", .{idx});
-        const size = self.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
+        const size = self.app.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
         self.width = @intCast(size.width);
         self.height = @intCast(size.height);
 
@@ -144,9 +197,9 @@ pub const Window = struct {
             });
         }
         c.request(self.wl_surface, .commit, {});
-        self.layout.root = idx;
+        self.root = idx;
     }
-    pub fn schedule_redraw(self: *Window) void {
+    pub fn schedule_redraw_one(self: *Window) void {
         if (!self.frame_done) return;
         const client = self.app.client;
         const frame_cb = client.request(self.wl_surface, .frame, .{});
@@ -154,9 +207,18 @@ pub const Window = struct {
         client.request(self.wl_surface, .commit, {});
         self.frame_done = false;
     }
+    pub fn schedule_redraw(self: *Window) void {
+        self.schedule_redraw_one();
+        // self.draw();
+        // for (self.app.surfaces.items) |*surf| {
+        //     if (@intFromEnum(surf.wl_surface) == 12) {
+        //         surf.schedule_redraw_one();
+        //     }
+        // }
+    }
 
     pub fn draw(self: *Window) void {
-        std.log.info("draw", .{});
+        std.log.info("draw {}", .{std.meta.activeTag(self.wl)});
         const client = self.app.client;
         if (self.width == 0) return;
         if (self.height == 0) return;
@@ -167,7 +229,7 @@ pub const Window = struct {
             .height = buf.height,
         };
         @memset(buf.pool.mmap, 155);
-        self.layout.draw(ctx);
+        self.draw_root_widget(ctx);
         client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
         client.request(self.wl_surface, .damage, .{
             .x = 0,
@@ -176,6 +238,18 @@ pub const Window = struct {
             .height = std.math.maxInt(i32),
         });
         client.request(self.wl_surface, .commit, {});
+    }
+
+    pub fn draw_root_widget(window: *Window, ctx: PaintCtx) void {
+        const app = window.app;
+        app.layout.widgets.items(.rect)[@intFromEnum(window.root)] = .{
+            .x = 0,
+            .y = 0,
+            .width = ctx.width,
+            .height = ctx.height,
+        };
+
+        _ = app.layout.call(window.root, .draw, .{ app.layout.get(window.root, .rect), ctx });
     }
 
     fn layer_suface_listener(client: *wayland.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
@@ -207,13 +281,15 @@ pub const Window = struct {
         switch (event) {
             .done => |done| {
                 window.draw();
+                // std.log.warn("FRAME DONE!!! {s}", .{@tagName(window.wl)});
                 window.last_frame = done.callback_data;
                 window.frame_done = true;
             },
         }
     }
 
-    fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, _: *Window) void {
+    fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, win: *Window) void {
+        _ = win; // autofix
         switch (event) {
             .configure => |configure| {
                 client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
@@ -236,13 +312,41 @@ pub const Window = struct {
 
                 win.schedule_redraw();
 
-                _ = win.layout.call(win.layout.root, .size, .{
+                _ = win.app.layout.call(win.root, .size, .{
                     Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
                 });
                 std.log.info("w: {} h: {}", .{ win.width, win.height });
             },
             .close => {
                 win.app.client.connection.is_running = false;
+            },
+            else => {},
+        }
+    }
+    fn xdg_popup_listener(_: *wayland.Client, _: xdg.Popup, event: xdg.Popup.Event, win: *Window) void {
+        switch (event) {
+            .configure => |configure| {
+                if (configure.width == 0) return;
+                if (configure.height == 0) return;
+
+                if (win.width == configure.width and
+                    win.height == configure.height) return;
+
+                std.log.warn("configure event {}", .{configure});
+
+                win.width = @intCast(configure.width);
+                win.height = @intCast(configure.height);
+
+                win.schedule_redraw();
+
+                std.log.info("win.layout.root {}", .{win.root});
+                // _ = win.layout.call(win.layout.root, .size, .{
+                //     Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
+                // });
+                std.log.info("w: {} h: {}", .{ win.width, win.height });
+            },
+            .popup_done => {
+                std.log.info("popup done", .{});
             },
             else => {},
         }
@@ -297,20 +401,26 @@ fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, a
 }
 
 fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
-    const win = app.window;
     const event: ?Event.PointerEvent = switch (_event) {
         .enter => |ev| blk: {
-            win.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
+            std.log.info("ENter  - {}", .{ev});
+            app.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
             app.pointer_enter_serial = ev.serial;
+            for (app.surfaces.items) |*surface| {
+                if (surface.wl_surface == ev.surface) {
+                    std.log.info("activer surface: {}", .{surface.wl_surface});
+                    app.active_surface = surface;
+                }
+            }
             break :blk null;
         },
         .motion => |ev| blk: {
-            win.layout.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
+            app.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
             break :blk null;
         },
         .leave => blk: {
-            win.layout.pointer_position = Point.INF;
-            @memset(win.layout.widgets.items(.pressed), false);
+            app.pointer_position = Point.INF;
+            @memset(app.layout.widgets.items(.pressed), false);
             break :blk .{ .leave = {} };
         },
         .button => |ev| blk: {
@@ -323,26 +433,29 @@ fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.E
     };
     const old_shape = app.cursor_shape;
 
-    for (win.layout.widgets.items(.rect), 0..) |rect, i| {
-        const idx: WidgetIdx = @enumFromInt(i);
-        const was_pressed = win.layout.get(idx, .pressed);
-        const was_hover = win.layout.get(idx, .hover);
-        const is_hover = rect.contains_point(win.layout.pointer_position);
+    var iter = app.layout.child_iterator(app.active_surface.?.root);
+    while (iter.next()) |idx| {
+        // std.log.info("id: {}", .{idx});
+        const rect = app.layout.get(idx, .rect);
+        const was_pressed = app.layout.get(idx, .pressed);
+        const was_hover = app.layout.get(idx, .hover);
+        const is_hover = rect.contains_point(app.pointer_position);
 
         if (is_hover != was_hover) {
             // TODO: root widget is always hovered
-            win.layout.set(idx, .hover, is_hover);
+            // std.log.info(" hover id: {}", .{idx});
+            app.layout.set(idx, .hover, is_hover);
             const ev = Event{ .pointer = if (is_hover) .{ .enter = {} } else .{ .leave = {} } };
-            if (is_hover) win.layout.set_cursor_shape(.default);
-            win.layout.call(idx, .handle_event, .{ev});
+            if (is_hover) app.layout.set_cursor_shape(.default);
+            app.layout.call(idx, .handle_event, .{ev});
         }
 
         if (event) |ev| {
             if (is_hover or was_pressed) {
                 if (ev == .button) {
-                    win.layout.set(idx, .pressed, ev.button.state == .pressed);
+                    app.layout.set(idx, .pressed, ev.button.state == .pressed);
                 }
-                win.layout.call(idx, .handle_event, .{Event{ .pointer = ev }});
+                app.layout.call(idx, .handle_event, .{Event{ .pointer = ev }});
             }
         }
     }
