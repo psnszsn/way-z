@@ -11,6 +11,7 @@ pub const FontView = struct {
     const scale = 10;
     // font: *Font,
     code_point: u21 = 'b',
+    font: *Font,
 
     pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
         const self = layout.data(idx, FontView);
@@ -48,8 +49,8 @@ pub const FontView = struct {
         return true;
     }
 
-    pub fn size(layout: *Layout, _: WidgetIdx, _: Size.Minmax) Size {
-        const font = layout.get_window().app.font;
+    pub fn size(layout: *Layout, idx: WidgetIdx, _: Size.Minmax) Size {
+        const font = layout.data(idx, FontView).font;
         return Size{
             .width = font.glyph_width * scale,
             .height = font.glyph_height * scale,
@@ -60,6 +61,7 @@ pub const FontMap = struct {
     const letter_padding = 2;
     columns: usize,
     selected_code_point: u21 = 'a',
+    font: *Font,
 
     subscriber: WidgetIdx,
 
@@ -84,9 +86,9 @@ pub const FontMap = struct {
     }
 
     pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
-        std.log.warn("size:::: {}", .{paint_ctx.rect()});
+        // std.log.warn("size:::: {}", .{paint_ctx.rect()});
         const self = layout.data(idx, FontMap);
-        const font = layout.get_window().app.font;
+        const font = self.font;
 
         paint_ctx.fill(.{ .color = Color.NamedColor.white, .rect = rect });
 
@@ -119,6 +121,7 @@ pub const FontMap = struct {
                     var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
                     if (outer_rect.contains(app.pointer_position.x, app.pointer_position.y)) {
                         self.selected_code_point = glyph;
+                        std.log.info("selected {}", .{glyph});
                         layout.request_draw(idx);
                         // self.onGlyphSelected.?(self);
                         // self.onGlyphSelected.?.call();
@@ -134,7 +137,7 @@ pub const FontMap = struct {
 
     pub fn size(layout: *Layout, idx: WidgetIdx, _: Size.Minmax) Size {
         const self = layout.data(idx, FontMap);
-        const font = layout.get_window().app.font;
+        const font = self.font;
         const width = self.columns * (font.glyph_width + letter_padding);
         const height = self.rows() * (font.glyph_height + letter_padding);
         return Size{ .width = width, .height = height };
@@ -148,26 +151,30 @@ pub fn main() !void {
 
     var app = try App.new(allocator);
     defer app.deinit();
-    var bar = try app.new_window(.xdg_shell);
 
     try app.layout.init(app.client.allocator);
 
     const flex = app.layout.add2(.flex, .{ .orientation = .vertical });
     const btn = app.layout.add(.{ .type = .button });
-
-    const font_view = app.layout.add2(.font_view, .{});
-    const font_map = app.layout.add2(.font_map, .{ .columns = 32, .subscriber = font_view });
-
-    // children[2] = bar.layout.add(.{ .type = .button });
+    const font_view = app.layout.add2(.font_view, .{
+        .font = app.font,
+    });
+    const font_map = app.layout.add2(.font_map, .{
+        .columns = 32,
+        .subscriber = font_view,
+        .font = app.font,
+    });
     app.layout.set(flex, .children, &.{ btn, font_map, font_view });
-    bar.set_root_widget(flex);
 
-    var popup = try app.new_popup(bar);
-    const popup_btn = app.layout.add2(.font_map, .{ .columns = 32, .subscriber = font_view });
-    popup.set_root_widget(popup_btn);
-    popup.draw();
+    const popup_btn = app.layout.add2(.font_map, .{
+        .columns = 32,
+        .subscriber = font_view,
+        .font = app.font,
+    });
 
-    bar.draw();
+    const bar = try app.new_window(.xdg_shell, flex);
+    _ = try app.new_popup(bar, popup_btn);
+    // popup.set_root_widget(popup_btn);
 
     try app.client.recvEvents();
 }

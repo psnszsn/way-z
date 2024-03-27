@@ -53,12 +53,24 @@ pub fn deinit(app: *App) void {
     alloc.destroy(app);
 }
 
-pub fn new_window(app: *App, shell: WindowType) !*Window {
+pub fn new_window(app: *App, shell: WindowType, root_widget: WidgetIdx) !*Window {
     const client = app.client;
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
     const window = try app.surfaces.addOne(app.client.allocator);
+
+    const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
+    std.log.info("size: {}", .{size});
+    window.* = .{
+        .app = app,
+        .wl_surface = wl_surface,
+        .wl = undefined,
+        .width = @intCast(size.width),
+        .height = @intCast(size.height),
+        .last_frame = 0,
+        .root = root_widget,
+    };
 
     const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
         std.debug.assert(app.layer_shell != null);
@@ -73,6 +85,7 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
         client.request(layer_surface, .set_anchor, .{ .anchor = .{ .top = true, .left = true, .right = true } });
         client.request(layer_surface, .set_exclusive_zone, .{ .zone = 35 });
         client.set_listener(layer_surface, *Window, Window.layer_suface_listener, window);
+
         break :b .{ .wlr_layer_shell = layer_surface };
     } else b: {
         const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
@@ -83,34 +96,50 @@ pub fn new_window(app: *App, shell: WindowType) !*Window {
         client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
         client.set_listener(xdg_toplevel, *Window, Window.xdg_toplevel_listener, window);
         client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
+        client.request(xdg_toplevel, .set_min_size, .{
+            .width = @intCast(window.width),
+            .height = @intCast(window.height),
+        });
+
+        // const buf = try Buffer.get(client, app.shm.?, window.width, window.height);
+        // client.request(wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
+        // client.request(wl_surface, .commit, {});
+        // try client.roundtrip();
 
         break :b .{ .xdg_shell = .{
             .xdg_surface = xdg_surface,
             .xdg_toplevel = xdg_toplevel,
         } };
     };
-
-    window.* = .{
-        .app = app,
-        .wl_surface = wl_surface,
-        .wl = wl_if,
-        .width = 300,
-        .height = 300,
-        .last_frame = 0,
-    };
+    window.wl = wl_if; // autofix
 
     client.request(wl_surface, .commit, {});
-    try app.client.roundtrip();
+    try client.roundtrip();
+
+    window.draw();
+    // client.request(wl_surface, .commit, {});
+    // try app.client.roundtrip();
 
     return window;
 }
 
-pub fn new_popup(app: *App, parent: *Window) !*Window {
+pub fn new_popup(app: *App, parent: *Window, root_widget: WidgetIdx) !*Window {
     const client = app.client;
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
     const window = try app.surfaces.addOne(app.client.allocator);
+
+    const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
+    window.* = .{
+        .app = app,
+        .wl_surface = wl_surface,
+        .wl = undefined,
+        .width = @intCast(size.width),
+        .height = @intCast(size.height),
+        .last_frame = 0,
+        .root = root_widget,
+    };
 
     const wl_if: std.meta.FieldType(Window, .wl) = b: {
         const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
@@ -133,23 +162,17 @@ pub fn new_popup(app: *App, parent: *Window) !*Window {
         client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
         client.set_listener(xdg_popup, *Window, Window.xdg_popup_listener, window);
 
+        client.request(wl_surface, .commit, {});
+        try client.roundtrip();
+
+        window.draw();
+
         break :b .{ .xdg_popup = .{
             .xdg_surface = xdg_surface,
             .xdg_popup = xdg_popup,
         } };
     };
-
-    window.* = .{
-        .app = app,
-        .wl_surface = wl_surface,
-        .wl = wl_if,
-        .width = 300,
-        .height = 300,
-        .last_frame = 0,
-    };
-
-    client.request(wl_surface, .commit, {});
-    try app.client.roundtrip();
+    window.wl = wl_if; // autofix
 
     return window;
 }
@@ -181,40 +204,13 @@ pub const Window = struct {
     last_frame: u32,
     frame_done: bool = true,
 
-    pub fn set_root_widget(self: *Window, idx: WidgetIdx) void {
-        const c = self.app.client;
-        const min_size = Size{ .width = 10, .height = 10 };
-        std.log.info("idx {}", .{idx});
-        const size = self.app.layout.call(idx, .size, .{Size.Minmax.tight(min_size)});
-        self.width = @intCast(size.width);
-        self.height = @intCast(size.height);
-
-        std.log.info("min size {}", .{size});
-        if (self.wl == .xdg_shell) {
-            c.request(self.wl.xdg_shell.xdg_toplevel, .set_min_size, .{
-                .width = @intCast(size.width),
-                .height = @intCast(size.height),
-            });
-        }
-        c.request(self.wl_surface, .commit, {});
-        self.root = idx;
-    }
-    pub fn schedule_redraw_one(self: *Window) void {
+    pub fn schedule_redraw(self: *Window) void {
         if (!self.frame_done) return;
         const client = self.app.client;
         const frame_cb = client.request(self.wl_surface, .frame, .{});
         client.set_listener(frame_cb, *Window, frame_listener, self);
         client.request(self.wl_surface, .commit, {});
         self.frame_done = false;
-    }
-    pub fn schedule_redraw(self: *Window) void {
-        self.schedule_redraw_one();
-        // self.draw();
-        // for (self.app.surfaces.items) |*surf| {
-        //     if (@intFromEnum(surf.wl_surface) == 12) {
-        //         surf.schedule_redraw_one();
-        //     }
-        // }
     }
 
     pub fn draw(self: *Window) void {
@@ -324,26 +320,10 @@ pub const Window = struct {
         }
     }
     fn xdg_popup_listener(_: *wayland.Client, _: xdg.Popup, event: xdg.Popup.Event, win: *Window) void {
+        _ = win; // autofix
         switch (event) {
             .configure => |configure| {
-                if (configure.width == 0) return;
-                if (configure.height == 0) return;
-
-                if (win.width == configure.width and
-                    win.height == configure.height) return;
-
-                std.log.warn("configure event {}", .{configure});
-
-                win.width = @intCast(configure.width);
-                win.height = @intCast(configure.height);
-
-                win.schedule_redraw();
-
-                std.log.info("win.layout.root {}", .{win.root});
-                // _ = win.layout.call(win.layout.root, .size, .{
-                //     Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
-                // });
-                std.log.info("w: {} h: {}", .{ win.width, win.height });
+                std.log.info("popup configure :{}", .{configure});
             },
             .popup_done => {
                 std.log.info("popup done", .{});

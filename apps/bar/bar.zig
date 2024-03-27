@@ -8,7 +8,6 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var app = try App.new(allocator);
-    var bar = try app.new_window(.wlr_layer_shell);
 
     try app.layout.init(app.client.allocator);
     const flex = app.layout.add2(.flex, .{});
@@ -17,7 +16,8 @@ pub fn main() !void {
     children[1] = app.layout.add(.{ .type = .button, .flex = 1 });
     children[2] = app.layout.add(.{ .type = .button });
     app.layout.set(flex, .children, children);
-    bar.set_root_widget(flex);
+
+    var bar = try app.new_window(.wlr_layer_shell, flex);
 
     bar.draw();
     try app.client.roundtrip();
