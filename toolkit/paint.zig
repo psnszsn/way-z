@@ -10,8 +10,8 @@ pub fn PaintCtx(comptime Color: type) type {
     return struct {
         const Self = @This();
         buffer: []Color,
-        width: usize,
-        height: usize,
+        width: u32,
+        height: u32,
 
         pub inline fn rect(self: *const Self) Rect {
             return .{
@@ -29,7 +29,7 @@ pub fn PaintCtx(comptime Color: type) type {
             scale: u32 = 1,
         };
 
-        pub inline fn pixel(self: *const Self, x: usize, y: usize, opts: DrawCharOpts) void {
+        pub inline fn pixel(self: *const Self, x: u32, y: u32, opts: DrawCharOpts) void {
             const actual_y = if (opts.rect) |r| r.y + y else y;
             const actual_x = if (opts.rect) |r| r.x + x else x;
             if (opts.scale == 1) {
@@ -62,8 +62,10 @@ pub fn PaintCtx(comptime Color: type) type {
             const font = opts.font.?;
             const bitmap = font.glyphBitmap(code_point);
 
-            for (0..font.glyph_height) |y| {
-                for (0..bitmap.width) |x| {
+            for (0..font.glyph_height) |_y| {
+                const y: u8 = @intCast(_y);
+                for (0..bitmap.width) |_x| {
+                    const x: u8 = @intCast(_x);
                     if (bitmap.bitAt(x, y)) {
                         self.pixel(x, y, .{ .rect = opts.rect, .color = opts.color, .scale = opts.scale });
                     }
@@ -74,7 +76,7 @@ pub fn PaintCtx(comptime Color: type) type {
         pub fn text(self: *const Self, _text: []const u8, opts: DrawCharOpts) void {
             const s = std.unicode.Utf8View.init(_text) catch unreachable;
             var it = s.iterator();
-            var i: usize = 0;
+            var i: u32 = 0;
             var glyph_rect = opts.rect orelse self.rect();
             const font = opts.font.?;
             glyph_rect.width = font.glyph_width;
@@ -97,7 +99,7 @@ pub fn PaintCtx(comptime Color: type) type {
             if (p1.x == p2.x) {
                 if (p1.y > p2.y)
                     std.mem.swap(Point, &p1, &p2);
-                var y: usize = p1.y;
+                var y: u32 = p1.y;
                 while (y < p2.y) : (y += thickness) {
                     self.pixel(p1.x, y, .{ .scale = thickness, .color = color });
                 }
@@ -108,7 +110,7 @@ pub fn PaintCtx(comptime Color: type) type {
             if (p1.y == p2.y) {
                 if (p1.x > p2.x)
                     std.mem.swap(Point, &p1, &p2);
-                var x: usize = p1.x;
+                var x: u32 = p1.x;
                 while (x < p2.x) : (x += thickness) {
                     self.pixel(x, p1.y, .{ .scale = thickness, .color = color });
                 }
@@ -149,9 +151,9 @@ pub fn PaintCtx(comptime Color: type) type {
                     err += delta_error;
                     if (err >= dx) {
                         if (y_step > 0) {
-                            y += @as(usize, @intCast(@abs(y_step)));
+                            y += @as(u32, @intCast(@abs(y_step)));
                         } else {
-                            const abs_y = @as(usize, @intCast(@abs(y_step)));
+                            const abs_y = @as(u32, @intCast(@abs(y_step)));
                             if (y > abs_y) {
                                 y -= abs_y;
                             } else {
@@ -163,7 +165,7 @@ pub fn PaintCtx(comptime Color: type) type {
                     x += 1;
                 }
             } else {
-                // const x_step: usize = if (dx == 0) 0 else 1;
+                // const x_step: u32 = if (dx == 0) 0 else 1;
                 const x_step: i32 = if (dx == 0) 0 else blk: {
                     const a: i32 = if (dx > 0) 1 else -1;
                     break :blk a;
@@ -176,10 +178,10 @@ pub fn PaintCtx(comptime Color: type) type {
                     err += delta_error;
                     if (err >= dy) {
                         if (x_step > 0) {
-                            x += @as(usize, @intCast(@abs(x_step)));
+                            x += @as(u32, @intCast(@abs(x_step)));
                         } else {
                             // print("x value: {}\n", .{x_step});
-                            const abs_x = @as(usize, @intCast(@abs(x_step)));
+                            const abs_x = @as(u32, @intCast(@abs(x_step)));
                             if (x > abs_x) {
                                 x -= abs_x;
                             } else {
@@ -193,7 +195,7 @@ pub fn PaintCtx(comptime Color: type) type {
                 }
             }
 
-            // var x: usize = p1.x;
+            // var x: u32 = p1.x;
             // while (x < p2.x) {
             //     var y = p1.y + dy * (x - p1.x) / dx;
             //     self.drawPixel(x, y, thickness);
@@ -259,7 +261,7 @@ pub fn PaintCtx(comptime Color: type) type {
 
         pub fn border(self: *const Self) void {
             const thickness = 5;
-            var i: usize = 0;
+            var i: u32 = 0;
             while (i < thickness) : (i += 1) {
                 var it = self.rect.shrunkenUniform(i).borderIterator();
                 while (it.next()) |p| {

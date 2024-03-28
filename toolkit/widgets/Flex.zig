@@ -16,27 +16,27 @@ const Orientation = enum {
     vertical,
     horizontal,
 
-    pub fn majorLen(self: Orientation, s: Size) usize {
+    pub fn majorLen(self: Orientation, s: Size) u32 {
         switch (self) {
             .horizontal => return s.width,
             .vertical => return s.height,
         }
     }
-    pub fn minorLen(self: Orientation, s: Size) usize {
+    pub fn minorLen(self: Orientation, s: Size) u32 {
         switch (self) {
             .horizontal => return s.height,
             .vertical => return s.width,
         }
     }
 
-    pub fn pack(self: Orientation, major: usize, minor: usize) Point {
+    pub fn pack(self: Orientation, major: u32, minor: u32) Point {
         switch (self) {
             .horizontal => return Point{ .x = major, .y = minor },
             .vertical => return Point{ .x = minor, .y = major },
         }
     }
 
-    pub fn majorSize(self: Orientation, major: usize, minor: usize) Size {
+    pub fn majorSize(self: Orientation, major: u32, minor: u32) Size {
         switch (self) {
             .horizontal => return Size{ .width = major, .height = minor },
             .vertical => return Size{ .width = minor, .height = major },
@@ -45,8 +45,8 @@ const Orientation = enum {
     pub fn constraints(
         self: Orientation,
         mm: Size.Minmax,
-        min_major: usize,
-        major: usize,
+        min_major: u32,
+        major: u32,
     ) Size.Minmax {
         switch (self) {
             .horizontal => return Size.Minmax{
@@ -86,10 +86,10 @@ const Orientation = enum {
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     const children = layout.get(idx, .children);
     const self = layout.data(idx, Flex);
-    var minor: usize = self.orientation.minorLen(constraints.min);
+    var minor: u32 = self.orientation.minorLen(constraints.min);
 
-    var non_flex_major_sum: usize = 0;
-    var flex_factor_sum: usize = 0;
+    var non_flex_major_sum: u32 = 0;
+    var flex_factor_sum: u32 = 0;
 
     // Measure non-flex children
     for (children) |child_idx| {
@@ -141,7 +141,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
         }
     }
 
-    var major: usize = 0;
+    var major: u32 = 0;
     for (children) |child_idx| {
         const origin_point = self.orientation.pack(major, 0);
         var rect = layout.get(child_idx, .rect);

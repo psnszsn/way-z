@@ -9,7 +9,6 @@ pub const std_options = std.Options{
 
 pub const FontView = struct {
     const scale = 10;
-    // font: *Font,
     code_point: u21 = 'b',
     font: *Font,
 
@@ -33,8 +32,10 @@ pub const FontView = struct {
         const font = layout.get_window().app.font;
         const bitmap = layout.get_window().app.font.glyphBitmap(self.code_point);
 
-        for (0..font.glyph_height) |y| {
-            for (0..bitmap.width) |x| {
+        for (0..font.glyph_height) |_y| {
+            for (0..bitmap.width) |_x| {
+                const x: u8 = @intCast(_x);
+                const y: u8 = @intCast(_y);
                 const pixel_rect = Rect{
                     .x = rect.x + x * scale,
                     .y = rect.y + y * scale,
@@ -59,7 +60,7 @@ pub const FontView = struct {
 };
 pub const FontMap = struct {
     const letter_padding = 2;
-    columns: usize,
+    columns: u16,
     selected_code_point: u21 = 'a',
     font: *Font,
 
@@ -69,11 +70,11 @@ pub const FontMap = struct {
         code_point_selected: u21,
     };
 
-    fn rows(fm: *const FontMap) usize {
+    fn rows(fm: *const FontMap) u16 {
         return 256 / fm.columns;
     }
 
-    fn getOuterRect(font: *const Font, cols: usize, glyph: u8) Rect {
+    fn getOuterRect(font: *const Font, cols: u16, glyph: u8) Rect {
         const row_ = glyph / cols;
         const column_ = glyph % cols;
 
@@ -155,7 +156,7 @@ pub fn main() !void {
     try app.layout.init(app.client.allocator);
 
     const flex = app.layout.add2(.flex, .{ .orientation = .vertical });
-    const btn = app.layout.add(.{ .type = .button });
+    const menu_bar = app.layout.add(.{ .type = .button });
     const font_view = app.layout.add2(.font_view, .{
         .font = app.font,
     });
@@ -164,13 +165,9 @@ pub fn main() !void {
         .subscriber = font_view,
         .font = app.font,
     });
-    app.layout.set(flex, .children, &.{ btn, font_map, font_view });
+    app.layout.set(flex, .children, &.{ menu_bar, font_map, font_view });
 
-    const popup_btn = app.layout.add2(.font_map, .{
-        .columns = 32,
-        .subscriber = font_view,
-        .font = app.font,
-    });
+    const popup_btn = app.layout.add2(.button, .{});
 
     const bar = try app.new_window(.xdg_shell, flex);
     _ = try app.new_popup(bar, popup_btn);

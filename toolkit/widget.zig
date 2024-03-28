@@ -19,6 +19,7 @@ pub const root_w_types = if (@hasDecl(root, "widget_types")) root.widget_types e
 const common_w_types = .{
     .flex = @import("widgets/Flex.zig"),
     .button = @import("widgets/Button.zig"),
+    // .menu_bar = @import("widgets/MenuBar.zig"),
 };
 const widget_names = std.meta.fieldNames(@TypeOf(root_w_types)) ++ std.meta.fieldNames(@TypeOf(common_w_types));
 

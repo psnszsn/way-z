@@ -1,8 +1,8 @@
 const Size = @This();
 const Rect = @import("Rect.zig");
 
-width: usize,
-height: usize,
+width: u32,
+height: u32,
 
 pub const ZERO = Size{
     .width = 0,
