@@ -145,7 +145,7 @@ pub const Layout = struct {
         }
     }
 
-    const Window = @import("App.zig").Window;
+    const Window = @import("App.zig").Surface;
     const App = @import("App.zig");
     pub fn get_window(
         self: *const Layout,

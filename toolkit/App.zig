@@ -1,4 +1,4 @@
-client: *wayland.Client,
+client: *wlnd.Client,
 
 // Wayland object ids
 // zig fmt: off
@@ -16,14 +16,14 @@ font: *font.Font,
 pointer_enter_serial: u32 = 0,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
-surfaces: std.ArrayListUnmanaged(Window) = .{},
-active_surface: ?*Window = null,
+surfaces: std.ArrayListUnmanaged(Surface) = .{},
+active_surface: ?*Surface = null,
 
 layout: Layout = .{},
 pointer_position: Point = Point.ZERO,
 
 pub fn new(alloc: std.mem.Allocator) !*App {
-    const client = try wayland.Client.connect(alloc);
+    const client = try wlnd.Client.connect(alloc);
     const registry = client.request(client.wl_display, .get_registry, .{});
 
     // TODO: remove allocation
@@ -53,15 +53,22 @@ pub fn deinit(app: *App) void {
     alloc.destroy(app);
 }
 
-pub fn new_window(app: *App, shell: WindowType, root_widget: WidgetIdx) !*Window {
+pub fn new_window(app: *App, shell: SurfaceType, root_widget: WidgetIdx) !*Surface {
+    return new__(app, shell, root_widget, null);
+}
+pub fn new_popup(app: *App, parent: *Surface, root_widget: WidgetIdx) !*Surface {
+    return new__(app, .xdg_popup, root_widget, parent);
+}
+
+pub fn new__(app: *App, shell: SurfaceType, root_widget: WidgetIdx, parent: ?*Surface) !*Surface {
     const client = app.client;
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
-    const window = try app.surfaces.addOne(app.client.allocator);
+    const surf = try app.surfaces.addOne(app.client.allocator);
 
     const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
-    window.* = .{
+    surf.* = .{
         .app = app,
         .wl_surface = wl_surface,
         .wl = undefined,
@@ -71,124 +78,29 @@ pub fn new_window(app: *App, shell: WindowType, root_widget: WidgetIdx) !*Window
         .root = root_widget,
     };
 
-    const wl_if: std.meta.FieldType(Window, .wl) = if (shell == .wlr_layer_shell) b: {
-        std.debug.assert(app.layer_shell != null);
-        const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
-            .surface = wl_surface,
-            .output = null,
-            .layer = .bottom,
-            .namespace = "",
-        });
-        errdefer client.request(layer_surface, .destroy, {});
-        client.request(layer_surface, .set_size, .{ .width = 0, .height = 30 });
-        client.request(layer_surface, .set_anchor, .{ .anchor = .{ .top = true, .left = true, .right = true } });
-        client.request(layer_surface, .set_exclusive_zone, .{ .zone = 35 });
-        client.set_listener(layer_surface, *Window, Window.layer_suface_listener, window);
-
-        break :b .{ .wlr_layer_shell = layer_surface };
-    } else b: {
-        const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
-        errdefer client.request(xdg_surface, .destroy, {});
-        const xdg_toplevel = client.request(xdg_surface, .get_toplevel, .{});
-        errdefer client.request(xdg_toplevel, .destroy, {});
-
-        client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
-        client.set_listener(xdg_toplevel, *Window, Window.xdg_toplevel_listener, window);
-        client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
-        client.request(xdg_toplevel, .set_min_size, .{
-            .width = @intCast(window.size.width),
-            .height = @intCast(window.size.height),
-        });
-
-        // const buf = try Buffer.get(client, app.shm.?, window.width, window.height);
-        // client.request(wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
-        // client.request(wl_surface, .commit, {});
-        // try client.roundtrip();
-
-        break :b .{ .xdg_shell = .{
-            .xdg_surface = xdg_surface,
-            .xdg_toplevel = xdg_toplevel,
-        } };
-    };
-    window.wl = wl_if; // autofix
+    surf.wl = Surface.init_wl(surf, shell, .{ .parent = if (parent) |p| p.wl.xdg_toplevel.xdg_surface else null });
 
     client.request(wl_surface, .commit, {});
     try client.roundtrip();
 
-    window.draw();
-    // client.request(wl_surface, .commit, {});
-    // try app.client.roundtrip();
+    surf.draw();
 
-    return window;
+    return surf;
 }
 
-pub fn new_popup(app: *App, parent: *Window, root_widget: WidgetIdx) !*Window {
-    const client = app.client;
-    const wl_surface = client.request(app.compositor.?, .create_surface, .{});
-    errdefer client.request(wl_surface, .destroy, {});
-
-    const window = try app.surfaces.addOne(app.client.allocator);
-
-    const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
-    window.* = .{
-        .app = app,
-        .wl_surface = wl_surface,
-        .wl = undefined,
-        .size = size,
-        .min_size = size,
-        .last_frame = 0,
-        .root = root_widget,
-    };
-
-    const wl_if: std.meta.FieldType(Window, .wl) = b: {
-        const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = wl_surface });
-        errdefer client.request(xdg_surface, .destroy, {});
-
-        const positioner = client.request(app.wm_base.?, .create_positioner, .{});
-        defer client.request(positioner, .destroy, {});
-
-        client.request(positioner, .set_size, .{ .width = 200, .height = 200 });
-        client.request(positioner, .set_anchor_rect, .{ .x = 10, .y = 10, .width = 200, .height = 200 });
-        client.request(positioner, .set_anchor, .{ .anchor = .bottom });
-        client.request(positioner, .set_gravity, .{ .gravity = .bottom });
-
-        const xdg_popup = client.request(xdg_surface, .get_popup, .{
-            .parent = parent.wl.xdg_shell.xdg_surface,
-            .positioner = positioner,
-        });
-        errdefer client.request(xdg_popup, .destroy, {});
-
-        client.set_listener(xdg_surface, *Window, Window.xdg_surface_listener, window);
-        client.set_listener(xdg_popup, *Window, Window.xdg_popup_listener, window);
-
-        client.request(wl_surface, .commit, {});
-        try client.roundtrip();
-
-        window.draw();
-
-        break :b .{ .xdg_popup = .{
-            .xdg_surface = xdg_surface,
-            .xdg_popup = xdg_popup,
-        } };
-    };
-    window.wl = wl_if; // autofix
-
-    return window;
-}
-
-const WindowType = enum {
-    xdg_shell,
+const SurfaceType = enum {
+    xdg_toplevel,
     xdg_popup,
-    wlr_layer_shell,
+    wlr_layer_surface,
 };
 
-pub const Window = struct {
+pub const Surface = struct {
     app: *App,
     root: WidgetIdx = undefined,
 
     wl_surface: wl.Surface,
-    wl: union(WindowType) {
-        xdg_shell: struct {
+    wl: union(SurfaceType) {
+        xdg_toplevel: struct {
             xdg_surface: xdg.Surface,
             xdg_toplevel: xdg.Toplevel,
         },
@@ -196,23 +108,91 @@ pub const Window = struct {
             xdg_surface: xdg.Surface,
             xdg_popup: xdg.Popup,
         },
-        wlr_layer_shell: zwlr.LayerSurfaceV1,
+        wlr_layer_surface: zwlr.LayerSurfaceV1,
     },
     size: Size,
     min_size: Size,
     last_frame: u32,
     frame_done: bool = true,
 
-    pub fn schedule_redraw(self: *Window) void {
+    pub fn init_wl(surface: *Surface, stype: SurfaceType, opts: struct { parent: ?xdg.Surface = null }) std.meta.FieldType(Surface, .wl) {
+        const app = surface.app;
+        const client = app.client;
+        switch (stype) {
+            .wlr_layer_surface => {
+                std.debug.assert(app.layer_shell != null);
+                const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
+                    .surface = surface.wl_surface,
+                    .output = null,
+                    .layer = .bottom,
+                    .namespace = "",
+                });
+                errdefer client.request(layer_surface, .destroy, {});
+                client.request(layer_surface, .set_size, .{ .width = 0, .height = 30 });
+                client.request(layer_surface, .set_anchor, .{ .anchor = .{ .top = true, .left = true, .right = true } });
+                client.request(layer_surface, .set_exclusive_zone, .{ .zone = 35 });
+                client.set_listener(layer_surface, *Surface, Surface.layer_suface_listener, surface);
+
+                return .{ .wlr_layer_surface = layer_surface };
+            },
+            .xdg_toplevel => {
+                const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = surface.wl_surface });
+                errdefer client.request(xdg_surface, .destroy, {});
+                const xdg_toplevel = client.request(xdg_surface, .get_toplevel, .{});
+                errdefer client.request(xdg_toplevel, .destroy, {});
+
+                client.set_listener(xdg_surface, *Surface, Surface.xdg_surface_listener, surface);
+                client.set_listener(xdg_toplevel, *Surface, Surface.xdg_toplevel_listener, surface);
+                client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
+                client.request(xdg_toplevel, .set_min_size, .{
+                    .width = @intCast(surface.size.width),
+                    .height = @intCast(surface.size.height),
+                });
+
+                return .{ .xdg_toplevel = .{
+                    .xdg_surface = xdg_surface,
+                    .xdg_toplevel = xdg_toplevel,
+                } };
+            },
+            .xdg_popup => {
+                const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = surface.wl_surface });
+                errdefer client.request(xdg_surface, .destroy, {});
+
+                const positioner = client.request(app.wm_base.?, .create_positioner, .{});
+                defer client.request(positioner, .destroy, {});
+
+                client.request(positioner, .set_size, .{ .width = 200, .height = 200 });
+                client.request(positioner, .set_anchor_rect, .{ .x = 10, .y = 10, .width = 200, .height = 200 });
+                client.request(positioner, .set_anchor, .{ .anchor = .bottom });
+                client.request(positioner, .set_gravity, .{ .gravity = .bottom });
+
+                const xdg_popup = client.request(xdg_surface, .get_popup, .{
+                    .parent = opts.parent,
+                    .positioner = positioner,
+                });
+                errdefer client.request(xdg_popup, .destroy, {});
+
+                client.set_listener(xdg_surface, *Surface, Surface.xdg_surface_listener, surface);
+                client.set_listener(xdg_popup, *Surface, Surface.xdg_popup_listener, surface);
+
+                return .{ .xdg_popup = .{
+                    .xdg_surface = xdg_surface,
+                    .xdg_popup = xdg_popup,
+                } };
+            },
+        }
+    }
+
+    pub fn schedule_redraw(self: *Surface) void {
         if (!self.frame_done) return;
         const client = self.app.client;
         const frame_cb = client.request(self.wl_surface, .frame, .{});
-        client.set_listener(frame_cb, *Window, frame_listener, self);
+        client.set_listener(frame_cb, *Surface, frame_listener, self);
         client.request(self.wl_surface, .commit, {});
         self.frame_done = false;
     }
 
-    pub fn draw(self: *Window) void {
+    pub fn draw(self: *Surface) void {
         std.log.info("draw {}", .{std.meta.activeTag(self.wl)});
         const client = self.app.client;
         const buf = Buffer.get(self.app.client, self.app.shm.?, self.size.width, self.size.height) catch unreachable;
@@ -237,29 +217,29 @@ pub const Window = struct {
         client.request(self.wl_surface, .commit, {});
     }
 
-    pub fn draw_root_widget(window: *Window, ctx: PaintCtx) void {
-        const app = window.app;
-        app.layout.widgets.items(.rect)[@intFromEnum(window.root)] = .{
+    pub fn draw_root_widget(surf: *Surface, ctx: PaintCtx) void {
+        const app = surf.app;
+        app.layout.widgets.items(.rect)[@intFromEnum(surf.root)] = .{
             .x = 0,
             .y = 0,
             .width = ctx.width,
             .height = ctx.height,
         };
 
-        _ = app.layout.call(window.root, .draw, .{ app.layout.get(window.root, .rect), ctx });
+        _ = app.layout.call(surf.root, .draw, .{ app.layout.get(surf.root, .rect), ctx });
     }
 
-    fn layer_suface_listener(client: *wayland.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, window: *Window) void {
+    fn layer_suface_listener(client: *wlnd.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, surf: *Surface) void {
         switch (event) {
             .configure => |configure| {
                 client.request(layer_suface, .ack_configure, .{ .serial = configure.serial });
 
-                window.size = .{
+                surf.size = .{
                     .width = configure.width,
                     .height = configure.height,
                 };
 
-                std.log.info("w: {} h: {}", .{ window.size.width, window.size.height });
+                std.log.info("w: {} h: {}", .{ surf.size.width, surf.size.height });
 
                 // if (self.anchor.top and self.anchor.bottom) {
                 //     self.size.height = @as(usize, @intCast(configure.height));
@@ -276,18 +256,18 @@ pub const Window = struct {
         }
     }
 
-    fn frame_listener(_: *wayland.Client, _: wl.Callback, event: wl.Callback.Event, window: *Window) void {
+    fn frame_listener(_: *wlnd.Client, _: wl.Callback, event: wl.Callback.Event, surf: *Surface) void {
         switch (event) {
             .done => |done| {
-                window.draw();
-                // std.log.warn("FRAME DONE!!! {s}", .{@tagName(window.wl)});
-                window.last_frame = done.callback_data;
-                window.frame_done = true;
+                surf.draw();
+                // std.log.warn("FRAME DONE!!! {s}", .{@tagName(surf.wl)});
+                surf.last_frame = done.callback_data;
+                surf.frame_done = true;
             },
         }
     }
 
-    fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, win: *Window) void {
+    fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, win: *Surface) void {
         _ = win; // autofix
         switch (event) {
             .configure => |configure| {
@@ -295,7 +275,7 @@ pub const Window = struct {
             },
         }
     }
-    fn xdg_toplevel_listener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Window) void {
+    fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Surface) void {
         switch (event) {
             .configure => |configure| {
                 if (configure.width == 0) return;
@@ -324,7 +304,7 @@ pub const Window = struct {
             else => {},
         }
     }
-    fn xdg_popup_listener(_: *wayland.Client, _: xdg.Popup, event: xdg.Popup.Event, win: *Window) void {
+    fn xdg_popup_listener(_: *wlnd.Client, _: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
         _ = win; // autofix
         switch (event) {
             .configure => |configure| {
@@ -338,7 +318,7 @@ pub const Window = struct {
     }
 };
 
-pub fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
+pub fn registryListener(client: *wlnd.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
@@ -360,7 +340,7 @@ pub fn registryListener(client: *wayland.Client, registry: wl.Registry, event: w
     }
 }
 
-fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
+fn seat_listener(client: *wlnd.Client, seat: wl.Seat, event: wl.Seat.Event, app: *App) void {
     switch (event) {
         .capabilities => |data| {
             std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
@@ -385,7 +365,7 @@ fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, a
     }
 }
 
-fn pointer_listener(client: *wayland.Client, _: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
+fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
     const event: ?Event.PointerEvent = switch (_event) {
         .enter => |ev| blk: {
             std.log.info("ENter  - {}", .{ev});
@@ -463,9 +443,9 @@ const w = @import("widget.zig");
 const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;
 
-const wayland = @import("wayland");
-const wl = wayland.wl;
-const wp = wayland.wp;
-const xdg = wayland.xdg;
-const zwlr = wayland.zwlr;
-const Buffer = wayland.shm.Buffer;
+const wlnd = @import("wayland");
+const wl = wlnd.wl;
+const wp = wlnd.wp;
+const xdg = wlnd.xdg;
+const zwlr = wlnd.zwlr;
+const Buffer = wlnd.shm.Buffer;

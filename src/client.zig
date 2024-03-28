@@ -343,6 +343,7 @@ fn displayListener(client: *Client, _: wl.Display, event: wl.Display.Event, _: ?
         },
         .delete_id => |del| {
             const id = del.id;
+            std.log.info("del id {}", .{id});
             std.debug.assert(client.objects.items(.is_free)[id] == false);
             client.objects.items(.is_free)[id] = true;
         },

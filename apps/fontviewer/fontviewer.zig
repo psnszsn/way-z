@@ -33,9 +33,9 @@ pub const FontView = struct {
         const bitmap = layout.get_window().app.font.glyphBitmap(self.code_point);
 
         for (0..font.glyph_height) |_y| {
+            const y: u8 = @intCast(_y);
             for (0..bitmap.width) |_x| {
                 const x: u8 = @intCast(_x);
-                const y: u8 = @intCast(_y);
                 const pixel_rect = Rect{
                     .x = rect.x + x * scale,
                     .y = rect.y + y * scale,
@@ -169,7 +169,7 @@ pub fn main() !void {
 
     const popup_btn = app.layout.add2(.button, .{});
 
-    const bar = try app.new_window(.xdg_shell, flex);
+    const bar = try app.new_window(.xdg_toplevel, flex);
     _ = try app.new_popup(bar, popup_btn);
     // popup.set_root_widget(popup_btn);
 
