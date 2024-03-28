@@ -136,7 +136,8 @@ pub const Proxy = struct {
                     else => .uint,
                 };
             }
-            r[i] = &argts;
+            const final = argts;
+            r[i] = &final;
         }
         return r;
     }

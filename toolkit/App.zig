@@ -61,13 +61,12 @@ pub fn new_window(app: *App, shell: WindowType, root_widget: WidgetIdx) !*Window
     const window = try app.surfaces.addOne(app.client.allocator);
 
     const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
-    std.log.info("size: {}", .{size});
     window.* = .{
         .app = app,
         .wl_surface = wl_surface,
         .wl = undefined,
-        .width = @intCast(size.width),
-        .height = @intCast(size.height),
+        .size = size,
+        .min_size = size,
         .last_frame = 0,
         .root = root_widget,
     };
@@ -97,8 +96,8 @@ pub fn new_window(app: *App, shell: WindowType, root_widget: WidgetIdx) !*Window
         client.set_listener(xdg_toplevel, *Window, Window.xdg_toplevel_listener, window);
         client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
         client.request(xdg_toplevel, .set_min_size, .{
-            .width = @intCast(window.width),
-            .height = @intCast(window.height),
+            .width = @intCast(window.size.width),
+            .height = @intCast(window.size.height),
         });
 
         // const buf = try Buffer.get(client, app.shm.?, window.width, window.height);
@@ -135,8 +134,8 @@ pub fn new_popup(app: *App, parent: *Window, root_widget: WidgetIdx) !*Window {
         .app = app,
         .wl_surface = wl_surface,
         .wl = undefined,
-        .width = @intCast(size.width),
-        .height = @intCast(size.height),
+        .size = size,
+        .min_size = size,
         .last_frame = 0,
         .root = root_widget,
     };
@@ -199,8 +198,8 @@ pub const Window = struct {
         },
         wlr_layer_shell: zwlr.LayerSurfaceV1,
     },
-    width: u32,
-    height: u32,
+    size: Size,
+    min_size: Size,
     last_frame: u32,
     frame_done: bool = true,
 
@@ -216,16 +215,18 @@ pub const Window = struct {
     pub fn draw(self: *Window) void {
         std.log.info("draw {}", .{std.meta.activeTag(self.wl)});
         const client = self.app.client;
-        if (self.width == 0) return;
-        if (self.height == 0) return;
-        const buf = Buffer.get(self.app.client, self.app.shm.?, self.width, self.height) catch unreachable;
-        const ctx = PaintCtx{
-            .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
-            .width = buf.width,
-            .height = buf.height,
-        };
-        @memset(buf.pool.mmap, 155);
-        self.draw_root_widget(ctx);
+        const buf = Buffer.get(self.app.client, self.app.shm.?, self.size.width, self.size.height) catch unreachable;
+        if (self.size.contains(self.min_size)) {
+            const ctx = PaintCtx{
+                .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
+                .width = buf.width,
+                .height = buf.height,
+            };
+            @memset(buf.pool.mmap, 155);
+            self.draw_root_widget(ctx);
+        } else {
+            @memset(buf.pool.mmap, 200);
+        }
         client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
         client.request(self.wl_surface, .damage, .{
             .x = 0,
@@ -253,10 +254,12 @@ pub const Window = struct {
             .configure => |configure| {
                 client.request(layer_suface, .ack_configure, .{ .serial = configure.serial });
 
-                window.width = configure.width;
-                window.height = configure.height;
+                window.size = .{
+                    .width = configure.width,
+                    .height = configure.height,
+                };
 
-                std.log.info("w: {} h: {}", .{ window.width, window.height });
+                std.log.info("w: {} h: {}", .{ window.size.width, window.size.height });
 
                 // if (self.anchor.top and self.anchor.bottom) {
                 //     self.size.height = @as(usize, @intCast(configure.height));
@@ -298,20 +301,22 @@ pub const Window = struct {
                 if (configure.width == 0) return;
                 if (configure.height == 0) return;
 
-                if (win.width == configure.width and
-                    win.height == configure.height) return;
+                if (win.size.width == configure.width and
+                    win.size.height == configure.height) return;
 
                 std.log.warn("configure event {}", .{configure});
 
-                win.width = @intCast(configure.width);
-                win.height = @intCast(configure.height);
+                win.size = .{
+                    .width = @intCast(configure.width),
+                    .height = @intCast(configure.height),
+                };
 
                 win.schedule_redraw();
 
                 _ = win.app.layout.call(win.root, .size, .{
-                    Size.Minmax.tight(.{ .width = win.width, .height = win.height }),
+                    Size.Minmax.tight(win.size),
                 });
-                std.log.info("w: {} h: {}", .{ win.width, win.height });
+                std.log.info("w: {} h: {}", .{ win.size.width, win.size.height });
             },
             .close => {
                 win.app.client.connection.is_running = false;

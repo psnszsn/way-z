@@ -9,7 +9,7 @@ pub const ZERO = Size{
     .height = 0,
 };
 
-pub fn toRect(self: Size) Rect {
+pub fn to_rect(self: Size) Rect {
     return .{
         .x = 0,
         .y = 0,
@@ -18,13 +18,13 @@ pub fn toRect(self: Size) Rect {
     };
 }
 
-pub fn isZero(self: Size) bool {
+pub fn is_zero(self: Size) bool {
     return (self.width == 0 or self.height == 0);
 }
 
-pub fn containsRect(self: Size, rect: Rect) bool {
-    return self.width >= rect.right() and
-        self.height >= rect.bottom();
+pub fn contains(self: Size, size: Size) bool {
+    return self.width >= size.width and
+        self.height >= size.height;
 }
 
 pub const Minmax = struct {
