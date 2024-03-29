@@ -145,6 +145,12 @@ pub const FontMap = struct {
     }
 };
 
+pub fn contextmenu(layout: *Layout) !void {
+    _ = layout; // autofix
+    // const popup_btn = layout.add2(.button, .{});
+    // layout.set_handler(popup_btn, handler);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -170,14 +176,36 @@ pub fn main() !void {
     const popup_btn = app.layout.add2(.button, .{});
 
     const bar = try app.new_window(.xdg_toplevel, flex);
-    _ = try app.new_popup(bar, popup_btn);
+    // _ = try app.new_popup(bar, popup_btn);
     // popup.set_root_widget(popup_btn);
+    var handler = struct {
+        parent: *App.Surface,
+        widget: WidgetIdx,
+        wl_surface: ?wlnd.wl.Surface,
+        pub fn handle_event(layout: *Layout, data: *@This(), event: *const widget.WidgetEvent(.button)) void {
+            _ = event; // autofix
+            const _app = layout.get_app();
+            if (data.wl_surface) |s| {
+                const surface = _app.find_wl_surface(s);
+                if (surface) |sf| {
+                    sf.destroy();
+                    return;
+                }
+            }
+            const popup = _app.new_popup(data.parent, data.widget) catch unreachable;
+            data.wl_surface = popup.wl_surface;
+
+            // std.log.info("data {?}", .{surface});
+        }
+    }{ .wl_surface = null, .parent = bar, .widget = popup_btn };
+    app.layout.set_handler(menu_bar, &handler);
 
     try app.client.recvEvents();
 }
 
 const std = @import("std");
 
+const wlnd = @import("wayland");
 const tk = @import("toolkit");
 const PaintCtx = tk.PaintCtx;
 const widget = tk.widget;

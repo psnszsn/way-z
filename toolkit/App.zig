@@ -81,11 +81,17 @@ pub fn new__(app: *App, shell: SurfaceType, root_widget: WidgetIdx, parent: ?*Su
     surf.wl = Surface.init_wl(surf, shell, .{ .parent = if (parent) |p| p.wl.xdg_toplevel.xdg_surface else null });
 
     client.request(wl_surface, .commit, {});
-    try client.roundtrip();
-
-    surf.draw();
 
     return surf;
+}
+
+pub fn find_wl_surface(app: *App, wl_surface: wlnd.wl.Surface) ?*Surface {
+    for (app.surfaces.items) |*surface| {
+        if (surface.wl_surface == wl_surface) {
+            return surface;
+        }
+    }
+    return null;
 }
 
 const SurfaceType = enum {
@@ -114,6 +120,7 @@ pub const Surface = struct {
     min_size: Size,
     last_frame: u32,
     frame_done: bool = true,
+    initial_draw: bool = false,
 
     pub fn init_wl(surface: *Surface, stype: SurfaceType, opts: struct { parent: ?xdg.Surface = null }) std.meta.FieldType(Surface, .wl) {
         const app = surface.app;
@@ -183,6 +190,27 @@ pub const Surface = struct {
         }
     }
 
+    pub fn destroy(self: *Surface) void {
+        const client = self.app.client;
+        const index = (@intFromPtr(self) - @intFromPtr(self.app.surfaces.items.ptr)) / @sizeOf(Surface);
+        std.log.info("index: {}", .{index});
+        switch (self.wl) {
+            .xdg_popup => |x| {
+                client.request(x.xdg_popup, .destroy, {});
+                client.request(x.xdg_surface, .destroy, {});
+            },
+            .xdg_toplevel => |x| {
+                _ = x; // autofix
+            },
+
+            .wlr_layer_surface => |x| {
+                _ = x; // autofix
+            },
+        }
+        client.request(self.wl_surface, .destroy, {});
+        _ = self.app.surfaces.orderedRemove(index);
+    }
+
     pub fn schedule_redraw(self: *Surface) void {
         if (!self.frame_done) return;
         const client = self.app.client;
@@ -234,6 +262,11 @@ pub const Surface = struct {
             .configure => |configure| {
                 client.request(layer_suface, .ack_configure, .{ .serial = configure.serial });
 
+                if (!surf.initial_draw) {
+                    surf.draw();
+                    surf.initial_draw = true;
+                }
+
                 surf.size = .{
                     .width = configure.width,
                     .height = configure.height,
@@ -268,10 +301,13 @@ pub const Surface = struct {
     }
 
     fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, win: *Surface) void {
-        _ = win; // autofix
         switch (event) {
             .configure => |configure| {
                 client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
+                if (!win.initial_draw) {
+                    win.draw();
+                    win.initial_draw = true;
+                }
             },
         }
     }
@@ -304,14 +340,17 @@ pub const Surface = struct {
             else => {},
         }
     }
-    fn xdg_popup_listener(_: *wlnd.Client, _: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
-        _ = win; // autofix
+    fn xdg_popup_listener(client: *wlnd.Client, xdg_popup: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
+        _ = client; // autofix
         switch (event) {
             .configure => |configure| {
                 std.log.info("popup configure :{}", .{configure});
             },
             .popup_done => {
-                std.log.info("popup done", .{});
+                std.log.info("popup done {}", .{xdg_popup});
+                win.destroy();
+                // client.request(xdg_popup, .destroy, {});
+                // win.app.surfaces.orderedRemove()
             },
             else => {},
         }
@@ -371,12 +410,9 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             std.log.info("ENter  - {}", .{ev});
             app.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
             app.pointer_enter_serial = ev.serial;
-            for (app.surfaces.items) |*surface| {
-                if (surface.wl_surface == ev.surface) {
-                    std.log.info("activer surface: {}", .{surface.wl_surface});
-                    app.active_surface = surface;
-                }
-            }
+            app.active_surface = if (ev.surface) |s| app.find_wl_surface(s) orelse {
+                break :blk null;
+            } else null;
             break :blk null;
         },
         .motion => |ev| blk: {
@@ -419,7 +455,11 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             if (is_hover or was_pressed) {
                 if (ev == .button) {
                     app.layout.set(idx, .pressed, ev.button.state == .pressed);
+                    if (ev.button.state == .released)
+                        app.layout.call(idx, .handle_event, .{.{ .pointer = .leave }});
                 }
+            }
+            if (is_hover) {
                 app.layout.call(idx, .handle_event, .{Event{ .pointer = ev }});
             }
         }

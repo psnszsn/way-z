@@ -17,10 +17,7 @@ pub fn main() !void {
     children[2] = app.layout.add(.{ .type = .button });
     app.layout.set(flex, .children, children);
 
-    var bar = try app.new_window(.wlr_layer_surface, flex);
-
-    bar.draw();
-    try app.client.roundtrip();
+    _ = try app.new_window(.wlr_layer_surface, flex);
 
     try app.client.recvEvents();
 }

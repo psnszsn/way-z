@@ -63,7 +63,7 @@ pub const Proxy = struct {
             args[i] = Argument.unmarshal(arg_type, self.client.allocator, argdata);
             argdata = argdata[args[i].len()..];
         }
-        // log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
+        log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
         if (listener) |l| {
             l(self.client, self.id, opcode, args[0..signature.len], listener_data);
         }

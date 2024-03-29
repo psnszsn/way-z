@@ -12,6 +12,8 @@ const WidgetAttrs = struct {
     children: []const WidgetIdx = &.{},
     parent: ?WidgetIdx = null,
     data: usize = undefined,
+    event_handler: ?*const fn (*Layout, *anyopaque, *const anyopaque) void = null,
+    event_handler_data: *anyopaque = undefined,
 };
 
 const root = @import("root");
@@ -53,6 +55,10 @@ pub fn WidgetData(comptime self: WidgetType) type {
     if (@hasField(@TypeOf(root_w_types), tag_name)) {
         return @field(root_w_types, tag_name);
     }
+}
+
+pub fn WidgetEvent(comptime self: WidgetType) type {
+    return WidgetData(self).Event;
 }
 
 pub const WidgetFn = enum {
@@ -179,6 +185,30 @@ pub const Layout = struct {
         const app = self.get_app();
         if (app.cursor_shape == shape) return;
         app.cursor_shape = shape;
+    }
+
+    pub fn set_handler(
+        self: *Layout,
+        idx: WidgetIdx,
+        handler: anytype,
+    ) void {
+        const T = @typeInfo(@TypeOf(handler)).Pointer.child;
+        self.set(idx, .event_handler, @ptrCast(&T.handle_event));
+        self.set(idx, .event_handler_data, @ptrCast(handler));
+    }
+
+    pub fn emit_event(
+        self: *Layout,
+        idx: WidgetIdx,
+        event: *const anyopaque,
+    ) void {
+        const handler = self.get(idx, .event_handler);
+        const handler_data = self.get(idx, .event_handler_data);
+
+        if (handler) |h| {
+            @call(.auto, h, .{ self, handler_data, event });
+        }
+        // std.debug.assert(T.Event == @TypeOf(event));
     }
 
     pub fn child_iterator(
