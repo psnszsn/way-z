@@ -12,7 +12,7 @@ const WidgetAttrs = struct {
     children: []const WidgetIdx = &.{},
     parent: ?WidgetIdx = null,
     data: usize = undefined,
-    event_handler: ?*const fn (*Layout, *anyopaque, *const anyopaque) void = null,
+    event_handler: ?*const fn (*Layout, WidgetIdx, *const anyopaque, *anyopaque) void = null,
     event_handler_data: *anyopaque = undefined,
 };
 
@@ -206,7 +206,7 @@ pub const Layout = struct {
         const handler_data = self.get(idx, .event_handler_data);
 
         if (handler) |h| {
-            @call(.auto, h, .{ self, handler_data, event });
+            @call(.auto, h, .{ self, idx, event, handler_data });
         }
         // std.debug.assert(T.Event == @TypeOf(event));
     }

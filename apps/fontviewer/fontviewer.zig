@@ -150,6 +150,34 @@ pub fn contextmenu(layout: *Layout) !void {
     // const popup_btn = layout.add2(.button, .{});
     // layout.set_handler(popup_btn, handler);
 }
+const PopupHandler = struct {
+    parent: *App.Surface,
+    widget: WidgetIdx,
+    wl_surface: ?wlnd.wl.Surface,
+    pub fn handle_event(layout: *Layout, idx: WidgetIdx, ev: *const anyopaque, data: *PopupHandler) void {
+        _ = ev; // autofix
+        switch (layout.get(idx, .type)) {
+            .button => {
+                // const event = widget.WidgetEvent(.button);
+                // _ = event; // autofix
+                const app = layout.get_app();
+                if (data.wl_surface) |s| {
+                    const surface = app.find_wl_surface(s);
+                    if (surface) |sf| {
+                        sf.destroy();
+                        return;
+                    }
+                }
+                const rect = layout.get(idx, .rect);
+                const popup = app.new_popup(data.parent, data.widget, rect) catch unreachable;
+                data.wl_surface = popup.wl_surface;
+            },
+            else => unreachable,
+        }
+
+        // std.log.info("data {?}", .{surface});
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -159,46 +187,49 @@ pub fn main() !void {
     var app = try App.new(allocator);
     defer app.deinit();
 
-    try app.layout.init(app.client.allocator);
+    const layout = &app.layout;
+    try layout.init(app.client.allocator);
 
-    const flex = app.layout.add2(.flex, .{ .orientation = .vertical });
-    const menu_bar = app.layout.add(.{ .type = .button });
-    const font_view = app.layout.add2(.font_view, .{
-        .font = app.font,
-    });
-    const font_map = app.layout.add2(.font_map, .{
-        .columns = 32,
-        .subscriber = font_view,
-        .font = app.font,
-    });
-    app.layout.set(flex, .children, &.{ menu_bar, font_map, font_view });
+    var handler: PopupHandler = undefined;
 
-    const popup_btn = app.layout.add2(.button, .{});
+    const main_widget = b: {
+        const flex = layout.add2(.flex, .{ .orientation = .vertical });
+        const menu_bar = c: {
+            const flex2 = layout.add2(.flex, .{});
+            const btn = layout.add2(.button, .{});
+            const btn2 = layout.add2(.button, .{});
+            layout.set(flex2, .children, &.{ btn, btn2 });
+            layout.set_handler(btn, &handler);
+            break :c flex2;
+        };
+        // const menu_bar = layout.add(.{ .type = .button });
+        const font_view = layout.add2(.font_view, .{
+            .font = app.font,
+        });
+        const font_map = layout.add2(.font_map, .{
+            .columns = 32,
+            .subscriber = font_view,
+            .font = app.font,
+        });
+        layout.set(flex, .children, &.{ menu_bar, font_map, font_view });
+        break :b flex;
+    };
 
-    const bar = try app.new_window(.xdg_toplevel, flex);
-    // _ = try app.new_popup(bar, popup_btn);
-    // popup.set_root_widget(popup_btn);
-    var handler = struct {
-        parent: *App.Surface,
-        widget: WidgetIdx,
-        wl_surface: ?wlnd.wl.Surface,
-        pub fn handle_event(layout: *Layout, data: *@This(), event: *const widget.WidgetEvent(.button)) void {
-            _ = event; // autofix
-            const _app = layout.get_app();
-            if (data.wl_surface) |s| {
-                const surface = _app.find_wl_surface(s);
-                if (surface) |sf| {
-                    sf.destroy();
-                    return;
-                }
-            }
-            const popup = _app.new_popup(data.parent, data.widget) catch unreachable;
-            data.wl_surface = popup.wl_surface;
+    const bar = try app.new_window(.xdg_toplevel, main_widget);
 
-            // std.log.info("data {?}", .{surface});
-        }
-    }{ .wl_surface = null, .parent = bar, .widget = popup_btn };
-    app.layout.set_handler(menu_bar, &handler);
+    const popup_flex = b: {
+        const flex = layout.add2(.flex, .{ .orientation = .vertical });
+        const btn = layout.add2(.button, .{});
+        const btn2 = layout.add2(.button, .{});
+        layout.set(flex, .children, &.{ btn, btn2 });
+        break :b flex;
+    };
+
+    handler = .{
+        .wl_surface = null,
+        .parent = bar,
+        .widget = popup_flex,
+    };
 
     try app.client.recvEvents();
 }

@@ -54,13 +54,22 @@ pub fn deinit(app: *App) void {
 }
 
 pub fn new_window(app: *App, shell: SurfaceType, root_widget: WidgetIdx) !*Surface {
-    return new__(app, shell, root_widget, null);
+    const surf = try new_common(app, root_widget);
+    surf.wl = Surface.init_wl(surf, shell, .{});
+
+    app.client.request(surf.wl_surface, .commit, {});
+    return surf;
 }
-pub fn new_popup(app: *App, parent: *Surface, root_widget: WidgetIdx) !*Surface {
-    return new__(app, .xdg_popup, root_widget, parent);
+pub fn new_popup(app: *App, parent: *Surface, root_widget: WidgetIdx, anchor_rect: Rect) !*Surface {
+    const surf = try new_common(app, root_widget);
+
+    surf.wl = Surface.init_wl(surf, .xdg_popup, .{ .parent = parent.wl.xdg_toplevel.xdg_surface, .anchor = anchor_rect });
+
+    app.client.request(surf.wl_surface, .commit, {});
+    return surf;
 }
 
-pub fn new__(app: *App, shell: SurfaceType, root_widget: WidgetIdx, parent: ?*Surface) !*Surface {
+pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
     const client = app.client;
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
@@ -77,10 +86,6 @@ pub fn new__(app: *App, shell: SurfaceType, root_widget: WidgetIdx, parent: ?*Su
         .last_frame = 0,
         .root = root_widget,
     };
-
-    surf.wl = Surface.init_wl(surf, shell, .{ .parent = if (parent) |p| p.wl.xdg_toplevel.xdg_surface else null });
-
-    client.request(wl_surface, .commit, {});
 
     return surf;
 }
@@ -122,7 +127,10 @@ pub const Surface = struct {
     frame_done: bool = true,
     initial_draw: bool = false,
 
-    pub fn init_wl(surface: *Surface, stype: SurfaceType, opts: struct { parent: ?xdg.Surface = null }) std.meta.FieldType(Surface, .wl) {
+    pub fn init_wl(surface: *Surface, stype: SurfaceType, opts: struct {
+        parent: ?xdg.Surface = null,
+        anchor: ?Rect = null,
+    }) std.meta.FieldType(Surface, .wl) {
         const app = surface.app;
         const client = app.client;
         switch (stype) {
@@ -168,8 +176,17 @@ pub const Surface = struct {
                 const positioner = client.request(app.wm_base.?, .create_positioner, .{});
                 defer client.request(positioner, .destroy, {});
 
-                client.request(positioner, .set_size, .{ .width = 200, .height = 200 });
-                client.request(positioner, .set_anchor_rect, .{ .x = 10, .y = 10, .width = 200, .height = 200 });
+                client.request(positioner, .set_size, .{
+                    .width = @intCast(surface.size.width),
+                    .height = @intCast(surface.size.height),
+                });
+                const anchor_rect = opts.anchor.?;
+                client.request(positioner, .set_anchor_rect, .{
+                    .x = @intCast(anchor_rect.x),
+                    .y = @intCast(anchor_rect.y),
+                    .width = @intCast(anchor_rect.width),
+                    .height = @intCast(anchor_rect.height),
+                });
                 client.request(positioner, .set_anchor, .{ .anchor = .bottom });
                 client.request(positioner, .set_gravity, .{ .gravity = .bottom });
 
@@ -475,6 +492,7 @@ const std = @import("std");
 const App = @This();
 const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Point = @import("paint/Point.zig");
+const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
 const font = @import("font/bdf.zig");
 const Event = @import("event.zig").Event;
