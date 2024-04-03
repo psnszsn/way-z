@@ -28,11 +28,9 @@ pub const FontView = struct {
     pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
         paint_ctx.fill(.{ .color = Color.NamedColor.pink, .rect = rect });
         const self = layout.data(idx, FontView);
+        const bitmap = self.font.glyphBitmap(self.code_point);
 
-        const font = layout.get_window().app.font;
-        const bitmap = layout.get_window().app.font.glyphBitmap(self.code_point);
-
-        for (0..font.glyph_height) |_y| {
+        for (0..self.font.glyph_height) |_y| {
             const y: u8 = @intCast(_y);
             for (0..bitmap.width) |_x| {
                 const x: u8 = @intCast(_x);
@@ -195,10 +193,10 @@ pub fn main() !void {
     const main_widget = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
         const menu_bar = c: {
-            const flex2 = layout.add2(.flex, .{});
             const btn = layout.add2(.button, .{});
             const btn2 = layout.add2(.button, .{});
-            layout.set(flex2, .children, &.{ btn, btn2 });
+
+            const flex2 = layout.add3(.flex, .{}, &.{ btn, btn2 });
             layout.set_handler(btn, &handler);
             break :c flex2;
         };
@@ -220,7 +218,9 @@ pub fn main() !void {
     const popup_flex = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
         const btn = layout.add2(.button, .{});
-        const btn2 = layout.add2(.button, .{});
+        const btn2 = layout.add3(.button, .{}, &.{
+            layout.add2(.label, .{}),
+        });
         layout.set(flex, .children, &.{ btn, btn2 });
         break :b flex;
     };

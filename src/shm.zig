@@ -24,7 +24,8 @@ pub const Pool = struct {
     size: usize,
 
     pub fn resize(self: *Pool, newsize: u32) !void {
-        const client = @fieldParentPtr(Buffer, "pool", self).client;
+        const bfr: *Buffer = @fieldParentPtr("pool", self);
+        const client = bfr.client;
         if (newsize > self.size) {
             try os.ftruncate(self.backing_fd, newsize);
             client.request(self.wl_pool, .resize, .{ .size = @intCast(newsize) });

@@ -84,6 +84,7 @@ const Orientation = enum {
 // };
 
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
+    const flex_rect = layout.get(idx, .rect);
     const children = layout.get(idx, .children);
     const self = layout.data(idx, Flex);
     var minor: u32 = self.orientation.minorLen(constraints.min);
@@ -96,7 +97,10 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
         const child_flex = layout.get(child_idx, .flex);
         if (child_flex == 0) {
             const child_size = layout.call(child_idx, .size, .{Size.Minmax.loose(constraints.max)});
-            const origin = self.orientation.pack(non_flex_major_sum, 0);
+            const origin = self.orientation.pack(non_flex_major_sum, 0).translated(.{
+                .x = flex_rect.x,
+                .y = flex_rect.y,
+            });
             layout.set(child_idx, .rect, Rect{
                 .x = origin.x,
                 .y = origin.y,

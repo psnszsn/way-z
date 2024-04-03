@@ -21,6 +21,7 @@ pub const root_w_types = if (@hasDecl(root, "widget_types")) root.widget_types e
 const common_w_types = .{
     .flex = @import("widgets/Flex.zig"),
     .button = @import("widgets/Button.zig"),
+    .label = @import("widgets/Label.zig"),
     // .menu_bar = @import("widgets/MenuBar.zig"),
 };
 const widget_names = std.meta.fieldNames(@TypeOf(root_w_types)) ++ std.meta.fieldNames(@TypeOf(common_w_types));
@@ -92,6 +93,17 @@ pub const Layout = struct {
         self.widgets.deinit(alloc);
     }
 
+    ///Add with children
+    pub fn add3(self: *Layout, comptime t: WidgetType, wdata: WidgetData(t), children: []const WidgetIdx) WidgetIdx {
+        const idx = self.add2(t, wdata);
+        if (children.len > 1)
+            for (children[1..], 0..) |child_idx, i| {
+                std.debug.assert(@intFromEnum(child_idx) == @intFromEnum(children[i]) + 1);
+            };
+        self.set(idx, .children, children);
+        return idx;
+    }
+
     pub fn add2(self: *Layout, comptime t: WidgetType, wdata: WidgetData(t)) WidgetIdx {
         const idx = self.add(.{ .type = t });
         const w_data = if (@sizeOf(WidgetData(t)) <= @sizeOf(usize)) b: {
@@ -116,6 +128,14 @@ pub const Layout = struct {
         } else {
             return @ptrFromInt(self.get(idx, .data));
         }
+    }
+
+    pub fn get_ptr(
+        self: *const Layout,
+        idx: WidgetIdx,
+        comptime item: std.meta.FieldEnum(WidgetAttrs),
+    ) *std.meta.FieldType(WidgetAttrs, item) {
+        return &self.widgets.items(item)[@intFromEnum(idx)];
     }
 
     pub fn get(
@@ -156,7 +176,7 @@ pub const Layout = struct {
     pub fn get_window(
         self: *const Layout,
     ) *Window {
-        const app = @constCast(@fieldParentPtr(App, "layout", self));
+        const app: *App = @constCast(@fieldParentPtr("layout", self));
         if (app.active_surface) |active| {
             // std.log.warn("::::: {}", .{active.root});
             return active;
@@ -167,7 +187,7 @@ pub const Layout = struct {
     pub fn get_app(
         self: *const Layout,
     ) *App {
-        return @constCast(@fieldParentPtr(App, "layout", self));
+        return @constCast(@fieldParentPtr("layout", self));
     }
 
     pub fn request_draw(
