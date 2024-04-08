@@ -26,7 +26,7 @@ pub const FontView = struct {
     }
 
     pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
-        paint_ctx.fill(.{ .color = Color.NamedColor.pink, .rect = rect });
+        paint_ctx.fill(.{ .color = .pink, .rect = rect });
         const self = layout.data(idx, FontView);
         const bitmap = self.font.glyphBitmap(self.code_point);
 
@@ -40,7 +40,7 @@ pub const FontView = struct {
                     .width = scale,
                     .height = scale,
                 };
-                const c = if (bitmap.bitAt(x, y)) Color.NamedColor.black else Color.NamedColor.white;
+                const c = if (bitmap.bitAt(x, y)) Color.black else Color.white;
                 paint_ctx.fill(.{ .rect = pixel_rect, .color = c });
             }
         }
@@ -89,19 +89,19 @@ pub const FontMap = struct {
         const self = layout.data(idx, FontMap);
         const font = self.font;
 
-        paint_ctx.fill(.{ .color = Color.NamedColor.white, .rect = rect });
+        paint_ctx.fill(.{ .color = .white, .rect = rect });
 
         for (0..256) |_glyph| {
             const glyph: u8 = @intCast(_glyph);
             const bitmap = font.glyphBitmap(glyph);
             var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
             if (glyph == self.selected_code_point) {
-                paint_ctx.fill(.{ .rect = outer_rect, .color = Color.NamedColor.red });
+                paint_ctx.fill(.{ .rect = outer_rect, .color = .red });
             }
             outer_rect.shrinkUniform(letter_padding / 2);
 
-            outer_rect.x = outer_rect.getCenter().x - bitmap.width / 2;
-            _ = paint_ctx.char(glyph, .{ .rect = outer_rect, .font = font, .color = Color.NamedColor.black });
+            outer_rect.x = outer_rect.get_center().x - bitmap.width / 2;
+            _ = paint_ctx.char(glyph, .{ .rect = outer_rect, .font = font, .color = .black });
         }
 
         return true;
