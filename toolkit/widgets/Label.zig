@@ -10,7 +10,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx)
     _ = idx; // autofix
     const font = layout.get_window().app.font;
 
-    paint_ctx.text("Hello", .{ .rect = rect, .font = font });
+    paint_ctx.text("Hello", .{ .rect = rect, .font = font, .color = .blue });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });
 
     return true;

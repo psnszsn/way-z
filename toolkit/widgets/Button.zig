@@ -18,12 +18,6 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx)
     paint_ctx.panel(.{ .rect = rect, .hover = hover, .press = pressed });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });
 
-    const children = layout.get(idx, .children);
-    for (children) |child_idx| {
-        const r = layout.get(child_idx, .rect);
-        _ = layout.call(child_idx, .draw, .{ r, paint_ctx });
-    }
-
     return true;
 }
 
@@ -48,14 +42,16 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
 }
 
 pub fn size(layout: *Layout, idx: WidgetIdx, minmax: tk.Size.Minmax) tk.Size {
+    _ = minmax; // autofix
     const children = layout.get(idx, .children);
     const rect = layout.get(idx, .rect);
     std.log.info("minmax: {}", .{rect});
     std.debug.assert(children.len <= 1);
 
     if (children.len == 1) {
-        const child_size = layout.call(children[0], .size, .{minmax});
-        _ = child_size; // autofix
+        const child_rect = layout.get_ptr(children[0], .rect);
+        child_rect.set_origin(.{ .x = 5, .y = 5 });
+
         // layout.set(children[0], .rect, rect.shrunken_uniform(3));
     }
 

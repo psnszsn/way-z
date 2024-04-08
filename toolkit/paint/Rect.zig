@@ -121,26 +121,26 @@ pub fn relative_to(self: Rect, parent: Rect) Rect {
 //     self.width = size.width;
 //     self.height = size.height;
 // }
-pub fn setOrigin(self: *Rect, point: Point) void {
+pub fn set_origin(self: *Rect, point: Point) void {
     self.x = point.x;
     self.y = point.y;
 }
-pub fn getSize(self: *const Rect) Size {
+pub fn get_size(self: *const Rect) Size {
     return .{ .width = self.width, .height = self.height };
 }
 
-pub fn getPosition(self: Rect) Point {
+pub fn get_position(self: Rect) Point {
     return .{ .x = self.x, .y = self.y };
 }
 
-pub fn getCenter(self: Rect) Point {
+pub fn get_center(self: Rect) Point {
     return .{ .x = self.x + self.width / 2, .y = self.y + self.height / 2 };
 }
 
 const Point = @import("Point.zig");
 const Size = @import("Size.zig");
 
-pub fn borderIterator(self: *const Rect) BorderIterator {
+pub fn border_iterator(self: *const Rect) BorderIterator {
     return .{
         .rect = self,
         .current = Point.init(self.x, self.y),

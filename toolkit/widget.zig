@@ -179,9 +179,10 @@ pub const Layout = struct {
         const app: *App = @constCast(@fieldParentPtr("layout", self));
         if (app.active_surface) |active| {
             // std.log.warn("::::: {}", .{active.root});
-            return active;
+            return app.surfaces.getPtr(active).?;
         }
-        return &app.surfaces.items[0];
+        @panic("TODO");
+        // return &app.surfaces.items[0];
     }
 
     pub fn get_app(

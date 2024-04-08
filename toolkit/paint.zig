@@ -1,7 +1,7 @@
 const std = @import("std");
 const Rect = @import("./paint/Rect.zig");
 const Point = @import("./paint/Point.zig");
-const ColorU32 = @import("./paint/Color.zig");
+const ColorU32 = @import("paint/color.zig").Color;
 const Font = @import("./font/bdf.zig").Font;
 
 pub const PaintCtxU32 = PaintCtx(ColorU32);
@@ -216,11 +216,11 @@ pub fn PaintCtx(comptime Color: type) type {
             var color_light = Color.theme.light;
 
             if (opts.press) {
-                color_bg = Color.fromRGBsep(204, 204, 204);
+                color_bg = Color.ggray(204);
                 color_shadow = Color.theme.background;
                 color_light = Color.theme.shadow;
             } else if (opts.hover) {
-                color_bg = Color.fromRGBsep(240, 240, 240);
+                color_bg = Color.ggray(240);
                 // color_bg = Color.NamedColor.teal;
             }
 

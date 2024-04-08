@@ -149,20 +149,15 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     for (children) |child_idx| {
         const origin_point = self.orientation.pack(major, 0);
         var rect = layout.get(child_idx, .rect);
-        rect.setOrigin(origin_point);
+        rect.set_origin(origin_point);
         layout.set(child_idx, .rect, rect);
-        major += self.orientation.majorLen(rect.getSize());
+        major += self.orientation.majorLen(rect.get_size());
     }
 
     return self.orientation.majorSize(major, minor);
 }
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, _: Rect, ctx: PaintCtx) bool {
-    const children = layout.get(idx, .children);
-    for (children) |child_idx| {
-        const r = layout.get(child_idx, .rect);
-        _ = layout.call(child_idx, .draw, .{ r, ctx });
-    }
+pub fn draw(_: *Layout, _: WidgetIdx, _: Rect, _: PaintCtx) bool {
     return true;
 }
 

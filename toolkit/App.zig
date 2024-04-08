@@ -16,8 +16,9 @@ font: *font.Font,
 pointer_enter_serial: u32 = 0,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
-surfaces: std.ArrayListUnmanaged(Surface) = .{},
-active_surface: ?*Surface = null,
+// surfaces: std.ArrayListUnmanaged(Surface) = .{},
+surfaces: std.AutoHashMapUnmanaged(wl.Surface, Surface) = .{},
+active_surface: ?wl.Surface = null,
 
 layout: Layout = .{},
 pointer_position: Point = Point.ZERO,
@@ -74,7 +75,8 @@ pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
     const wl_surface = client.request(app.compositor.?, .create_surface, .{});
     errdefer client.request(wl_surface, .destroy, {});
 
-    const surf = try app.surfaces.addOne(app.client.allocator);
+    const result = try app.surfaces.getOrPut(app.client.allocator, wl_surface);
+    const surf = result.value_ptr;
 
     const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
     surf.* = .{
@@ -91,7 +93,8 @@ pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
 }
 
 pub fn find_wl_surface(app: *App, wl_surface: wlnd.wl.Surface) ?*Surface {
-    for (app.surfaces.items) |*surface| {
+    var it = app.surfaces.valueIterator();
+    while (it.next()) |surface| {
         if (surface.wl_surface == wl_surface) {
             return surface;
         }
@@ -209,8 +212,8 @@ pub const Surface = struct {
 
     pub fn destroy(self: *Surface) void {
         const client = self.app.client;
-        const index = (@intFromPtr(self) - @intFromPtr(self.app.surfaces.items.ptr)) / @sizeOf(Surface);
-        std.log.info("index: {}", .{index});
+        // const index = (@intFromPtr(self) - @intFromPtr(self.app.surfaces.items.ptr)) / @sizeOf(Surface);
+        // std.log.info("index: {}", .{index});
         switch (self.wl) {
             .xdg_popup => |x| {
                 client.request(x.xdg_popup, .destroy, {});
@@ -225,7 +228,7 @@ pub const Surface = struct {
             },
         }
         client.request(self.wl_surface, .destroy, {});
-        _ = self.app.surfaces.orderedRemove(index);
+        _ = self.app.surfaces.remove(self.wl_surface);
     }
 
     pub fn schedule_redraw(self: *Surface) void {
@@ -271,7 +274,22 @@ pub const Surface = struct {
             .height = ctx.height,
         };
 
-        _ = app.layout.call(surf.root, .draw, .{ app.layout.get(surf.root, .rect), ctx });
+        var iter = app.layout.child_iterator(surf.root);
+        while (iter.next()) |idx| {
+            // const t = app.layout.get(idx, .type);
+            // std.log.info("idx={} type={}", .{ idx, t });
+            const rect = b: {
+                var r = app.layout.get(idx, .rect);
+                var parent = app.layout.get(idx, .parent);
+                while (parent) |par| {
+                    const parent_rect = app.layout.get(par, .rect);
+                    r.translate_by(parent_rect.x, parent_rect.y);
+                    parent = app.layout.get(par, .parent);
+                }
+                break :b r;
+            };
+            _ = app.layout.call(idx, .draw, .{ rect, ctx });
+        }
     }
 
     fn layer_suface_listener(client: *wlnd.Client, layer_suface: zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, surf: *Surface) void {
@@ -427,9 +445,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             std.log.info("ENter  - {}", .{ev});
             app.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
             app.pointer_enter_serial = ev.serial;
-            app.active_surface = if (ev.surface) |s| app.find_wl_surface(s) orelse {
-                break :blk null;
-            } else null;
+            app.active_surface = ev.surface;
             break :blk null;
         },
         .motion => |ev| blk: {
@@ -451,7 +467,8 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
     };
     const old_shape = app.cursor_shape;
 
-    var iter = app.layout.child_iterator(app.active_surface.?.root);
+    const active_surface = app.surfaces.getPtr(app.active_surface.?).?;
+    var iter = app.layout.child_iterator(active_surface.root);
     while (iter.next()) |idx| {
         // std.log.info("id: {}", .{idx});
         const rect = app.layout.get(idx, .rect);
