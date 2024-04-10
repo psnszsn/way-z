@@ -16,10 +16,10 @@ pub const Fixed = enum(i32) {
     }
 };
 
-pub const Array = extern struct {
-    size: usize,
-    alloc: usize,
-    data: ?*anyopaque,
+pub const Array = struct {
+    size: usize = 0,
+    alloc: usize = 0,
+    data: ?*anyopaque = null,
 
     /// Does not clone memory
     pub fn fromArrayList(comptime T: type, list: std.ArrayList(T)) Array {
@@ -45,13 +45,14 @@ pub const Argument = union(enum) {
     string: [:0]const u8,
     object: u32,
     new_id: u32,
-    array: ?*Array,
+    array: Array,
     fd: i32,
     pub const ArgumentType = std.meta.Tag(Argument);
     pub fn len(self: Argument) u16 {
         const l = switch (self) {
             .string => |str| (std.math.divCeil(usize, 4 + str.len + 1, 4) catch unreachable) * 4,
             .fd => 0,
+            .array => |a| 4 + a.alloc,
             inline else => |n| @sizeOf(@TypeOf(n)),
             // else => unreachable,
         };
@@ -87,6 +88,7 @@ pub const Argument = union(enum) {
     }
     pub fn unmarshal(typ: ArgumentType, allocator: std.mem.Allocator, data: []const u8) Argument {
         _ = allocator;
+        // std.log.info("typ={}", .{typ});
         switch (typ) {
             .new_id => {
                 return Argument{ .new_id = @bitCast(data[0..4].*) };
@@ -115,9 +117,17 @@ pub const Argument = union(enum) {
                 const l: i32 = @bitCast(data[0..4].*);
                 return Argument{ .fixed = @enumFromInt(l) };
             },
-            else => {
-                std.debug.print("{}\n", .{typ});
-                unreachable;
+            .fd => {
+                return Argument{ .fd = 0 };
+            },
+            .array => {
+                const l: u32 = @bitCast(data[0..4].*);
+                const padding = (4 - l % 4) % 4;
+                return Argument{ .array = .{
+                    .size = l,
+                    .alloc = l + padding,
+                    .data = @constCast(data[4..].ptr),
+                } };
             },
         }
     }

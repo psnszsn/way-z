@@ -143,11 +143,6 @@ pub const FontMap = struct {
     }
 };
 
-pub fn contextmenu(layout: *Layout) !void {
-    _ = layout; // autofix
-    // const popup_btn = layout.add2(.button, .{});
-    // layout.set_handler(popup_btn, handler);
-}
 const PopupHandler = struct {
     parent: *App.Surface,
     widget: WidgetIdx,
@@ -177,6 +172,18 @@ const PopupHandler = struct {
     }
 };
 
+const MenuHandler = struct {
+    parent: *App.Surface,
+    widget: WidgetIdx,
+    wl_surface: ?wlnd.wl.Surface,
+    pub fn handle_event(layout: *Layout, idx: WidgetIdx, ev: *const anyopaque, data: *MenuHandler) void {
+        _ = layout; // autofix
+        _ = ev; // autofix
+        _ = data; // autofix
+        std.log.info("idx={}", .{idx});
+    }
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -188,7 +195,8 @@ pub fn main() !void {
     const layout = &app.layout;
     try layout.init(app.client.allocator);
 
-    var handler: PopupHandler = undefined;
+    var popup_handler: PopupHandler = undefined;
+    var menu_handler: MenuHandler = undefined;
 
     const main_widget = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
@@ -197,7 +205,7 @@ pub fn main() !void {
             const btn2 = layout.add2(.button, .{});
 
             const flex2 = layout.add3(.flex, .{}, &.{ btn, btn2 });
-            layout.set_handler(btn, &handler);
+            layout.set_handler(btn, &popup_handler);
             break :c flex2;
         };
         // const menu_bar = layout.add(.{ .type = .button });
@@ -221,11 +229,12 @@ pub fn main() !void {
         const btn2 = layout.add3(.button, .{}, &.{
             layout.add2(.label, .{}),
         });
+        layout.set_handler(btn2, &menu_handler);
         layout.set(flex, .children, &.{ btn, btn2 });
         break :b flex;
     };
 
-    handler = .{
+    popup_handler = .{
         .wl_surface = null,
         .parent = bar,
         .widget = popup_flex,

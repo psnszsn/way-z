@@ -55,6 +55,7 @@ pub const Proxy = struct {
         const interface = self.get(.interface);
         const listener = self.get(.listener);
         const listener_data = self.get(.listener_data);
+        log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
 
         const signature = interface.event_signatures[opcode];
         var argdata = data;
@@ -63,7 +64,6 @@ pub const Proxy = struct {
             args[i] = Argument.unmarshal(arg_type, self.client.allocator, argdata);
             argdata = argdata[args[i].len()..];
         }
-        log.debug("<- {s}@{}.{s}", .{ interface.name, self.id, interface.event_names[opcode] });
         if (listener) |l| {
             l(self.client, self.id, opcode, args[0..signature.len], listener_data);
         }
@@ -116,30 +116,6 @@ pub const Proxy = struct {
         // std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
         // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
         // std.debug.print("marshal {} {} {any}\n", .{ self.id, opcode, args });
-    }
-
-    pub fn genEventArgs(comptime Event: type) [std.meta.fields(Event).len][]const Argument.ArgumentType {
-        const fields = std.meta.fields(Event);
-        comptime var r: [fields.len][]const Argument.ArgumentType = undefined;
-
-        inline for (fields, 0..) |f, i| {
-            if (f.type == void) continue;
-            const ev_f = std.meta.fields(f.type);
-            comptime var argts: [ev_f.len]Argument.ArgumentType = undefined;
-            for (ev_f, 0..) |sf, ii| {
-                argts[ii] = switch (sf.type) {
-                    u32 => .uint,
-                    i32 => .int,
-                    [:0]const u8 => .string,
-                    ?*anyopaque => .object,
-                    argm.Fixed => .fixed,
-                    else => .uint,
-                };
-            }
-            const final = argts;
-            r[i] = &final;
-        }
-        return r;
     }
 };
 

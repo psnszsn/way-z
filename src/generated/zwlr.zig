@@ -20,16 +20,6 @@
 // AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 // ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 // THIS SOFTWARE.
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Interface = @import("../proxy.zig").Interface;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
-const Client = @import("../client.zig").Client;
-
-const wl = @import("wl.zig");
-const xdg = @import("xdg.zig");
 
 /// Clients can use this interface to assign the surface_layer role to
 /// wl_surfaces. Such surfaces are assigned to a "layer" of the output and
@@ -124,7 +114,10 @@ pub const LayerSurfaceV1 = enum(u32) {
     pub const interface = Interface{
         .name = "zwlr_layer_surface_v1",
         .version = 4,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .uint, .uint, .uint },
+            &.{},
+        },
         .event_names = &.{
             "configure",
             "closed",
@@ -351,3 +344,13 @@ pub const LayerSurfaceV1 = enum(u32) {
         }
     };
 };
+const std = @import("std");
+const os = std.os;
+const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
+const Argument = @import("../argument.zig").Argument;
+const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
+
+const wl = @import("wl.zig");
+const xdg = @import("xdg.zig");

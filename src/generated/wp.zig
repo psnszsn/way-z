@@ -17,16 +17,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Interface = @import("../proxy.zig").Interface;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
-const Client = @import("../client.zig").Client;
-
-const wl = @import("wl.zig");
-const zwp = @import("zwp.zig");
 
 /// This global offers an alternative, optional way to set cursor images. This
 /// new way uses enumerated cursors instead of a wl_surface like
@@ -162,3 +152,13 @@ pub const CursorShapeDeviceV1 = enum(u32) {
         }
     };
 };
+const std = @import("std");
+const os = std.os;
+const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
+const Argument = @import("../argument.zig").Argument;
+const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
+
+const wl = @import("wl.zig");
+const zwp = @import("zwp.zig");

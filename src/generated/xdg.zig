@@ -23,15 +23,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Interface = @import("../proxy.zig").Interface;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
-const Client = @import("../client.zig").Client;
-
-const wl = @import("wl.zig");
 
 /// The xdg_wm_base interface is exposed as a global object enabling clients
 /// to turn their wl_surfaces into windows in a desktop environment. It
@@ -43,7 +34,9 @@ pub const WmBase = enum(u32) {
     pub const interface = Interface{
         .name = "xdg_wm_base",
         .version = 6,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+        },
         .event_names = &.{
             "ping",
         },
@@ -391,7 +384,9 @@ pub const Surface = enum(u32) {
     pub const interface = Interface{
         .name = "xdg_surface",
         .version = 6,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+        },
         .event_names = &.{
             "configure",
         },
@@ -592,7 +587,12 @@ pub const Toplevel = enum(u32) {
     pub const interface = Interface{
         .name = "xdg_toplevel",
         .version = 6,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .int, .int, .array },
+            &.{},
+            &.{ .int, .int },
+            &.{.array},
+        },
         .event_names = &.{
             "configure",
             "close",
@@ -672,7 +672,7 @@ pub const Toplevel = enum(u32) {
         configure: struct {
             width: i32,
             height: i32,
-            states: *anyopaque,
+            states: []u8,
         },
         /// The close event is sent by the compositor when the user
         /// wants the surface to be closed. This should be equivalent to
@@ -723,7 +723,7 @@ pub const Toplevel = enum(u32) {
         /// The capabilities are sent as an array of 32-bit unsigned integers in
         /// native endianness.
         wm_capabilities: struct {
-            capabilities: *anyopaque, // array of 32-bit capabilities
+            capabilities: []u8, // array of 32-bit capabilities
         },
 
         pub fn from_args(
@@ -735,7 +735,7 @@ pub const Toplevel = enum(u32) {
                     .configure = .{
                         .width = args[0].int,
                         .height = args[1].int,
-                        .states = undefined,
+                        .states = args[2].array.slice(u8),
                     },
                 },
                 1 => Event.close,
@@ -747,7 +747,7 @@ pub const Toplevel = enum(u32) {
                 },
                 3 => Event{
                     .wm_capabilities = .{
-                        .capabilities = undefined,
+                        .capabilities = args[0].array.slice(u8),
                     },
                 },
                 else => unreachable,
@@ -1115,7 +1115,11 @@ pub const Popup = enum(u32) {
     pub const interface = Interface{
         .name = "xdg_popup",
         .version = 6,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .int, .int, .int, .int },
+            &.{},
+            &.{.uint},
+        },
         .event_names = &.{
             "configure",
             "popup_done",
@@ -1282,3 +1286,12 @@ pub const Popup = enum(u32) {
         }
     };
 };
+const std = @import("std");
+const os = std.os;
+const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
+const Argument = @import("../argument.zig").Argument;
+const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
+
+const wl = @import("wl.zig");

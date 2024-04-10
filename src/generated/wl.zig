@@ -22,13 +22,6 @@
 // ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Interface = @import("../proxy.zig").Interface;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
-const Client = @import("../client.zig").Client;
 
 /// The core global object.  This is a special singleton object.  It
 /// is used for internal Wayland protocol features.
@@ -37,7 +30,10 @@ pub const Display = enum(u32) {
     pub const interface = Interface{
         .name = "wl_display",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .object, .uint, .string },
+            &.{.uint},
+        },
         .event_names = &.{
             "error",
             "delete_id",
@@ -82,7 +78,7 @@ pub const Display = enum(u32) {
             return switch (opcode) {
                 0 => Event{
                     .@"error" = .{
-                        .object_id = args[0].uint,
+                        .object_id = args[0].object,
                         .code = args[1].uint,
                         .message = args[2].string,
                     },
@@ -160,7 +156,10 @@ pub const Registry = enum(u32) {
     pub const interface = Interface{
         .name = "wl_registry",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .uint, .string, .uint },
+            &.{.uint},
+        },
         .event_names = &.{
             "global",
             "global_remove",
@@ -243,7 +242,9 @@ pub const Callback = enum(u32) {
     pub const interface = Interface{
         .name = "wl_callback",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+        },
         .event_names = &.{
             "done",
         },
@@ -395,7 +396,9 @@ pub const Shm = enum(u32) {
     pub const interface = Interface{
         .name = "wl_shm",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+        },
         .event_names = &.{
             "format",
         },
@@ -580,7 +583,9 @@ pub const Buffer = enum(u32) {
     pub const interface = Interface{
         .name = "wl_buffer",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{},
+        },
         .event_names = &.{
             "release",
         },
@@ -641,7 +646,11 @@ pub const DataOffer = enum(u32) {
     pub const interface = Interface{
         .name = "wl_data_offer",
         .version = 3,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.string},
+            &.{.uint},
+            &.{.uint},
+        },
         .event_names = &.{
             "offer",
             "source_actions",
@@ -851,7 +860,14 @@ pub const DataSource = enum(u32) {
     pub const interface = Interface{
         .name = "wl_data_source",
         .version = 3,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.string},
+            &.{ .string, .fd },
+            &.{},
+            &.{},
+            &.{},
+            &.{.uint},
+        },
         .event_names = &.{
             "target",
             "send",
@@ -1028,7 +1044,14 @@ pub const DataDevice = enum(u32) {
     pub const interface = Interface{
         .name = "wl_data_device",
         .version = 3,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.new_id},
+            &.{ .uint, .object, .fixed, .fixed, .object },
+            &.{},
+            &.{ .uint, .fixed, .fixed },
+            &.{},
+            &.{.object},
+        },
         .event_names = &.{
             "data_offer",
             "enter",
@@ -1122,10 +1145,10 @@ pub const DataDevice = enum(u32) {
                 1 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[1].object),
                         .x = args[2].fixed,
                         .y = args[3].fixed,
-                        .id = @enumFromInt(args[4].uint),
+                        .id = @enumFromInt(args[4].object),
                     },
                 },
                 2 => Event.leave,
@@ -1139,7 +1162,7 @@ pub const DataDevice = enum(u32) {
                 4 => Event.drop,
                 5 => Event{
                     .selection = .{
-                        .id = @enumFromInt(args[0].uint),
+                        .id = @enumFromInt(args[0].object),
                     },
                 },
                 else => unreachable,
@@ -1307,7 +1330,11 @@ pub const ShellSurface = enum(u32) {
     pub const interface = Interface{
         .name = "wl_shell_surface",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+            &.{ .uint, .int, .int },
+            &.{},
+        },
         .event_names = &.{
             "ping",
             "configure",
@@ -1612,7 +1639,12 @@ pub const Surface = enum(u32) {
     pub const interface = Interface{
         .name = "wl_surface",
         .version = 6,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.object},
+            &.{.object},
+            &.{.int},
+            &.{.uint},
+        },
         .event_names = &.{
             "enter",
             "leave",
@@ -1688,12 +1720,12 @@ pub const Surface = enum(u32) {
             return switch (opcode) {
                 0 => Event{
                     .enter = .{
-                        .output = @enumFromInt(args[0].uint),
+                        .output = @enumFromInt(args[0].object),
                     },
                 },
                 1 => Event{
                     .leave = .{
-                        .output = @enumFromInt(args[0].uint),
+                        .output = @enumFromInt(args[0].object),
                     },
                 },
                 2 => Event{
@@ -2049,7 +2081,10 @@ pub const Seat = enum(u32) {
     pub const interface = Interface{
         .name = "wl_seat",
         .version = 9,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+            &.{.string},
+        },
         .event_names = &.{
             "capabilities",
             "name",
@@ -2201,7 +2236,19 @@ pub const Pointer = enum(u32) {
     pub const interface = Interface{
         .name = "wl_pointer",
         .version = 9,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .uint, .object, .fixed, .fixed },
+            &.{ .uint, .object },
+            &.{ .uint, .fixed, .fixed },
+            &.{ .uint, .uint, .uint, .uint },
+            &.{ .uint, .uint, .fixed },
+            &.{},
+            &.{.uint},
+            &.{ .uint, .uint },
+            &.{ .uint, .int },
+            &.{ .uint, .int },
+            &.{ .uint, .uint },
+        },
         .event_names = &.{
             "enter",
             "leave",
@@ -2500,7 +2547,7 @@ pub const Pointer = enum(u32) {
                 0 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[1].object),
                         .surface_x = args[2].fixed,
                         .surface_y = args[3].fixed,
                     },
@@ -2508,7 +2555,7 @@ pub const Pointer = enum(u32) {
                 1 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[1].object),
                     },
                 },
                 2 => Event{
@@ -2632,7 +2679,14 @@ pub const Keyboard = enum(u32) {
     pub const interface = Interface{
         .name = "wl_keyboard",
         .version = 9,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .uint, .fd, .uint },
+            &.{ .uint, .object, .array },
+            &.{ .uint, .object },
+            &.{ .uint, .uint, .uint, .uint },
+            &.{ .uint, .uint, .uint, .uint, .uint },
+            &.{ .int, .int },
+        },
         .event_names = &.{
             "keymap",
             "enter",
@@ -2673,7 +2727,7 @@ pub const Keyboard = enum(u32) {
         enter: struct {
             serial: u32, // serial number of the enter event
             surface: ?Surface, // surface gaining keyboard focus
-            keys: *anyopaque, // the currently pressed keys
+            keys: []u8, // the currently pressed keys
         },
         /// Notification that this seat's keyboard focus is no longer on
         /// a certain surface.
@@ -2743,14 +2797,14 @@ pub const Keyboard = enum(u32) {
                 1 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
-                        .keys = undefined,
+                        .surface = @enumFromInt(args[1].object),
+                        .keys = args[2].array.slice(u8),
                     },
                 },
                 2 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[1].object),
                     },
                 },
                 3 => Event{
@@ -2806,7 +2860,15 @@ pub const Touch = enum(u32) {
     pub const interface = Interface{
         .name = "wl_touch",
         .version = 9,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .uint, .uint, .object, .int, .fixed, .fixed },
+            &.{ .uint, .uint, .int },
+            &.{ .uint, .int, .fixed, .fixed },
+            &.{},
+            &.{},
+            &.{ .int, .fixed, .fixed },
+            &.{ .int, .fixed },
+        },
         .event_names = &.{
             "down",
             "up",
@@ -2931,7 +2993,7 @@ pub const Touch = enum(u32) {
                     .down = .{
                         .serial = args[0].uint,
                         .time = args[1].uint,
-                        .surface = @enumFromInt(args[2].uint),
+                        .surface = @enumFromInt(args[2].object),
                         .id = args[3].int,
                         .x = args[4].fixed,
                         .y = args[5].fixed,
@@ -2995,7 +3057,14 @@ pub const Output = enum(u32) {
     pub const interface = Interface{
         .name = "wl_output",
         .version = 4,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{ .int, .int, .int, .int, .int, .string, .string, .int },
+            &.{ .uint, .int, .int, .int },
+            &.{},
+            &.{.int},
+            &.{.string},
+            &.{.string},
+        },
         .event_names = &.{
             "geometry",
             "mode",
@@ -3516,3 +3585,10 @@ pub const Subsurface = enum(u32) {
         }
     };
 };
+const std = @import("std");
+const os = std.os;
+const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
+const Argument = @import("../argument.zig").Argument;
+const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;

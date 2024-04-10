@@ -1,12 +1,3 @@
-const std = @import("std");
-const mem = std.mem;
-
-const wayland = @import("wayland");
-const wl = wayland.wl;
-const xdg = wayland.xdg;
-
-const Buffer = wayland.shm.Buffer;
-
 pub const std_options = std.Options{
     .log_level = .info,
 };
@@ -46,36 +37,36 @@ pub fn main() !void {
     client.set_listener(registry, *App, registryListener, &context);
     try client.roundtrip();
 
-    const shm = context.shm orelse return error.NoWlShm;
-    _ = shm;
     const compositor = context.compositor orelse return error.NoWlCompositor;
     const wm_base = context.wm_base orelse return error.NoXdgWmBase;
 
-    var surface: SurfaceCtx = .{
-        .xdg_surface = undefined,
-        .xdg_toplevel = undefined,
-        .wl_surface = undefined,
-        .width = 100,
-        .height = 100,
-        .last_frame = 0,
-        .offset = 0,
-        .ctx = &context,
+    var surface: SurfaceCtx = b: {
+        const wl_surface = client.request(compositor, .create_surface, .{});
+        const xdg_surface = client.request(wm_base, .get_xdg_surface, .{ .surface = wl_surface });
+        const xdg_toplevel = client.request(xdg_surface, .get_toplevel, .{});
+
+        client.request(xdg_toplevel, .set_min_size, .{ .width = 500, .height = 200 });
+        client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
+
+        client.request(wl_surface, .commit, {});
+
+        break :b .{
+            .xdg_surface = xdg_surface,
+            .xdg_toplevel = xdg_toplevel,
+            .wl_surface = wl_surface,
+            .width = 100,
+            .height = 100,
+            .last_frame = 0,
+            .offset = 0,
+            .ctx = &context,
+        };
     };
-
-    surface.wl_surface = client.request(compositor, .create_surface, .{});
     defer client.request(surface.wl_surface, .destroy, {});
+    defer client.request(surface.xdg_toplevel, .destroy, {});
+    defer client.request(surface.xdg_surface, .destroy, {});
 
-    surface.xdg_surface = client.request(wm_base, .get_xdg_surface, .{ .surface = surface.wl_surface });
-    errdefer client.request(surface.xdg_surface, .destroy, {});
-    surface.xdg_toplevel = client.request(surface.xdg_surface, .get_toplevel, .{});
-    errdefer client.request(surface.xdg_toplevel, .destroy, {});
-
-    client.set_listener(surface.xdg_surface, *SurfaceCtx, xdgSurfaceListener, &surface);
-    client.set_listener(surface.xdg_toplevel, *SurfaceCtx, xdgToplevelListener, &surface);
-    client.request(surface.xdg_toplevel, .set_min_size, .{ .width = 500, .height = 200 });
-    client.request(surface.xdg_toplevel, .set_title, .{ .title = "Demo" });
-
-    client.request(surface.wl_surface, .commit, {});
+    client.set_listener(surface.xdg_surface, *SurfaceCtx, xdg_surface_listener, &surface);
+    client.set_listener(surface.xdg_toplevel, *SurfaceCtx, xdg_toplevel_listener, &surface);
     try client.roundtrip();
 
     const buf = try Buffer.get(client, surface.ctx.shm.?, surface.width, surface.height);
@@ -85,7 +76,7 @@ pub fn main() !void {
     try client.roundtrip();
 
     const frame_cb = client.request(surface.wl_surface, .frame, .{});
-    client.set_listener(frame_cb, *SurfaceCtx, frameListener, &surface);
+    client.set_listener(frame_cb, *SurfaceCtx, frame_listener, &surface);
     client.request(surface.wl_surface, .commit, {});
 
     try client.recvEvents();
@@ -138,7 +129,7 @@ fn draw2(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
     }
 }
 
-fn xdgSurfaceListener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
+fn xdg_surface_listener(client: *wayland.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *SurfaceCtx) void {
     _ = surf;
     switch (event) {
         .configure => |configure| {
@@ -147,7 +138,7 @@ fn xdgSurfaceListener(client: *wayland.Client, xdg_surface: xdg.Surface, event: 
     }
 }
 
-fn xdgToplevelListener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
+fn xdg_toplevel_listener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *SurfaceCtx) void {
     switch (event) {
         .configure => |configure| {
             std.log.warn("new size {} {}", .{ configure.width, configure.height });
@@ -161,22 +152,7 @@ fn xdgToplevelListener(_: *wayland.Client, _: xdg.Toplevel, event: xdg.Toplevel.
     }
 }
 
-fn seatListener(_: *wayland.Client, _: wl.Seat, event: wl.Seat.Event, _: ?*anyopaque) void {
-    switch (event) {
-        .capabilities => |data| {
-            std.debug.print("Seat capabilities\n  Pointer {}\n  Keyboard {}\n  Touch {}\n", .{
-                data.capabilities.pointer,
-                data.capabilities.keyboard,
-                data.capabilities.touch,
-            });
-        },
-        .name => |name| {
-            std.debug.print("seat name: {s}\n", .{name.name});
-        },
-    }
-}
-
-fn frameListener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
+fn frame_listener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Event, surf: *SurfaceCtx) void {
     _ = cb;
     switch (event) {
         .done => |done| {
@@ -185,7 +161,7 @@ fn frameListener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Ev
 
             const frame_cb = client.request(surf.wl_surface, .frame, .{});
 
-            client.set_listener(frame_cb, *SurfaceCtx, frameListener, surf);
+            client.set_listener(frame_cb, *SurfaceCtx, frame_listener, surf);
 
             if (surf.last_frame != 0) {
                 const elapsed: f32 = @floatFromInt(time - surf.last_frame);
@@ -206,3 +182,12 @@ fn frameListener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.Ev
         },
     }
 }
+
+const std = @import("std");
+const mem = std.mem;
+
+const wayland = @import("wayland");
+const wl = wayland.wl;
+const xdg = wayland.xdg;
+
+const Buffer = wayland.shm.Buffer;

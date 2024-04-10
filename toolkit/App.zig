@@ -37,7 +37,7 @@ pub fn new(alloc: std.mem.Allocator) !*App {
         .font = try font.cozette(alloc),
     };
 
-    client.set_listener(registry, *App, App.registryListener, app);
+    client.set_listener(registry, *App, App.registry_listener, app);
     try client.roundtrip();
 
     std.debug.assert(app.shm != null);
@@ -392,7 +392,7 @@ pub const Surface = struct {
     }
 };
 
-pub fn registryListener(client: *wlnd.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
+pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.Registry.Event, context: *App) void {
     switch (event) {
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
@@ -467,7 +467,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
     };
     const old_shape = app.cursor_shape;
 
-    const active_surface = app.surfaces.getPtr(app.active_surface.?).?;
+    const active_surface = app.surfaces.getPtr(app.active_surface.?) orelse return;
     var iter = app.layout.child_iterator(active_surface.root);
     while (iter.next()) |idx| {
         // std.log.info("id: {}", .{idx});

@@ -21,15 +21,6 @@
 // ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-const std = @import("std");
-const os = std.os;
-const Proxy = @import("../proxy.zig").Proxy;
-const Interface = @import("../proxy.zig").Interface;
-const Argument = @import("../argument.zig").Argument;
-const Fixed = @import("../argument.zig").Fixed;
-const Client = @import("../client.zig").Client;
-
-const wl = @import("wl.zig");
 
 /// An object that provides access to the graphics tablets available on this
 /// system. All tablets are associated with a seat, to get access to the
@@ -74,7 +65,11 @@ pub const TabletSeatV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_seat_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.new_id},
+            &.{.new_id},
+            &.{.new_id},
+        },
         .event_names = &.{
             "tablet_added",
             "tool_added",
@@ -171,7 +166,27 @@ pub const TabletToolV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_tool_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+            &.{ .uint, .uint },
+            &.{ .uint, .uint },
+            &.{.uint},
+            &.{},
+            &.{},
+            &.{ .uint, .object, .object },
+            &.{},
+            &.{.uint},
+            &.{},
+            &.{ .fixed, .fixed },
+            &.{.uint},
+            &.{.uint},
+            &.{ .fixed, .fixed },
+            &.{.fixed},
+            &.{.int},
+            &.{ .fixed, .int },
+            &.{ .uint, .uint, .uint },
+            &.{.uint},
+        },
         .event_names = &.{
             "type",
             "hardware_serial",
@@ -463,8 +478,8 @@ pub const TabletToolV2 = enum(u32) {
                 6 => Event{
                     .proximity_in = .{
                         .serial = args[0].uint,
-                        .tablet = @enumFromInt(args[1].uint),
-                        .surface = @enumFromInt(args[2].uint),
+                        .tablet = @enumFromInt(args[1].object),
+                        .surface = @enumFromInt(args[2].object),
                     },
                 },
                 7 => Event.proximity_out,
@@ -592,7 +607,13 @@ pub const TabletV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.string},
+            &.{ .uint, .uint },
+            &.{.string},
+            &.{},
+            &.{},
+        },
         .event_names = &.{
             "name",
             "id",
@@ -605,11 +626,20 @@ pub const TabletV2 = enum(u32) {
         },
     };
     pub const Event = union(enum) {
+        /// A descriptive name for the tablet device.
+        ///
+        /// If the device has no descriptive name, this event is not sent.
+        ///
         /// This event is sent in the initial burst of events before the
         /// wp_tablet.done event.
         name: struct {
             name: [:0]const u8, // the device name
         },
+        /// The USB vendor and product IDs for the tablet device.
+        ///
+        /// If the device has no USB vendor/product ID, this event is not sent.
+        /// This can happen for virtual devices or non-USB devices, for instance.
+        ///
         /// This event is sent in the initial burst of events before the
         /// wp_tablet.done event.
         id: struct {
@@ -696,7 +726,12 @@ pub const TabletPadRingV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_pad_ring_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+            &.{.fixed},
+            &.{},
+            &.{.uint},
+        },
         .event_names = &.{
             "source",
             "angle",
@@ -835,7 +870,12 @@ pub const TabletPadStripV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_pad_strip_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.uint},
+            &.{.uint},
+            &.{},
+            &.{.uint},
+        },
         .event_names = &.{
             "source",
             "position",
@@ -992,7 +1032,14 @@ pub const TabletPadGroupV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_pad_group_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.array},
+            &.{.new_id},
+            &.{.new_id},
+            &.{.uint},
+            &.{},
+            &.{ .uint, .uint, .uint },
+        },
         .event_names = &.{
             "buttons",
             "ring",
@@ -1019,7 +1066,7 @@ pub const TabletPadGroupV2 = enum(u32) {
         /// If the compositor happens to reserve all buttons in a group, this event
         /// will be sent with an empty array.
         buttons: struct {
-            buttons: *anyopaque, // buttons in this group
+            buttons: []u8, // buttons in this group
         },
         /// Sent on wp_tablet_pad_group initialization to announce available rings.
         /// One event is sent for each ring available on this pad group.
@@ -1093,7 +1140,7 @@ pub const TabletPadGroupV2 = enum(u32) {
             return switch (opcode) {
                 0 => Event{
                     .buttons = .{
-                        .buttons = undefined,
+                        .buttons = args[0].array.slice(u8),
                     },
                 },
                 1 => Event{
@@ -1165,7 +1212,16 @@ pub const TabletPadV2 = enum(u32) {
     pub const interface = Interface{
         .name = "zwp_tablet_pad_v2",
         .version = 1,
-        .event_signatures = &Proxy.genEventArgs(Event),
+        .event_signatures = &.{
+            &.{.new_id},
+            &.{.string},
+            &.{.uint},
+            &.{},
+            &.{ .uint, .uint, .uint },
+            &.{ .uint, .object, .object },
+            &.{ .uint, .object },
+            &.{},
+        },
         .event_names = &.{
             "group",
             "path",
@@ -1275,14 +1331,14 @@ pub const TabletPadV2 = enum(u32) {
                 5 => Event{
                     .enter = .{
                         .serial = args[0].uint,
-                        .tablet = @enumFromInt(args[1].uint),
-                        .surface = @enumFromInt(args[2].uint),
+                        .tablet = @enumFromInt(args[1].object),
+                        .surface = @enumFromInt(args[2].object),
                     },
                 },
                 6 => Event{
                     .leave = .{
                         .serial = args[0].uint,
-                        .surface = @enumFromInt(args[1].uint),
+                        .surface = @enumFromInt(args[1].object),
                     },
                 },
                 7 => Event.removed,
@@ -1334,3 +1390,164 @@ pub const TabletPadV2 = enum(u32) {
         }
     };
 };
+
+// Copyright © 2017 Red Hat Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice (including the next
+// paragraph) shall be included in all copies or substantial portions of the
+// Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+/// A global interface used for inhibiting the compositor keyboard shortcuts.
+pub const KeyboardShortcutsInhibitManagerV1 = enum(u32) {
+    _,
+    pub const interface = Interface{
+        .name = "zwp_keyboard_shortcuts_inhibit_manager_v1",
+        .version = 1,
+        .request_names = &.{
+            "destroy",
+            "inhibit_shortcuts",
+        },
+    };
+    pub const Error = enum(c_int) {
+        already_inhibited = 0,
+    };
+    pub const Request = union(enum) {
+        /// Destroy the keyboard shortcuts inhibitor manager.
+        destroy: void,
+        /// Create a new keyboard shortcuts inhibitor object associated with
+        /// the given surface for the given seat.
+        ///
+        /// If shortcuts are already inhibited for the specified seat and surface,
+        /// a protocol error "already_inhibited" is raised by the compositor.
+        inhibit_shortcuts: struct {
+            id: KeyboardShortcutsInhibitorV1 = @enumFromInt(0),
+            surface: ?wl.Surface, // the surface that inhibits the keyboard shortcuts behavior
+            seat: ?wl.Seat, // the wl_seat for which keyboard shortcuts should be disabled
+        },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                .destroy => void,
+                .inhibit_shortcuts => KeyboardShortcutsInhibitorV1,
+            };
+        }
+    };
+};
+
+/// A keyboard shortcuts inhibitor instructs the compositor to ignore
+/// its own keyboard shortcuts when the associated surface has keyboard
+/// focus. As a result, when the surface has keyboard focus on the given
+/// seat, it will receive all key events originating from the specified
+/// seat, even those which would normally be caught by the compositor for
+/// its own shortcuts.
+///
+/// The Wayland compositor is however under no obligation to disable
+/// all of its shortcuts, and may keep some special key combo for its own
+/// use, including but not limited to one allowing the user to forcibly
+/// restore normal keyboard events routing in the case of an unwilling
+/// client. The compositor may also use the same key combo to reactivate
+/// an existing shortcut inhibitor that was previously deactivated on
+/// user request.
+///
+/// When the compositor restores its own keyboard shortcuts, an
+/// "inactive" event is emitted to notify the client that the keyboard
+/// shortcuts inhibitor is not effectively active for the surface and
+/// seat any more, and the client should not expect to receive all
+/// keyboard events.
+///
+/// When the keyboard shortcuts inhibitor is inactive, the client has
+/// no way to forcibly reactivate the keyboard shortcuts inhibitor.
+///
+/// The user can chose to re-enable a previously deactivated keyboard
+/// shortcuts inhibitor using any mechanism the compositor may offer,
+/// in which case the compositor will send an "active" event to notify
+/// the client.
+///
+/// If the surface is destroyed, unmapped, or loses the seat's keyboard
+/// focus, the keyboard shortcuts inhibitor becomes irrelevant and the
+/// compositor will restore its own keyboard shortcuts but no "inactive"
+/// event is emitted in this case.
+pub const KeyboardShortcutsInhibitorV1 = enum(u32) {
+    _,
+    pub const interface = Interface{
+        .name = "zwp_keyboard_shortcuts_inhibitor_v1",
+        .version = 1,
+        .event_signatures = &.{
+            &.{},
+            &.{},
+        },
+        .event_names = &.{
+            "active",
+            "inactive",
+        },
+        .request_names = &.{
+            "destroy",
+        },
+    };
+    pub const Event = union(enum) {
+        /// This event indicates that the shortcut inhibitor is active.
+        ///
+        /// The compositor sends this event every time compositor shortcuts
+        /// are inhibited on behalf of the surface. When active, the client
+        /// may receive input events normally reserved by the compositor
+        /// (see zwp_keyboard_shortcuts_inhibitor_v1).
+        ///
+        /// This occurs typically when the initial request "inhibit_shortcuts"
+        /// first becomes active or when the user instructs the compositor to
+        /// re-enable and existing shortcuts inhibitor using any mechanism
+        /// offered by the compositor.
+        active: void,
+        /// This event indicates that the shortcuts inhibitor is inactive,
+        /// normal shortcuts processing is restored by the compositor.
+        inactive: void,
+
+        pub fn from_args(
+            opcode: u16,
+            _: []Argument,
+        ) Event {
+            return switch (opcode) {
+                0 => Event.active,
+                1 => Event.inactive,
+                else => unreachable,
+            };
+        }
+    };
+    pub const Request = union(enum) {
+        /// Remove the keyboard shortcuts inhibitor from the associated wl_surface.
+        destroy: void,
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                .destroy => void,
+            };
+        }
+    };
+};
+const std = @import("std");
+const os = std.os;
+const Proxy = @import("../proxy.zig").Proxy;
+const Interface = @import("../proxy.zig").Interface;
+const Argument = @import("../argument.zig").Argument;
+const Fixed = @import("../argument.zig").Fixed;
+const Client = @import("../client.zig").Client;
+
+const wl = @import("wl.zig");

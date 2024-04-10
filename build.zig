@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     });
     _ = toolkit; // autofix
 
-    inline for (.{ "globals", "seats", "hello" }) |example| {
+    inline for (.{ "globals", "seats", "hello", "kb_grab" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
             .root_source_file = .{ .path = "examples/" ++ example ++ ".zig" },

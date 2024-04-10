@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NamedTuple, Never, TextIO
+from typing import ClassVar, NamedTuple, Never, TextIO
 from pprint import pprint
 import subprocess
 import io
@@ -46,7 +46,7 @@ class ZigUnion(Zig):
         out = io.StringIO()
         out.write("union(enum) {")
         for variant in self.variants:
-            emit_description(variant.doc_comment, out)
+            emit_comment(variant.doc_comment, out)
             out.write(f'''@"{variant.name}"''')
             out.write(": ")
             if variant.payload:
@@ -173,7 +173,7 @@ def title_case(txt: str) -> str:
     return "".join(w.capitalize() for w in txt.split("_"))
 
 
-def emit_description(description: str | None, fd: TextIO, commment_type: str = "///"):
+def emit_comment(description: str | None, fd: TextIO, commment_type: str = "///"):
     if description:
         for line in description.strip().splitlines():
             fd.write(f"\n{commment_type} {line.strip()}")
@@ -220,7 +220,9 @@ class Arg:
                 interface = "u32"
                 default = "0"
             assert not self.allow_null
-            return ZigStruct.Field(self.name, interface, default_value=default, comment=self.summary)
+            return ZigStruct.Field(
+                self.name, interface, default_value=default, comment=self.summary
+            )
         else:
             qm = "?" if self.type == "object" and not self.allow_null else ""
             return ZigStruct.Field(
@@ -270,8 +272,16 @@ class Arg:
                     else ""
                 )
                 return qs + prefix + title_case(interface.name)
+            case "array" if self.interface:
+                interface = protocol.find_interface(self.interface)
+                prefix = (
+                    interface.prefix + "."
+                    if interface.prefix != protocol.prefix
+                    else ""
+                )
+                return "[]" + prefix + title_case(interface.name)
             case "array":
-                return "*anyopaque"
+                return "[]u8"
             case "fd":
                 return "std.posix.fd_t"
             case _:
@@ -323,9 +333,7 @@ class Request:
         return "{}.{}".format(self.interface.name, self.name)
 
     def zig_union_variant(self) -> ZigUnion.Varinat:
-        zig_struct = ZigStruct(
-            [arg.zig_struct_field() for arg in self.args]
-        )
+        zig_struct = ZigStruct([arg.zig_struct_field() for arg in self.args])
         return ZigUnion.Varinat(
             name=self.name,
             payload=zig_struct if zig_struct.fields else None,
@@ -548,8 +556,13 @@ class Interface:
             ],
         )
         if self.events:
+            event_signatures = ""
+            for event in self.events.values():
+                arg_sign = ", ".join(f".{arg.type}" for arg in event.args)
+                event_signatures += f"&.{{{arg_sign}}},"
+
             val.fields.append(
-                ZigStructInit.Field("event_signatures", "&Proxy.genEventArgs(Event)")
+                ZigStructInit.Field("event_signatures", f"&.{{{event_signatures}}}")
             )
             event_names = "".join(f'"{event.name}",' for event in self.events.values())
             val.fields.append(
@@ -571,7 +584,7 @@ class Interface:
             for arg_i, arg in enumerate(e.args):
                 match arg.type:
                     case "array":
-                        val = "undefined"
+                        val = f"args[{arg_i}].array.slice(u8)"
                     case "uint" if arg.enum:
                         enum = self.find_enum(arg.enum)
                         if enum.bitfield:
@@ -579,9 +592,9 @@ class Interface:
                         else:
                             val = f"@enumFromInt(args[{arg_i}].uint)"
                     case "object" if arg.interface:
-                        val = f"@enumFromInt(args[{arg_i}].uint)"
+                        val = f"@enumFromInt(args[{arg_i}].object)"
                     case "object":
-                        val = f"args[{arg_i}].uint"
+                        val = f"args[{arg_i}].object"
                     case t:
                         val = f"args[{arg_i}].{t}"
                 f_fields.append(ZigStructInit.Field(name=arg.name, value=val))
@@ -612,7 +625,7 @@ class Interface:
         )
 
     def emit(self, fd: TextIO):
-        emit_description(self.description, fd)
+        emit_comment(self.description, fd)
 
         name_camel = "".join(w.capitalize() for w in self.name.split("_"))
         fd.write(
@@ -672,7 +685,7 @@ class Protocol:
     name: str
     interfaces: dict[str, Interface]
     prefix: str
-    globals: list[Protocol] = field(repr=False)
+    globals: list[str] = field(repr=False)
 
     def __init__(self, file: Path, parent: Protocol | None = None):
         tree = ET.parse(file)
@@ -701,17 +714,49 @@ class Protocol:
     def find_interface(self, name: str) -> Interface:
         if interface := self.interfaces.get(name):
             return interface
-        global protocols
         prefix = name.split("_")[0]
-        parent_protocol = protocols[prefix]
-        print(name)
-        if parent_protocol not in self.globals:
-            self.globals.append(parent_protocol)
-        interface = parent_protocol.interfaces[name]
+        ns = Namespace.get(prefix)
+        interface = ns.find_interface(name)
+        assert interface
+
+        if prefix not in self.globals:
+            self.globals.append(prefix)
+
         return interface
 
     def emit(self, fd: TextIO):
-        emit_description(self.copyright, fd, r"//")
+        emit_comment(self.copyright, fd, r"//")
+
+        # for g in self.globals:
+        #     fd.write(
+        #         f"""
+        #     const {g.prefix} = @import("{g.prefix}.zig");"""
+        #     )
+        # fd.write("\n")
+
+        for i in self.interfaces.values():
+            i.emit(fd)
+
+
+@dataclass(slots=True)
+class Namespace:
+    instances: ClassVar[dict[str, Namespace]] = {}
+    name: str
+    protocols: list[Protocol] = field(repr=False)
+
+    @classmethod
+    def get(cls, prefix: str) -> Namespace:
+        return cls.instances.setdefault(prefix, Namespace(prefix, []))
+
+    def find_interface(self, name: str) -> Interface | None:
+        for protocol in self.protocols:
+            if interface := protocol.interfaces.get(name):
+                return interface
+
+    def emit(self, fd: TextIO):
+
+        for p in self.protocols:
+            p.emit(fd)
 
         fd.write(
             """\
@@ -725,18 +770,16 @@ class Protocol:
 
             """
         )
-        for g in self.globals:
+
+        globals_deduped: set[str] = set()
+        for p in self.protocols:
+            globals_deduped.update(p.globals)
+
+        for g in globals_deduped:
             fd.write(
                 f"""
-            const {g.prefix} = @import("{g.prefix}.zig");"""
+            const {g} = @import("{g}.zig");"""
             )
-        fd.write("\n")
-
-        for i in self.interfaces.values():
-            i.emit(fd)
-
-
-protocols: dict[str, Protocol] = {}
 
 
 def main():
@@ -747,19 +790,20 @@ def main():
         "./protocols/wlr-layer-shell-unstable-v1.xml",
         "/usr/share/wayland-protocols/unstable/tablet/tablet-unstable-v2.xml",
         "/usr/share/wayland-protocols/staging/cursor-shape/cursor-shape-v1.xml",
+        "/usr/share/wayland-protocols/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml",
         # "/usr/share/wayland-protocols/stable/presentation-time/presentation-time.xml",
         # "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml",
     ]
     for p in xml_protocols:
         p = Protocol(Path(p))
-        protocols[p.prefix] = p
-        out = Path(__file__).parent / f"src/generated/{p.prefix}.zig"
+        Namespace.get(p.prefix).protocols.append(p)
+
+    for ns in Namespace.instances.values():
+        out = Path(__file__).parent / f"src/generated/{ns.name}.zig"
         out.parent.mkdir(exist_ok=True)
         with out.open("w") as f:
-            p.emit(f)
-        with out.open("w") as f:
-            p.emit(f)
-        pprint(p)
+            ns.emit(f)
+        pprint(ns)
 
         subprocess.run(["zig", "fmt", str(out)], check=True)
 
