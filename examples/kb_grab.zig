@@ -83,7 +83,6 @@ pub fn main() !void {
     client.request(surface.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
 
     client.request(surface.wl_surface, .commit, {});
-    try client.roundtrip();
 
     try client.recvEvents();
 }

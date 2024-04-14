@@ -5,8 +5,8 @@
     .paths = .{""},
     .dependencies = .{
         .libxev = .{
-            .url = "https://github.com/psnszsn/libxev/archive/fix_fieldparentptr.tar.gz",
-            .hash = "1220809a1c6bd5829efc6140721d7f26b48f314368e6cba0ff45f84fb0b269388475",
+            .url = "https://github.com/mitchellh/libxev/archive/main.tar.gz",
+            .hash = "1220f05bb06ce2704ae7b183514ce415719469bf1fa025b3158c55f7cc4755cb1fa5",
         },
     },
 }

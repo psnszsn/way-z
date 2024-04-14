@@ -60,6 +60,7 @@ pub const FontMap = struct {
     const letter_padding = 2;
     columns: u16,
     selected_code_point: u21 = 'a',
+    selected_range: u32 = 0,
     font: *Font,
 
     subscriber: WidgetIdx,
@@ -72,9 +73,10 @@ pub const FontMap = struct {
         return 256 / fm.columns;
     }
 
-    fn getOuterRect(font: *const Font, cols: u16, glyph: u8) Rect {
-        const row_ = glyph / cols;
-        const column_ = glyph % cols;
+    fn getOuterRect(font: *const Font, cols: u16, code_point: u21) Rect {
+        const n = code_point % 256;
+        const row_ = n / cols;
+        const column_ = n % cols;
 
         return Rect{
             .x = column_ * (font.glyph_width + letter_padding),
@@ -84,6 +86,23 @@ pub const FontMap = struct {
         };
     }
 
+    pub fn next_range(layout: *Layout, idx: WidgetIdx) void {
+        const self = layout.data(idx, FontMap);
+        const max = 64 * self.font.range_masks.len - 1;
+        var range: u32 = self.selected_range + 1;
+        while (true) {
+            std.log.info("range={}/{}", .{ range, max });
+            if (range > max) range = 0;
+            if (self.font.range_index(range)) |_| {
+                std.log.info("selected range: {}", .{range});
+                self.selected_range = range;
+                layout.request_draw(idx);
+                return;
+            } else {
+                range += 1;
+            }
+        }
+    }
     pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
         // std.log.warn("size:::: {}", .{paint_ctx.rect()});
         const self = layout.data(idx, FontMap);
@@ -91,8 +110,8 @@ pub const FontMap = struct {
 
         paint_ctx.fill(.{ .color = .white, .rect = rect });
 
-        for (0..256) |_glyph| {
-            const glyph: u8 = @intCast(_glyph);
+        for (0..256) |glyph_n| {
+            const glyph: u21 = @intCast(glyph_n + self.selected_range * 256);
             const bitmap = font.glyphBitmap(glyph);
             var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
             if (glyph == self.selected_code_point) {
@@ -115,8 +134,8 @@ pub const FontMap = struct {
         switch (event.pointer) {
             .enter => layout.set_cursor_shape(.pointer),
             .button => |_| {
-                for (0..256) |_glyph| {
-                    const glyph: u8 = @intCast(_glyph);
+                for (0..256) |glyph_n| {
+                    const glyph: u21 = @intCast(glyph_n + self.selected_range * 256);
                     var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
                     if (outer_rect.contains(app.pointer_position.x, app.pointer_position.y)) {
                         self.selected_code_point = glyph;
@@ -183,6 +202,14 @@ const MenuHandler = struct {
         std.log.info("idx={}", .{idx});
     }
 };
+const NextHandler = struct {
+    font_map: WidgetIdx,
+    pub fn handle_event(layout: *Layout, idx: WidgetIdx, ev: *const anyopaque, data: *NextHandler) void {
+        _ = idx; // autofix
+        _ = ev; // autofix
+        FontMap.next_range(layout, data.font_map);
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -197,6 +224,7 @@ pub fn main() !void {
 
     var popup_handler: PopupHandler = undefined;
     var menu_handler: MenuHandler = undefined;
+    var next_handler: NextHandler = undefined;
 
     const main_widget = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
@@ -206,6 +234,7 @@ pub fn main() !void {
 
             const flex2 = layout.add3(.flex, .{}, &.{ btn, btn2 });
             layout.set_handler(btn, &popup_handler);
+            layout.set_handler(btn2, &next_handler);
             break :c flex2;
         };
         // const menu_bar = layout.add(.{ .type = .button });
@@ -218,6 +247,9 @@ pub fn main() !void {
             .font = app.font,
         });
         layout.set(flex, .children, &.{ menu_bar, font_map, font_view });
+        next_handler = .{
+            .font_map = font_map,
+        };
         break :b flex;
     };
 
