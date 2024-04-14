@@ -55,7 +55,8 @@ pub const Font = struct {
     }
 
     pub fn glyph_size(self: *const Font) u32 {
-        return self.glyph_width * self.glyph_height;
+        const bits_per_row = (self.glyph_width / 9 + 1) * 8;
+        return bits_per_row * self.glyph_height;
     }
 
     pub fn range_index(self: *const Font, range_num: u32) ?usize {
@@ -76,6 +77,7 @@ pub const Font = struct {
         return r_index * 256 + code_point % 256;
     }
     pub fn glyphBitmap(self: *const Font, code_point: u21) Glyph {
+        // std.log.info("code_point={}", .{code_point});
         const _glyph_index = self.glyph_index(code_point);
         const _glyph_size = self.glyph_size();
 
@@ -122,8 +124,9 @@ pub const BdfParser = struct {
                             c.bbx = parse_bdf_value(value, BBX) catch @panic("TODO");
                         } else if (parse_prop(line, "ENCODING")) |value| {
                             if (mem.eql(u8, value, "-1")) {
-                                state = .nochar;
-                                continue;
+                                @panic("Asd");
+                                // state = .nochar;
+                                // continue;
                             } else {
                                 std.log.info("value={s}", .{value});
                                 c.encoding = std.fmt.parseInt(u21, value, 0) catch @panic("TODO");
@@ -161,7 +164,7 @@ pub const BdfParser = struct {
                 {
                     const masks = range_mask_alloc(rest, alloc);
 
-                    const glyph_size: u32 = p.font.glyph_width * p.font.glyph_height;
+                    const glyph_size: u32 = p.font.glyph_size();
                     p.font.glyph_data = try alloc.alloc(u8, masks.count() * 256 * glyph_size);
                     p.font.glyph_widths = try alloc.alloc(u8, masks.count() * 256);
                     std.log.info("masks.count()={}", .{masks.count()});
@@ -189,12 +192,11 @@ pub const BdfParser = struct {
                         const s = bitmap_it.next().?;
                         std.log.info("s={s}", .{s});
 
-                        if (char.bbx.width / 9 + 1 > 1) {
-                            // double width char
-                            continue;
+                        const bytes_per_line = char.bbx.width / 9 + 1;
+                        for (0..bytes_per_line) |b| {
+                            const h2 = try std.fmt.parseInt(u8, s[b * bytes_per_line ..][0..2], 16);
+                            glyph.rows.bytes[bytes_per_line * i + b] = h2;
                         }
-                        const h = try std.fmt.parseInt(u8, s[0..2], 16);
-                        glyph.rows.bytes[i] = h;
                     }
                     for (0..overflow) |_| {
                         _ = bitmap_it.next().?;
@@ -209,7 +211,7 @@ pub const BdfParser = struct {
     }
     pub fn range_mask_alloc(buf: []const u8, alloc: std.mem.Allocator) RangeMask {
         var max_range_i: usize = 0;
-        var range_mask = [_]usize{0} ** 8;
+        var range_mask = [_]usize{0} ** 70;
         var char_it = CharIterator{
             .it = std.mem.tokenizeScalar(u8, buf, '\n'),
         };
@@ -219,6 +221,7 @@ pub const BdfParser = struct {
             const i = range / 64;
             if (i > max_range_i) max_range_i = i;
             const mask = @as(usize, 1) << @as(u6, @intCast(range % 64));
+            std.debug.print("char name {s}", .{char.name});
             range_mask[i] |= mask;
         }
         for (range_mask, 0..) |m, m_i| {
