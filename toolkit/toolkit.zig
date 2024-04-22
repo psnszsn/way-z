@@ -6,3 +6,4 @@ pub const Font = @import("font/bdf.zig").Font;
 pub const widget = @import("widget.zig");
 pub const PaintCtx = @import("paint.zig").PaintCtxU32;
 pub const App = @import("App.zig");
+pub const Layout = widget.Layout;

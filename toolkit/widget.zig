@@ -12,7 +12,7 @@ const WidgetAttrs = struct {
     children: []const WidgetIdx = &.{},
     parent: ?WidgetIdx = null,
     data: usize = undefined,
-    event_handler: ?*const fn (*Layout, WidgetIdx, *const anyopaque, *anyopaque) void = null,
+    event_handler: ?*const fn (*anyopaque, WidgetIdx, *const anyopaque) void = null,
     event_handler_data: *anyopaque = undefined,
 };
 
@@ -130,6 +130,26 @@ pub const Layout = struct {
         }
     }
 
+    pub fn set_data(layout: *const Layout, idx: WidgetIdx, field: u8, value: *const anyopaque) void {
+        const t = layout.get(idx, .type);
+        switch (t) {
+            inline else => |wt| {
+                if (std.meta.fields(WidgetData(wt)).len == 0) {
+                    unreachable;
+                }
+                const _data = layout.data(idx, WidgetData(wt));
+                const _field: std.meta.FieldEnum(WidgetData(wt)) = @enumFromInt(field);
+                switch (_field) {
+                    inline else => |f| {
+                        const val: *const std.meta.FieldType(WidgetData(wt), f) = @alignCast(@ptrCast(value));
+                        @field(_data, @tagName(f)) = val.*;
+                    },
+                }
+            },
+        }
+        layout.request_draw(idx);
+    }
+
     pub fn get_ptr(
         self: *const Layout,
         idx: WidgetIdx,
@@ -153,6 +173,27 @@ pub const Layout = struct {
         value: std.meta.FieldType(WidgetAttrs, item),
     ) void {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
+    }
+
+    pub fn call_void(
+        self: *Layout,
+        idx: WidgetIdx,
+        comptime func: []const u8,
+        args: anytype,
+    ) void {
+        const t = self.get(idx, .type);
+
+        switch (t) {
+            inline else => |wt| {
+                if (@hasDecl(WidgetData(wt), func)) {
+                    const f = @field(WidgetData(wt), func);
+                    return @call(.auto, f, .{ self, idx } ++ args);
+                } else {
+                    std.log.info("t={}", .{t});
+                    @panic("asd");
+                }
+            },
+        }
     }
 
     pub fn call(
@@ -218,6 +259,16 @@ pub const Layout = struct {
         self.set(idx, .event_handler_data, @ptrCast(handler));
     }
 
+    pub fn set_handler2(
+        self: *Layout,
+        idx: WidgetIdx,
+        handler_fn: anytype,
+        handler_data: anytype,
+    ) void {
+        self.set(idx, .event_handler, @ptrCast(handler_fn));
+        self.set(idx, .event_handler_data, @ptrCast(handler_data));
+    }
+
     pub fn emit_event(
         self: *Layout,
         idx: WidgetIdx,
@@ -227,7 +278,7 @@ pub const Layout = struct {
         const handler_data = self.get(idx, .event_handler_data);
 
         if (handler) |h| {
-            @call(.auto, h, .{ self, idx, event, handler_data });
+            @call(.auto, h, .{ handler_data, idx, event });
         }
         // std.debug.assert(T.Event == @TypeOf(event));
     }

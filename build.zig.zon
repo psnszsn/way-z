@@ -6,7 +6,7 @@
     .dependencies = .{
         .libxev = .{
             .url = "https://github.com/mitchellh/libxev/archive/main.tar.gz",
-            .hash = "1220f05bb06ce2704ae7b183514ce415719469bf1fa025b3158c55f7cc4755cb1fa5",
+            .hash = "12205b8ea5495b812b9a8943535a7af8da556644d2c1599dc01e1a5ea7aaf59bb2c7",
         },
     },
 }
