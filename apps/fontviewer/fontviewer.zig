@@ -27,7 +27,10 @@ const PopupHandler = struct {
                     }
                 }
                 const rect = data.layout.get(idx, .rect);
-                const popup = app.new_popup(data.parent, data.widget, rect) catch unreachable;
+                const popup = app.new_surface(.{ .xdg_popup = .{
+                    .anchor = rect,
+                    .parent = data.parent.wl.xdg_toplevel.xdg_surface,
+                } }, data.widget) catch unreachable;
                 data.wl_surface = popup.wl_surface;
             },
             else => unreachable,
@@ -137,7 +140,7 @@ pub fn main() !void {
         break :b flex;
     };
 
-    const bar = try app.new_window(.xdg_toplevel, main_widget);
+    const bar = try app.new_surface(.xdg_toplevel, main_widget);
 
     const popup_flex = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
@@ -156,6 +159,9 @@ pub fn main() !void {
         .widget = popup_flex,
         .layout = layout,
     };
+    const btn = layout.add2(.button, .{});
+    const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, btn);
+    _ = sub_w; // autofix
 
     try app.client.recvEvents();
 }

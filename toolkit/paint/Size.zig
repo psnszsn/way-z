@@ -22,9 +22,21 @@ pub fn is_zero(self: Size) bool {
     return (self.width == 0 or self.height == 0);
 }
 
+pub fn is_eql(self: Size, other: Size) bool {
+    return self.width == other.width and
+        self.height == other.height;
+}
+
 pub fn contains(self: Size, size: Size) bool {
     return self.width >= size.width and
         self.height >= size.height;
+}
+
+pub fn unite(self: Size, other: Size) Size {
+    return .{
+        .width = @max(self.width, other.width),
+        .height = @max(self.height, other.height),
+    };
 }
 
 pub const Minmax = struct {

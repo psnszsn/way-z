@@ -15,7 +15,7 @@ fn bufferListener(_: *way.Client, wl_buffer: wl.Buffer, event: wl.Buffer.Event, 
 }
 
 var bufs_init = false;
-var bufs: [2]Buffer = undefined;
+var bufs: [3]Buffer = undefined;
 
 pub const Pool = struct {
     wl_pool: wl.ShmPool,
