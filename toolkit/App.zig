@@ -214,9 +214,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
 const std = @import("std");
 
 const App = @This();
-const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Point = @import("paint/Point.zig");
-const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
 const font = @import("font/bdf.zig");
 const Event = @import("event.zig").Event;
@@ -231,4 +229,3 @@ const wl = wlnd.wl;
 const wp = wlnd.wp;
 const xdg = wlnd.xdg;
 const zwlr = wlnd.zwlr;
-const Buffer = wlnd.shm.Buffer;

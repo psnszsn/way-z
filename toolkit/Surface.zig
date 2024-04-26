@@ -320,19 +320,14 @@ const std = @import("std");
 
 const App = @import("App.zig");
 const PaintCtx = @import("paint.zig").PaintCtxU32;
-const Point = @import("paint/Point.zig");
 const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
-const font = @import("font/bdf.zig");
-const Event = @import("event.zig").Event;
 
 const w = @import("widget.zig");
-const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;
 
 const wlnd = @import("wayland");
 const wl = wlnd.wl;
-const wp = wlnd.wp;
 const xdg = wlnd.xdg;
 const zwlr = wlnd.zwlr;
 const Buffer = wlnd.shm.Buffer;

@@ -303,8 +303,6 @@ pub const Client = struct {
         self.objects.items(item)[@intFromEnum(idx)] = value;
     }
 
-    const prx = @import("proxy.zig");
-
     pub fn request(
         self: *Client,
         idx: anytype,

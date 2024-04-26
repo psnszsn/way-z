@@ -1,5 +1,4 @@
 // const Color = @This();
-const std = @import("std");
 
 pub const ColorS = packed struct(u32) {
     b: u8,

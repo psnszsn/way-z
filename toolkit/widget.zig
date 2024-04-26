@@ -374,5 +374,4 @@ const std = @import("std");
 const PaintCtx = @import("paint.zig").PaintCtxU32;
 const Rect = @import("paint/Rect.zig");
 const Size = @import("paint/Size.zig");
-const Point = @import("paint/Point.zig");
 const Event = @import("event.zig").Event;

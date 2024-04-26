@@ -17,7 +17,7 @@ pub fn main() !void {
     children[2] = app.layout.add(.{ .type = .button });
     app.layout.set(flex, .children, children);
 
-    _ = try app.new_window(.wlr_layer_surface, flex);
+    _ = try app.new_surface(.wlr_layer_surface, flex);
 
     try app.client.recvEvents();
 }
