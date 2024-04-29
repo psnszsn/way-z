@@ -2,7 +2,8 @@ app: *App,
 root: WidgetIdx = undefined,
 
 wl_surface: wl.Surface,
-wl: union(SurfaceType) {
+role: union(SurfaceRole) {
+    const Role = @This();
     xdg_toplevel: struct {
         xdg_surface: xdg.Surface,
         xdg_toplevel: xdg.Toplevel,
@@ -12,7 +13,17 @@ wl: union(SurfaceType) {
         xdg_popup: xdg.Popup,
     },
     wlr_layer_surface: zwlr.LayerSurfaceV1,
-    wl_subsurface: wl.Subsurface,
+    wl_subsurface: struct {
+        wl_subsurface: wl.Subsurface,
+        pub fn set_position(self: *@This(), x: u32, y: u32) void {
+            const role: *Role = @fieldParentPtr("wl_subsurface", self);
+            const surface: *Surface = @alignCast(@fieldParentPtr("role", role));
+            const client = surface.app.client;
+
+            client.request(self.wl_subsurface, .set_position, .{ .x = @intCast(x), .y = @intCast(y) });
+            client.request(surface.wl_surface, .commit, {});
+        }
+    },
 },
 size: Size,
 min_size: Size,
@@ -20,27 +31,27 @@ last_frame: u32,
 frame_done: bool = true,
 initial_draw: bool = false,
 
-pub const SurfaceType = enum {
+pub const SurfaceRole = enum {
     xdg_toplevel,
     xdg_popup,
     wlr_layer_surface,
     wl_subsurface,
 };
 
-pub const SurfaceInitOpts = union(SurfaceType) {
+pub const SurfaceRoleInit = union(SurfaceRole) {
     xdg_toplevel: void,
     xdg_popup: struct { parent: xdg.Surface, anchor: Rect },
     wlr_layer_surface: void,
     wl_subsurface: struct { parent: wl.Surface },
 };
 
-pub fn init_wl(
+pub fn init_role(
     surface: *Surface,
-    stype: SurfaceInitOpts,
-) std.meta.FieldType(Surface, .wl) {
+    role: SurfaceRoleInit,
+) std.meta.FieldType(Surface, .role) {
     const app = surface.app;
     const client = app.client;
-    switch (stype) {
+    switch (role) {
         .wlr_layer_surface => {
             std.debug.assert(app.layer_shell != null);
             const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
@@ -67,8 +78,8 @@ pub fn init_wl(
             client.set_listener(xdg_toplevel, *Surface, Surface.xdg_toplevel_listener, surface);
             client.request(xdg_toplevel, .set_title, .{ .title = "Demo" });
             client.request(xdg_toplevel, .set_min_size, .{
-                .width = @intCast(surface.size.width),
-                .height = @intCast(surface.size.height),
+                .width = @intCast(surface.min_size.width),
+                .height = @intCast(surface.min_size.height),
             });
 
             return .{ .xdg_toplevel = .{
@@ -82,10 +93,12 @@ pub fn init_wl(
                 .parent = opts.parent,
             });
             // errdefer client.request(wl_subsurface), .destroy, {});
-            client.request(wl_subsurface, .set_sync, {});
+            client.request(wl_subsurface, .set_desync, {});
             client.request(wl_subsurface, .set_position, .{ .x = 500, .y = 22 });
 
-            return .{ .wl_subsurface = wl_subsurface };
+            surface.draw();
+
+            return .{ .wl_subsurface = .{ .wl_subsurface = wl_subsurface } };
         },
         .xdg_popup => |opts| {
             const xdg_surface = client.request(app.wm_base.?, .get_xdg_surface, .{ .surface = surface.wl_surface });
@@ -95,8 +108,8 @@ pub fn init_wl(
             defer client.request(positioner, .destroy, {});
 
             client.request(positioner, .set_size, .{
-                .width = @intCast(surface.size.width),
-                .height = @intCast(surface.size.height),
+                .width = @intCast(surface.min_size.width),
+                .height = @intCast(surface.min_size.height),
             });
             const anchor_rect = opts.anchor;
             client.request(positioner, .set_anchor_rect, .{
@@ -129,20 +142,16 @@ pub fn destroy(self: *Surface) void {
     const client = self.app.client;
     // const index = (@intFromPtr(self) - @intFromPtr(self.app.surfaces.items.ptr)) / @sizeOf(Surface);
     // std.log.info("index: {}", .{index});
-    switch (self.wl) {
+    switch (self.role) {
         .xdg_popup => |x| {
             client.request(x.xdg_popup, .destroy, {});
             client.request(x.xdg_surface, .destroy, {});
         },
-        .xdg_toplevel => |x| {
-            _ = x; // autofix
-        },
+        .xdg_toplevel => |_| {},
 
-        .wlr_layer_surface => |x| {
-            _ = x; // autofix
-        },
+        .wlr_layer_surface => |_| {},
         .wl_subsurface => |x| {
-            client.request(x, .destroy, {});
+            client.request(x.wl_subsurface, .destroy, {});
         },
     }
     client.request(self.wl_surface, .destroy, {});
@@ -159,10 +168,11 @@ pub fn schedule_redraw(self: *Surface) void {
 }
 
 pub fn draw(self: *Surface) void {
-    std.log.info("draw {}", .{std.meta.activeTag(self.wl)});
+    std.log.info("draw {}", .{std.meta.activeTag(self.role)});
     const client = self.app.client;
-    const buf = Buffer.get(self.app.client, self.app.shm.?, self.size.width, self.size.height) catch unreachable;
-    if (self.size.contains(self.min_size)) {
+    const size = self.app.layout.get(self.root, .rect).get_size();
+    const buf = Buffer.get(self.app.client, self.app.shm.?, size.width, size.height) catch unreachable;
+    if (size.contains(self.min_size)) {
         const ctx = PaintCtx{
             .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
             //TODO: use ptrCast directly when implemented in zig
@@ -176,7 +186,7 @@ pub fn draw(self: *Surface) void {
         @memset(buf.pool.mmap, 200);
     }
     client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
-    client.request(self.wl_surface, .damage, .{
+    client.request(self.wl_surface, .damage_buffer, .{
         .x = 0,
         .y = 0,
         .width = std.math.maxInt(i32),
@@ -222,12 +232,14 @@ fn layer_suface_listener(client: *wlnd.Client, layer_suface: zwlr.LayerSurfaceV1
                 surf.initial_draw = true;
             }
 
-            surf.size = .{
+            const size = Size{
                 .width = configure.width,
                 .height = configure.height,
             };
 
-            std.log.info("w: {} h: {}", .{ surf.size.width, surf.size.height });
+            surf.app.layout.set(surf.root, .rect, size.to_rect());
+
+            // std.log.info("w: {} h: {}", .{ surf.size.width, surf.size.height });
 
             // if (self.anchor.top and self.anchor.bottom) {
             //     self.size.height = @as(usize, @intCast(configure.height));
@@ -255,53 +267,53 @@ fn frame_listener(_: *wlnd.Client, _: wl.Callback, event: wl.Callback.Event, sur
     }
 }
 
-fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, win: *Surface) void {
+fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *Surface) void {
     switch (event) {
         .configure => |configure| {
+            std.log.info("configure={}", .{configure});
             client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
-            if (!win.initial_draw) {
-                win.draw();
-                var it = win.app.surfaces.valueIterator();
-                while (it.next()) |surface| {
-                    if (surface.wl == .wl_subsurface) {
-                        surface.draw();
-                    }
-                }
-                win.initial_draw = true;
+            if (!surf.initial_draw) {
+                surf.draw();
+                // for (surf.subsurfaces.items) |wl_surface|{
+                //     const subs = surf.app.surfaces.getPtr(wl_surface).?;
+                //     subs.draw();
+                // }
+                surf.initial_draw = true;
             }
         },
     }
 }
-fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, win: *Surface) void {
+fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *Surface) void {
     switch (event) {
         .configure => |configure| {
+            std.log.info("configure_top={}", .{configure});
             const configure_size = Size{
                 .width = @intCast(configure.width),
                 .height = @intCast(configure.height),
             };
             if (configure_size.is_zero()) return;
 
-            const new_size = configure_size.unite(win.min_size);
-            if (new_size.is_eql(win.size)) return;
+            const new_size = configure_size.unite(surf.min_size);
+            // const old_size = surf.app.layout.get(surf.root, .rect).get_size();
+            // if (new_size.is_eql(old_size)) {
+            //     std.log.info("old_size={}", .{old_size});
+            //     return;
+            // }
 
-            std.log.warn("configure event {}", .{configure});
+            // surf.size = new_size;
 
-            win.size = new_size;
-            win.schedule_redraw();
+            surf.app.layout.set_size(surf.root, Size.Minmax.tight(new_size));
+            surf.schedule_redraw();
 
-            _ = win.app.layout.call(win.root, .size, .{
-                Size.Minmax.tight(win.size),
-            });
-            std.log.info("w: {} h: {}", .{ win.size.width, win.size.height });
+            std.log.info("w: {} h: {}", .{ new_size.width, new_size.height });
         },
         .close => {
-            win.app.client.connection.is_running = false;
+            surf.app.client.connection.is_running = false;
         },
         else => {},
     }
 }
-fn xdg_popup_listener(client: *wlnd.Client, xdg_popup: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
-    _ = client; // autofix
+fn xdg_popup_listener(_: *wlnd.Client, xdg_popup: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
     switch (event) {
         .configure => |configure| {
             std.log.info("popup configure :{}", .{configure});

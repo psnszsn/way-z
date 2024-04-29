@@ -128,10 +128,8 @@ pub const BdfParser = struct {
                                 // state = .nochar;
                                 // continue;
                             } else {
-                                std.log.info("value={s}", .{value});
                                 c.encoding = std.fmt.parseInt(u21, value, 0) catch @panic("TODO");
                             }
-                            std.log.info("encoding={any}", .{c.encoding});
                         } else if (parse_prop(line, "BITMAP")) |_| {
                             const start_i = ci.it.index + 1;
                             for (0..c.bbx.height) |_| {
@@ -167,7 +165,7 @@ pub const BdfParser = struct {
                     const glyph_size: u32 = p.font.glyph_size();
                     p.font.glyph_data = try alloc.alloc(u8, masks.count() * 256 * glyph_size);
                     p.font.glyph_widths = try alloc.alloc(u8, masks.count() * 256);
-                    std.log.info("masks.count()={}", .{masks.count()});
+                    // std.log.info("masks.count()={}", .{masks.count()});
                     @memset(p.font.glyph_data, 0);
                     @memset(p.font.glyph_widths, 0);
                     p.font.range_masks = masks.masks;
@@ -190,7 +188,6 @@ pub const BdfParser = struct {
 
                     for (top_offset..top_offset + height) |i| {
                         const s = bitmap_it.next().?;
-                        std.log.info("s={s}", .{s});
 
                         const bytes_per_line = char.bbx.width / 9 + 1;
                         for (0..bytes_per_line) |b| {
@@ -216,21 +213,19 @@ pub const BdfParser = struct {
             .it = std.mem.tokenizeScalar(u8, buf, '\n'),
         };
         while (char_it.next()) |char| {
-            std.log.info("char={s}", .{char.bitmap});
             const range = char.encoding / 256;
             const i = range / 64;
             if (i > max_range_i) max_range_i = i;
             const mask = @as(usize, 1) << @as(u6, @intCast(range % 64));
-            std.debug.print("char name {s}", .{char.name});
             range_mask[i] |= mask;
         }
-        for (range_mask, 0..) |m, m_i| {
-            for (0..64) |i| {
-                if (m & (@as(usize, 1) << @intCast(i)) != 0) {
-                    std.log.info("bit={}", .{m_i * 64 + i});
-                }
-            }
-        }
+        // for (range_mask, 0..) |m, m_i| {
+        //     for (0..64) |i| {
+        //         if (m & (@as(usize, 1) << @intCast(i)) != 0) {
+        //             std.log.info("bit={}", .{m_i * 64 + i});
+        //         }
+        //     }
+        // }
         // std.posix.exit(66);
         // std.log.info("max_range_i={}", .{max_range_i});
         return .{ .masks = alloc.dupe(usize, range_mask[0 .. max_range_i + 1]) catch @panic("OOM") };

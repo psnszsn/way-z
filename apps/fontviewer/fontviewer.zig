@@ -29,7 +29,7 @@ const PopupHandler = struct {
                 const rect = data.layout.get(idx, .rect);
                 const popup = app.new_surface(.{ .xdg_popup = .{
                     .anchor = rect,
-                    .parent = data.parent.wl.xdg_toplevel.xdg_surface,
+                    .parent = data.parent.role.xdg_toplevel.xdg_surface,
                 } }, data.widget) catch unreachable;
                 data.wl_surface = popup.wl_surface;
             },
@@ -111,6 +111,7 @@ pub fn main() !void {
         .font = app.font,
     };
 
+    var scrollable: WidgetIdx = undefined;
     const main_widget = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
         const menu_bar = c: {
@@ -130,8 +131,11 @@ pub fn main() !void {
             .columns = 32,
             .font = app.font,
         });
+        scrollable = layout.add2(.scrollable, .{});
+        layout.set(scrollable, .flex, 1);
+
         layout.set_handler2(font_map, &font_map_handler, &s);
-        layout.set(flex, .children, &.{ menu_bar, font_map, font_view });
+        layout.set(flex, .children, &.{ menu_bar, font_map, font_view, scrollable });
 
         s.connect(.selected_range, font_map, FontMap, .selected_range);
         s.connect(.selected_glyph, font_map, FontMap, .selected_code_point);
@@ -161,7 +165,7 @@ pub fn main() !void {
     };
     const btn = layout.add2(.button, .{});
     const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, btn);
-    _ = sub_w; // autofix
+    layout.set(scrollable, .subsurface, sub_w.wl_surface);
 
     try app.client.recvEvents();
 }

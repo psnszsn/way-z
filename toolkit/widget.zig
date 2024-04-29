@@ -14,6 +14,7 @@ const WidgetAttrs = struct {
     data: usize = undefined,
     event_handler: ?*const fn (*anyopaque, WidgetIdx, *const anyopaque) void = null,
     event_handler_data: *anyopaque = undefined,
+    subsurface: ?@import("wayland").wl.Surface = null,
 };
 
 const root = @import("root");
@@ -22,6 +23,7 @@ const common_w_types = .{
     .flex = @import("widgets/Flex.zig"),
     .button = @import("widgets/Button.zig"),
     .label = @import("widgets/Label.zig"),
+    .scrollable = @import("widgets/Scrollable.zig"),
     // .menu_bar = @import("widgets/MenuBar.zig"),
 };
 const widget_names = std.meta.fieldNames(@TypeOf(root_w_types)) ++ std.meta.fieldNames(@TypeOf(common_w_types));
@@ -173,6 +175,20 @@ pub const Layout = struct {
         value: std.meta.FieldType(WidgetAttrs, item),
     ) void {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
+        if (item != .rect) return;
+        if (self.get(idx, .subsurface)) |wl_surface| {
+            const subs = self.get_app().surfaces.getPtr(wl_surface).?;
+            subs.role.wl_subsurface.set_position(value.x, value.y);
+        }
+    }
+
+    pub fn set_size(
+        self: *Layout,
+        idx: WidgetIdx,
+        constraints: Size.Minmax,
+    ) void {
+        const size = self.call(idx, .size, .{constraints});
+        self.set(idx, .rect, size.to_rect());
     }
 
     pub fn call_void(

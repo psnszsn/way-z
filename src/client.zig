@@ -323,10 +323,11 @@ pub const Client = struct {
         }
     }
     pub fn bind(client: *Client, idx: wl.Registry, _name: u32, comptime T: type, _version: u32) T {
+        const v = @min(T.interface.version, _version);
         var _args = [_]Argument{
             .{ .uint = _name },
             .{ .string = T.interface.name },
-            .{ .uint = _version },
+            .{ .uint = v },
             .{ .new_id = 0 },
         };
         const proxy = Proxy{ .client = client, .id = @intFromEnum(idx) };
@@ -341,7 +342,7 @@ fn displayListener(client: *Client, _: wl.Display, event: wl.Display.Event, _: ?
         },
         .delete_id => |del| {
             const id = del.id;
-            std.log.info("del id {}", .{id});
+            // std.log.info("del id {}", .{id});
             std.debug.assert(client.objects.items(.is_free)[id] == false);
             client.objects.items(.is_free)[id] = true;
         },

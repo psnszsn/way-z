@@ -19,7 +19,6 @@ cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
 // surfaces: std.ArrayListUnmanaged(Surface) = .{},
 surfaces: std.AutoHashMapUnmanaged(wl.Surface, Surface) = .{},
-subsurfaces: std.AutoHashMapUnmanaged(wl.Subsurface, Surface) = .{},
 active_surface: ?wl.Surface = null,
 
 layout: Layout = .{},
@@ -56,10 +55,10 @@ pub fn deinit(app: *App) void {
     alloc.destroy(app);
 }
 
-pub fn new_surface(app: *App, opts: Surface.SurfaceInitOpts, root_widget: WidgetIdx) !*Surface {
+pub fn new_surface(app: *App, opts: Surface.SurfaceRoleInit, root_widget: WidgetIdx) !*Surface {
     const surf = try new_common(app, root_widget);
 
-    surf.wl = Surface.init_wl(surf, opts);
+    surf.role = Surface.init_role(surf, opts);
 
     app.client.request(surf.wl_surface, .commit, {});
     return surf;
@@ -74,12 +73,13 @@ pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
     const surf = result.value_ptr;
 
     const size = app.layout.call(root_widget, .size, .{Size.Minmax.ZERO});
+    app.layout.set(root_widget, .rect, size.to_rect());
     surf.* = .{
         .app = app,
         .wl_surface = wl_surface,
-        .wl = undefined,
-        .size = size,
+        .role = undefined,
         .min_size = size,
+        .size = size,
         .last_frame = 0,
         .root = root_widget,
     };
@@ -101,19 +101,19 @@ pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.
     switch (event) {
         .global => |global| {
             if (std.mem.orderZ(u8, global.interface, wl.Compositor.interface.name) == .eq) {
-                context.compositor = client.bind(registry, global.name, wl.Compositor, 1);
+                context.compositor = client.bind(registry, global.name, wl.Compositor, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Shm.interface.name) == .eq) {
-                context.shm = client.bind(registry, global.name, wl.Shm, 1);
+                context.shm = client.bind(registry, global.name, wl.Shm, global.version);
             } else if (std.mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
-                context.wm_base = client.bind(registry, global.name, xdg.WmBase, 1);
+                context.wm_base = client.bind(registry, global.name, xdg.WmBase, global.version);
             } else if (std.mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, 1);
+                context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
-                context.cursor_shape_manager = client.bind(registry, global.name, wp.CursorShapeManagerV1, 1);
+                context.cursor_shape_manager = client.bind(registry, global.name, wp.CursorShapeManagerV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Subcompositor.interface.name) == .eq) {
-                context.subcompositor = client.bind(registry, global.name, wl.Subcompositor, 1);
+                context.subcompositor = client.bind(registry, global.name, wl.Subcompositor, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
-                context.seat = client.bind(registry, global.name, wl.Seat, 1);
+                context.seat = client.bind(registry, global.name, wl.Seat, global.version);
                 client.set_listener(context.seat.?, *App, seat_listener, context);
             }
         },
@@ -166,6 +166,10 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
         },
         .button => |ev| blk: {
             break :blk .{ .button = .{ .button = @enumFromInt(ev.button), .state = ev.state } };
+        },
+        .frame => |_| blk: {
+            // TODO
+            break :blk null;
         },
         else => |d| blk: {
             std.log.info("pointer event: {}", .{d});
