@@ -163,8 +163,13 @@ pub fn main() !void {
         .widget = popup_flex,
         .layout = layout,
     };
-    const btn = layout.add2(.button, .{});
-    const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, btn);
+    var btns: [10]WidgetIdx = undefined;
+    for (&btns) |*btn| {
+        btn.* = layout.add2(.button, .{});
+    }
+    const flex = layout.add2(.flex, .{ .orientation = .vertical });
+    layout.set(flex, .children, &btns);
+    const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, flex);
     layout.set(scrollable, .subsurface, sub_w.wl_surface);
 
     try app.client.recvEvents();

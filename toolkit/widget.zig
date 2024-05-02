@@ -87,7 +87,7 @@ pub const Layout = struct {
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {
         try self.widgets.ensureTotalCapacity(alloc, 100);
-        const widget_data = try alloc.alloc(u8, 100);
+        const widget_data = try alloc.alloc(u8, 500);
         self.widget_alloc = std.heap.FixedBufferAllocator.init(widget_data);
     }
     pub fn deinit(self: *Layout, alloc: std.mem.Allocator) void {

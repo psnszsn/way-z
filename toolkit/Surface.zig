@@ -30,6 +30,7 @@ min_size: Size,
 last_frame: u32,
 frame_done: bool = true,
 initial_draw: bool = false,
+pool: shm.Pool = undefined,
 
 pub const SurfaceRole = enum {
     xdg_toplevel,
@@ -171,21 +172,22 @@ pub fn draw(self: *Surface) void {
     std.log.info("draw {}", .{std.meta.activeTag(self.role)});
     const client = self.app.client;
     const size = self.app.layout.get(self.root, .rect).get_size();
-    const buf = Buffer.get(self.app.client, self.app.shm.?, size.width, size.height) catch unreachable;
+    const buf = self.pool.get_buffer(client, size.width, size.height);
     if (size.contains(self.min_size)) {
         const ctx = PaintCtx{
-            .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.pool.mmap)),
+            .buffer = @ptrCast(std.mem.bytesAsSlice(u32, self.pool.mmap)),
             //TODO: use ptrCast directly when implemented in zig
             // .buffer = @ptrCast(buf.pool.mmap),
             .width = buf.width,
             .height = buf.height,
         };
-        @memset(buf.pool.mmap, 155);
+        @memset(self.pool.mmap, 155);
         self.draw_root_widget(ctx);
     } else {
-        @memset(buf.pool.mmap, 200);
+        @memset(self.pool.mmap, 200);
     }
     client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
+    // client.request(self.wl_surface, .offset, .{ .x = 220, .y = 220 });
     client.request(self.wl_surface, .damage_buffer, .{
         .x = 0,
         .y = 0,
@@ -342,5 +344,5 @@ const wlnd = @import("wayland");
 const wl = wlnd.wl;
 const xdg = wlnd.xdg;
 const zwlr = wlnd.zwlr;
-const Buffer = wlnd.shm.Buffer;
+const shm = wlnd.shm;
 const Surface = @This();

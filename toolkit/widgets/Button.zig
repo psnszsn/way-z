@@ -23,7 +23,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx)
 
 pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
     layout.request_draw(idx);
-    std.log.info("event: {}", .{event});
+    // std.log.info("event: {}", .{event});
     switch (event.pointer) {
         .enter => {
             layout.set_cursor_shape(.pointer);
