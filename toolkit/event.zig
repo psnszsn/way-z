@@ -17,6 +17,9 @@ pub const Event = union(enum) {
         enter: void,
         leave: void,
         motion: Point,
+        axis: struct {
+            value: i32,
+        },
         button: struct {
             button: MouseButton, // button that produced the event
             state: wl.Pointer.ButtonState, // physical state of the button
