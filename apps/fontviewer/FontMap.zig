@@ -39,7 +39,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bo
         if (glyph == self.selected_code_point) {
             paint_ctx.fill(.{ .rect = outer_rect, .color = .red });
         }
-        outer_rect.shrinkUniform(letter_padding / 2);
+        outer_rect.shrink_uniform(letter_padding / 2);
 
         outer_rect.x = outer_rect.get_center().x - bitmap.width / 2;
         _ = paint_ctx.char(glyph, .{ .rect = outer_rect, .font = font, .color = .black });

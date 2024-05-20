@@ -14,7 +14,7 @@ const WidgetAttrs = struct {
     data: usize = undefined,
     event_handler: ?*const fn (*anyopaque, WidgetIdx, *const anyopaque) void = null,
     event_handler_data: *anyopaque = undefined,
-    subsurface: ?@import("wayland").wl.Surface = null,
+    // subsurface: ?@import("wayland").wl.Surface = null,
 };
 
 const root = @import("root");
@@ -175,11 +175,11 @@ pub const Layout = struct {
         value: std.meta.FieldType(WidgetAttrs, item),
     ) void {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
-        if (item != .rect) return;
-        if (self.get(idx, .subsurface)) |wl_surface| {
-            const subs = self.get_app().surfaces.getPtr(wl_surface).?;
-            subs.role.wl_subsurface.set_position(value.x, value.y);
-        }
+        // if (item != .rect) return;
+        // if (self.get(idx, .subsurface)) |wl_surface| {
+        //     const subs = self.get_app().surfaces.getPtr(wl_surface).?;
+        //     subs.role.wl_subsurface.set_position(value.x, value.y);
+        // }
     }
 
     pub fn set_size(
@@ -285,6 +285,20 @@ pub const Layout = struct {
         self.set(idx, .event_handler_data, @ptrCast(handler_data));
     }
 
+    pub fn absolute_rect(
+        layout: *const Layout,
+        idx: WidgetIdx,
+    ) Rect {
+        var r = layout.get(idx, .rect);
+        var parent = layout.get(idx, .parent);
+        while (parent) |par| {
+            const parent_rect = layout.get(par, .rect);
+            r.translate_by(parent_rect.x, parent_rect.y);
+            parent = layout.get(par, .parent);
+        }
+        return r;
+    }
+
     pub fn emit_event(
         self: *Layout,
         idx: WidgetIdx,
@@ -316,12 +330,7 @@ const ChildWidgetIterator = struct {
     depth: u8 = 0,
     next_child_stack: [5]usize = .{0} ** 5,
 
-    pub fn next(it: *ChildWidgetIterator) ?WidgetIdx {
-        if (it.depth == 0 and it.next_child_stack[0] == 0) {
-            it.depth += 1;
-            return it.parent;
-        }
-
+    pub fn next_sibling(it: *ChildWidgetIterator) ?WidgetIdx {
         const parent_children = it.layout.get(it.parent, .children);
         if (it.next_child_stack[it.depth] < parent_children.len) {
             const new = parent_children[it.next_child_stack[it.depth]];
@@ -334,16 +343,30 @@ const ChildWidgetIterator = struct {
             }
             return new;
         }
+        return null;
+    }
+
+    pub fn next(it: *ChildWidgetIterator) ?WidgetIdx {
+        // defer std.debug.print("it.depth={}\n\n", .{it.depth});
+        // defer std.debug.print("it.next_child_stack={any} depth={}\n\n", .{
+        //     it.next_child_stack,
+        //     it.depth,
+        // });
+        if (it.depth == 0 and it.next_child_stack[0] == 0) {
+            it.depth += 1;
+            return it.parent;
+        }
+
+        if (it.next_sibling()) |n| return n;
+
         // if there are no children, next is the first ancestor's sibling
         while (it.depth > 1) {
+            it.next_child_stack[it.depth] = 0;
             it.depth -= 1;
             const grand_parent = it.layout.get(it.parent, .parent).?;
-            const grandparent_children = it.layout.get(grand_parent, .children);
-            defer it.parent = grand_parent;
-            if (it.next_child_stack[it.depth] < grandparent_children.len) {
-                defer it.next_child_stack[it.depth] += 1;
-                return grandparent_children[it.next_child_stack[it.depth]];
-            }
+            it.parent = grand_parent;
+
+            if (it.next_sibling()) |n| return n;
         }
 
         return null;
@@ -363,6 +386,11 @@ test ChildWidgetIterator {
 
     layout.set(flex, .children, &.{ btn1, btn2, btn3, btn4 });
 
+    const btn2_c1 = layout.add2(.button, .{});
+    const btn2_c2 = layout.add2(.button, .{});
+
+    layout.set(btn2, .children, &.{ btn2_c1, btn2_c2 });
+
     const btn3_c1 = layout.add2(.button, .{});
     const btn3_c2 = layout.add2(.button, .{});
 
@@ -377,7 +405,10 @@ test ChildWidgetIterator {
     try std.testing.expectEqual(iter.next(), flex);
     try std.testing.expectEqual(iter.next(), btn1);
     try std.testing.expectEqual(iter.next(), btn2);
+    try std.testing.expectEqual(iter.next(), btn2_c1);
+    try std.testing.expectEqual(iter.next(), btn2_c2);
     try std.testing.expectEqual(iter.next(), btn3);
+    // std.debug.print("it={}\n", .{iter});
     try std.testing.expectEqual(iter.next(), btn3_c1);
     try std.testing.expectEqual(iter.next(), btn3_c1_c1);
     try std.testing.expectEqual(iter.next(), btn3_c1_c2);

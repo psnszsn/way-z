@@ -20,13 +20,13 @@ pub inline fn left(self: *const Rect) u32 {
     return self.x;
 }
 pub inline fn right(self: *const Rect) u32 {
-    return self.x + self.width - 1;
+    return self.x + (self.width);
 }
 pub inline fn top(self: *const Rect) u32 {
     return self.y;
 }
 pub inline fn bottom(self: *const Rect) u32 {
-    return self.y + self.height - 1;
+    return self.y + (self.height);
 }
 
 pub fn contains_rect(self: Rect, other: Rect) bool {
@@ -49,8 +49,8 @@ pub fn intersect(self: *Rect, other: Rect) void {
 
     self.x = l;
     self.y = t;
-    self.width = (r - l) + 1;
-    self.height = (b - t) + 1;
+    self.width = (r - l);
+    self.height = (b - t);
 }
 
 pub fn contains(self: Rect, x: u32, y: u32) bool {
@@ -77,7 +77,7 @@ pub fn shrink(self: *Rect, top_: u32, right_: u32, bottom_: u32, left_: u32) voi
     self.height -= top_ + bottom_;
 }
 
-pub fn shrinkUniform(self: *Rect, s: u32) void {
+pub fn shrink_uniform(self: *Rect, s: u32) void {
     self.shrink(s, s, s, s);
 }
 
@@ -102,12 +102,23 @@ pub fn translate_by(self: *Rect, x: u32, y: u32) void {
     // std.debug.assert(self.y <= self.height);
 }
 
-pub fn translated(self: Rect, x: u32, y: u32) Rect {
+pub fn add_sat(x: anytype, y: anytype) struct { @TypeOf(x), @TypeOf(x) } {
+    const y_abs: @TypeOf(x) = @intCast(@abs(y));
+    if (y > 0) return .{ x + y_abs, 0 };
+    // return x - y_abs;
+    return .{ std.math.sub(@TypeOf(x), x, y_abs) catch {
+        return .{ 0, 0 };
+    }, 0 };
+}
+pub fn translated(self: Rect, x: i64, y: i64) Rect {
+    // pub fn translated(self: Rect, x: u32, y: u32) Rect {
+    const res, const overflow = add_sat(self.x, x);
+    const resy, const overflowy = add_sat(self.y, y);
     return .{
-        .x = self.x + x,
-        .y = self.y + y,
-        .width = self.width,
-        .height = self.height,
+        .x = res,
+        .y = resy,
+        .width = self.width - overflow,
+        .height = self.height - overflowy,
     };
 }
 

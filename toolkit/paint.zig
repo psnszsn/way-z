@@ -12,6 +12,7 @@ pub fn PaintCtx(comptime Color: type) type {
         buffer: []Color,
         width: u32,
         height: u32,
+        clip: Rect,
 
         pub inline fn rect(self: *const Self) Rect {
             return .{
@@ -33,6 +34,8 @@ pub fn PaintCtx(comptime Color: type) type {
             const actual_y = if (opts.rect) |r| r.y + y else y;
             const actual_x = if (opts.rect) |r| r.x + x else x;
             if (opts.scale == 1) {
+                if (!self.clip.contains(actual_x, actual_y)) return;
+                if (actual_x >= self.width or actual_y >= self.height) return;
                 std.debug.assert(actual_x < self.width);
                 std.debug.assert(actual_y < self.height);
                 self.buffer[actual_y * self.width + actual_x] = opts.color;
@@ -52,8 +55,12 @@ pub fn PaintCtx(comptime Color: type) type {
         }
 
         pub fn fill(self: *const Self, opts: DrawCharOpts) void {
-            const rct = opts.rect orelse self.rect();
-            for (rct.top()..rct.bottom() + 1) |y| {
+            var rct = opts.rect orelse self.rect();
+            // if (!self.clip.contains_rect(rct)) return;
+            rct.intersect(self.clip);
+            // std.log.info("top {} bottom {}", .{top,bottom});
+            for (rct.top()..rct.bottom()) |y| {
+                // for (top..bottom + 1) |y| {
                 @memset(self.buffer[y * self.width + rct.x ..][0..rct.width], opts.color);
             }
         }
@@ -226,7 +233,7 @@ pub fn PaintCtx(comptime Color: type) type {
 
             // background
             self.fill(.{ .rect = opts.rect, .color = color_bg });
-            const offset = opts.depth - 1;
+            const offset = opts.depth;
 
             //shadow
             self.line(
@@ -268,6 +275,22 @@ pub fn PaintCtx(comptime Color: type) type {
                     self.putRaw(p.x, p.y, Color.NamedColor.red);
                 }
             }
+        }
+
+        pub const ClippedPaintCtx = struct {
+            ctx: *const Self,
+            clip: Rect,
+        };
+        pub fn clipped_painter(self: *const Self, clip: Rect) ClippedPaintCtx {
+            return .{
+                .ctx = self,
+                .clip = clip,
+            };
+        }
+        pub fn with_clip(self: *const Self, clip: Rect) Self {
+            var s = self.*;
+            s.clip = clip;
+            return s;
         }
     };
 }

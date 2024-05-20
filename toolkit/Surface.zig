@@ -180,6 +180,7 @@ pub fn draw(self: *Surface) void {
             // .buffer = @ptrCast(buf.pool.mmap),
             .width = buf.width,
             .height = buf.height,
+            .clip = size.to_rect(),
         };
         @memset(self.pool.mmap, 155);
         self.draw_root_widget(ctx);
@@ -199,28 +200,11 @@ pub fn draw(self: *Surface) void {
 
 pub fn draw_root_widget(surf: *Surface, ctx: PaintCtx) void {
     const app = surf.app;
-    app.layout.widgets.items(.rect)[@intFromEnum(surf.root)] = .{
-        .x = 0,
-        .y = 0,
-        .width = ctx.width,
-        .height = ctx.height,
-    };
-
     var iter = app.layout.child_iterator(surf.root);
     while (iter.next()) |idx| {
-        // const t = app.layout.get(idx, .type);
-        // std.log.info("idx={} type={}", .{ idx, t });
-        const rect = b: {
-            var r = app.layout.get(idx, .rect);
-            var parent = app.layout.get(idx, .parent);
-            while (parent) |par| {
-                const parent_rect = app.layout.get(par, .rect);
-                r.translate_by(parent_rect.x, parent_rect.y);
-                parent = app.layout.get(par, .parent);
-            }
-            break :b r;
-        };
-        _ = app.layout.call(idx, .draw, .{ rect, ctx });
+        // defer std.log.info("it.depth={}", .{iter.depth});
+        const rect = app.layout.absolute_rect(idx);
+        _ = app.layout.call(idx, .draw, .{ rect, ctx.with_clip(rect) });
     }
 }
 
@@ -302,7 +286,7 @@ fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.E
             //     return;
             // }
 
-            // surf.size = new_size;
+            surf.size = new_size;
 
             surf.app.layout.set_size(surf.root, Size.Minmax.tight(new_size));
             surf.schedule_redraw();

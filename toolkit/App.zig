@@ -172,8 +172,13 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             // TODO
             break :blk null;
         },
+        .axis => |ev| blk: {
+            std.log.info("ev={}", .{ev});
+
+            break :blk .{ .axis = .{ .value = ev.value.toInt() } };
+        },
         else => |d| blk: {
-            std.log.info("pointer event: {}", .{d});
+            std.log.info("pointer event: {}\n", .{d});
             break :blk null;
         },
     };
@@ -183,7 +188,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
     var iter = app.layout.child_iterator(active_surface.root);
     while (iter.next()) |idx| {
         // std.log.info("id: {}", .{idx});
-        const rect = app.layout.get(idx, .rect);
+        const rect = app.layout.absolute_rect(idx);
         const was_pressed = app.layout.get(idx, .pressed);
         const was_hover = app.layout.get(idx, .hover);
         const is_hover = rect.contains_point(app.pointer_position);

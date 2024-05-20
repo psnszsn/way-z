@@ -111,7 +111,6 @@ pub fn main() !void {
         .font = app.font,
     };
 
-    var scrollable: WidgetIdx = undefined;
     const main_widget = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
         const menu_bar = c: {
@@ -131,11 +130,27 @@ pub fn main() !void {
             .columns = 32,
             .font = app.font,
         });
-        scrollable = layout.add2(.scrollable, .{});
-        layout.set(scrollable, .flex, 1);
+
+        const scrollable = s: {
+            var btns: [10]WidgetIdx = undefined;
+            for (&btns) |*btn| {
+                btn.* = layout.add2(.button, .{});
+            }
+            const subflex = layout.add2(.flex, .{ .orientation = .vertical });
+
+            const scrollable = layout.add2(.scrollable, .{ .widget = subflex });
+            layout.set(subflex, .children, &btns);
+            layout.set(scrollable, .flex, 1);
+            break :s scrollable;
+        };
 
         layout.set_handler2(font_map, &font_map_handler, &s);
-        layout.set(flex, .children, &.{ menu_bar, font_map, font_view, scrollable });
+        layout.set(flex, .children, &.{
+            menu_bar,
+            font_map,
+            font_view,
+            scrollable,
+        });
 
         s.connect(.selected_range, font_map, FontMap, .selected_range);
         s.connect(.selected_glyph, font_map, FontMap, .selected_code_point);
@@ -143,8 +158,6 @@ pub fn main() !void {
 
         break :b flex;
     };
-
-    const bar = try app.new_surface(.xdg_toplevel, main_widget);
 
     const popup_flex = b: {
         const flex = layout.add2(.flex, .{ .orientation = .vertical });
@@ -157,20 +170,16 @@ pub fn main() !void {
         break :b flex;
     };
 
+    // const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, flex);
+    // _ = sub_w; // autofix
+
+    const bar = try app.new_surface(.xdg_toplevel, main_widget);
     popup_handler = .{
         .wl_surface = null,
         .parent = bar,
         .widget = popup_flex,
         .layout = layout,
     };
-    var btns: [10]WidgetIdx = undefined;
-    for (&btns) |*btn| {
-        btn.* = layout.add2(.button, .{});
-    }
-    const flex = layout.add2(.flex, .{ .orientation = .vertical });
-    layout.set(flex, .children, &btns);
-    const sub_w = try app.new_surface(.{ .wl_subsurface = .{ .parent = bar.wl_surface } }, flex);
-    layout.set(scrollable, .subsurface, sub_w.wl_surface);
 
     try app.client.recvEvents();
 }
