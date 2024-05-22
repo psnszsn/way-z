@@ -132,7 +132,7 @@ pub fn main() !void {
         });
 
         const scrollable = s: {
-            var btns: [10]WidgetIdx = undefined;
+            var btns: [20]WidgetIdx = undefined;
             for (&btns) |*btn| {
                 btn.* = layout.add2(.button, .{});
             }

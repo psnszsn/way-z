@@ -56,8 +56,8 @@ pub fn PaintCtx(comptime Color: type) type {
 
         pub fn fill(self: *const Self, opts: DrawCharOpts) void {
             var rct = opts.rect orelse self.rect();
-            // if (!self.clip.contains_rect(rct)) return;
             rct.intersect(self.clip);
+            // rct.intersect(self.rect());
             // std.log.info("top {} bottom {}", .{top,bottom});
             for (rct.top()..rct.bottom()) |y| {
                 // for (top..bottom + 1) |y| {

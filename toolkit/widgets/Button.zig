@@ -44,8 +44,8 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
 pub fn size(layout: *Layout, idx: WidgetIdx, minmax: tk.Size.Minmax) tk.Size {
     _ = minmax; // autofix
     const children = layout.get(idx, .children);
-    const rect = layout.get(idx, .rect);
-    std.log.info("minmax: {}", .{rect});
+    // const rect = layout.get(idx, .rect);
+    // std.log.info("minmax: {}", .{rect});
     std.debug.assert(children.len <= 1);
 
     if (children.len == 1) {
