@@ -36,6 +36,11 @@ pub fn contains_rect(self: Rect, other: Rect) bool {
         self.bottom() >= other.bottom();
 }
 
+pub fn intersected(self: Rect, other: Rect) Rect {
+    var rect = self;
+    rect.intersect(other);
+    return rect;
+}
 pub fn intersect(self: *Rect, other: Rect) void {
     const l = @max(self.left(), other.left());
     const r = @min(self.right(), other.right());

@@ -11,10 +11,11 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
     }
 }
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: tk.PaintCtx) bool {
-    paint_ctx.fill(.{ .color = .pink, .rect = rect });
+pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: tk.PaintCtx) bool {
+    paint_ctx.fill(.{ .color = .pink });
     const self = layout.data(idx, FontView);
     const bitmap = self.font.glyphBitmap(self.code_point);
+    const rect = paint_ctx.clip;
 
     for (0..self.font.glyph_height) |_y| {
         const y: u8 = @intCast(_y);
@@ -27,7 +28,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: tk.PaintC
                 .height = scale,
             };
             const c: tk.Color = if (bitmap.bitAt(x, y)) .black else .white;
-            paint_ctx.fill(.{ .rect = pixel_rect, .color = c });
+            paint_ctx.with_clip(pixel_rect).fill(.{ .color = c });
         }
     }
 

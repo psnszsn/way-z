@@ -11,11 +11,11 @@ on_click_event: u8 = 0,
 
 pub const Event = union(enum) { click: void };
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx) bool {
+pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
     const hover = layout.get(idx, .hover);
     const pressed = layout.get(idx, .pressed);
 
-    paint_ctx.panel(.{ .rect = rect, .hover = hover, .press = pressed });
+    paint_ctx.panel(.{ .hover = hover, .press = pressed });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });
 
     return true;

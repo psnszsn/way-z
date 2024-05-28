@@ -24,15 +24,16 @@ pub fn PaintCtx(comptime Color: type) type {
         }
 
         const DrawCharOpts = struct {
-            rect: ?Rect = null,
             color: Color = Color.default,
             font: ?*Font = null,
             scale: u32 = 1,
         };
 
         pub inline fn pixel(self: *const Self, x: u32, y: u32, opts: DrawCharOpts) void {
-            const actual_y = if (opts.rect) |r| r.y + y else y;
-            const actual_x = if (opts.rect) |r| r.x + x else x;
+            // const actual_y = if (opts.rect) |r| r.y + y else y;
+            // const actual_x = if (opts.rect) |r| r.x + x else x;
+            const actual_y = self.clip.y + y;
+            const actual_x = self.clip.x + x;
             if (opts.scale == 1) {
                 if (!self.clip.contains(actual_x, actual_y)) return;
                 if (actual_x >= self.width or actual_y >= self.height) return;
@@ -40,24 +41,23 @@ pub fn PaintCtx(comptime Color: type) type {
                 std.debug.assert(actual_y < self.height);
                 self.buffer[actual_y * self.width + actual_x] = opts.color;
             } else {
-                self.fill(.{
-                    .rect = .{
-                        .x = actual_x,
-                        .y = actual_y,
-                        // .x = actual_x * opts.scale,
-                        // .y = actual_y * opts.scale,
-                        .width = opts.scale,
-                        .height = opts.scale,
-                    },
+                const nc = self.with_clip(.{
+                    .x = actual_x,
+                    .y = actual_y,
+                    // .x = actual_x * opts.scale,
+                    // .y = actual_y * opts.scale,
+                    .width = opts.scale,
+                    .height = opts.scale,
+                });
+                nc.fill(.{
                     .color = opts.color,
                 });
             }
         }
 
         pub fn fill(self: *const Self, opts: DrawCharOpts) void {
-            var rct = opts.rect orelse self.rect();
-            rct.intersect(self.clip);
-            // rct.intersect(self.rect());
+            var rct = self.clip;
+            rct.intersect(self.rect());
             // std.log.info("top {} bottom {}", .{top,bottom});
             for (rct.top()..rct.bottom()) |y| {
                 // for (top..bottom + 1) |y| {
@@ -74,7 +74,7 @@ pub fn PaintCtx(comptime Color: type) type {
                 for (0..bitmap.width) |_x| {
                     const x: u8 = @intCast(_x);
                     if (bitmap.bitAt(x, y)) {
-                        self.pixel(x, y, .{ .rect = opts.rect, .color = opts.color, .scale = opts.scale });
+                        self.pixel(x, y, .{ .color = opts.color, .scale = opts.scale });
                     }
                 }
             }
@@ -83,8 +83,8 @@ pub fn PaintCtx(comptime Color: type) type {
         pub fn text(self: *const Self, _text: []const u8, opts: DrawCharOpts) void {
             const s = std.unicode.Utf8View.init(_text) catch unreachable;
             var it = s.iterator();
-            var i: u32 = 0;
-            var glyph_rect = opts.rect orelse self.rect();
+            var glyph_rect = self.clip;
+
             const font = opts.font.?;
             glyph_rect.width = font.glyph_width;
             glyph_rect.height = font.glyph_height;
@@ -93,9 +93,9 @@ pub fn PaintCtx(comptime Color: type) type {
                 // if (code_point == ' ') {
                 //     continue;
                 // }
-                const drawn_size = self.char(code_point, .{ .rect = glyph_rect, .font = font, .color = opts.color, .scale = opts.scale });
+                var nc = self.with_clip(glyph_rect);
+                const drawn_size = nc.char(code_point, .{ .font = font, .color = opts.color, .scale = opts.scale });
                 glyph_rect.translate_by(drawn_size.width + font.glyph_spacing, 0);
-                i += 1;
             }
         }
 
@@ -214,7 +214,6 @@ pub fn PaintCtx(comptime Color: type) type {
             depth: u8 = 1,
             hover: bool = false,
             press: bool = false,
-            rect: Rect,
         };
 
         pub fn panel(self: *const Self, opts: DrawPanelOpts) void {
@@ -232,35 +231,36 @@ pub fn PaintCtx(comptime Color: type) type {
             }
 
             // background
-            self.fill(.{ .rect = opts.rect, .color = color_bg });
+            self.fill(.{ .color = color_bg });
             const offset = opts.depth;
 
+            const rectt = self.clip;
             //shadow
             self.line(
-                &Point.init(opts.rect.right() - offset, opts.rect.top()),
-                &Point.init(opts.rect.right() - offset, opts.rect.bottom() - offset),
+                &Point.init(rectt.right() - offset, rectt.top()),
+                &Point.init(rectt.right() - offset, rectt.bottom() - offset),
                 color_shadow,
                 opts.depth,
             );
 
             self.line(
-                &Point.init(opts.rect.left(), opts.rect.bottom() - offset),
-                &Point.init(opts.rect.right() - offset, opts.rect.bottom() - offset),
+                &Point.init(rectt.left(), rectt.bottom() - offset),
+                &Point.init(rectt.right() - offset, rectt.bottom() - offset),
                 color_shadow,
                 opts.depth,
             );
 
             // light
             self.line(
-                &Point.init(opts.rect.left(), opts.rect.top()),
-                &Point.init(opts.rect.left(), opts.rect.bottom() - 2 * offset),
+                &Point.init(rectt.left(), rectt.top()),
+                &Point.init(rectt.left(), rectt.bottom() - 2 * offset),
                 color_light,
                 opts.depth,
             );
 
             self.line(
-                &Point.init(opts.rect.left(), opts.rect.top()),
-                &Point.init(opts.rect.right() - opts.depth, opts.rect.top()),
+                &Point.init(rectt.left(), rectt.top()),
+                &Point.init(rectt.right() - opts.depth, rectt.top()),
                 color_light,
                 opts.depth,
             );
