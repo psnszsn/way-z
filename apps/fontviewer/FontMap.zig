@@ -25,24 +25,25 @@ fn getOuterRect(font: *const Font, cols: u16, code_point: u21) Rect {
     };
 }
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
+pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
     // std.log.warn("size:::: {}", .{paint_ctx.rect()});
     const self = layout.data(idx, FontMap);
     const font = self.font;
 
-    paint_ctx.fill(.{ .color = .white, .rect = rect });
+    paint_ctx.fill(.{ .color = .white });
+    const rect = paint_ctx.clip;
 
     for (0..256) |glyph_n| {
         const glyph: u21 = @intCast(glyph_n + self.selected_range * 256);
         const bitmap = font.glyphBitmap(glyph);
-        var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
+        var glyph_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
         if (glyph == self.selected_code_point) {
-            paint_ctx.fill(.{ .rect = outer_rect, .color = .red });
+            paint_ctx.with_clip(glyph_rect).fill(.{ .color = .red });
         }
-        outer_rect.shrink_uniform(letter_padding / 2);
+        glyph_rect.shrink_uniform(letter_padding / 2);
 
-        outer_rect.x = outer_rect.get_center().x - bitmap.width / 2;
-        _ = paint_ctx.char(glyph, .{ .rect = outer_rect, .font = font, .color = .black });
+        glyph_rect.x = glyph_rect.get_center().x - bitmap.width / 2;
+        _ = paint_ctx.with_clip(glyph_rect).char(glyph, .{ .font = font, .color = .black });
     }
 
     return true;
@@ -88,3 +89,4 @@ const WidgetIdx = widget.WidgetIdx;
 const Font = tk.Font;
 const Rect = tk.Rect;
 const Size = tk.Size;
+const std = @import("std");

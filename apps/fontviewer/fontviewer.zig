@@ -52,12 +52,12 @@ const MenuHandler = struct {
     }
 };
 
-pub fn find_next_range(font: *const Font, current: u32, reverse: bool) u32 {
+pub fn find_next_range(font: *const Font, current: u32, reverse: bool) ?u32 {
     const max = 64 * font.range_masks.len - 1;
     var range: u32 = current + 1;
     while (true) {
         std.log.info("range={}/{}", .{ range, max });
-        if (range > max) range = 0;
+        if (range > max) return null;
         if (font.range_index(range)) |_| {
             std.log.info("selected range: {}", .{range});
             return range;
@@ -74,7 +74,7 @@ pub fn find_next_range(font: *const Font, current: u32, reverse: bool) u32 {
 pub fn handle_next_range(state: *State, idx: WidgetIdx, ev: *const anyopaque) void {
     _ = idx; // autofix
     _ = ev; // autofix
-    const next = find_next_range(state.inner.font, state.inner.selected_range, false);
+    const next = find_next_range(state.inner.font, state.inner.selected_range, false) orelse 0;
     state.set_value(.selected_range, next);
 }
 
@@ -132,14 +132,25 @@ pub fn main() !void {
         });
 
         const scrollable = s: {
-            var btns: [20]WidgetIdx = undefined;
-            for (&btns) |*btn| {
-                btn.* = layout.add2(.button, .{});
+            var btns: [290]WidgetIdx = undefined;
+            var current_range: u32 = 0;
+            var i: u32 = 0;
+            while (find_next_range(app.font, current_range, false)) |range| {
+                current_range = range;
+                btns[i] = layout.add2(.font_map, .{
+                    .columns = 32,
+                    .font = app.font,
+                    .selected_range = range,
+                });
+                i += 1;
             }
+            // for (&btns) |*btn| {
+            //     btn.* = layout.add2(.button, .{});
+            // }
             const subflex = layout.add2(.flex, .{ .orientation = .vertical });
 
             const scrollable = layout.add2(.scrollable, .{ .widget = subflex });
-            layout.set(subflex, .children, &btns);
+            layout.set(subflex, .children, btns[0..i]);
             layout.set(scrollable, .flex, 1);
             break :s scrollable;
         };

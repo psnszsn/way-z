@@ -199,12 +199,12 @@ pub fn draw(self: *Surface) void {
 }
 
 pub fn draw_root_widget(surf: *Surface, ctx: PaintCtx) void {
-    const app = surf.app;
-    var iter = app.layout.child_iterator(surf.root);
+    const layout = &surf.app.layout;
+    var iter = layout.child_iterator(surf.root);
     while (iter.next()) |idx| {
-        // defer std.log.info("it.depth={}", .{iter.depth});
-        const rect = app.layout.absolute_rect(idx);
-        _ = app.layout.call(idx, .draw, .{ rect, ctx.with_clip(rect) });
+        const rect = layout.absolute_rect(idx);
+        const ctxx = ctx.with_clip(rect);
+        _ = layout.call(idx, .draw, .{ctxx});
     }
 }
 

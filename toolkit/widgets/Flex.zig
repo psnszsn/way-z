@@ -155,7 +155,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     return self.orientation.majorSize(major, minor);
 }
 
-pub fn draw(_: *Layout, _: WidgetIdx, _: Rect, _: PaintCtx) bool {
+pub fn draw(_: *Layout, _: WidgetIdx, _: PaintCtx) bool {
     return true;
 }
 
