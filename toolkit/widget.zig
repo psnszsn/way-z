@@ -95,6 +95,11 @@ pub const Layout = struct {
         self.widgets.deinit(alloc);
     }
 
+    pub fn add4(self: *Layout, comptime t: WidgetType, opts: WidgetData(t).InitOpts) WidgetIdx {
+        const idx = self.add2(t, undefined);
+        WidgetData(t).init(self, idx, opts);
+        return idx;
+    }
     ///Add with children
     pub fn add3(self: *Layout, comptime t: WidgetType, wdata: WidgetData(t), children: []const WidgetIdx) WidgetIdx {
         const idx = self.add2(t, wdata);

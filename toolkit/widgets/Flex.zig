@@ -9,6 +9,7 @@ const Point = @import("../paint/Point.zig");
 const w = @import("../widget.zig");
 const Layout = w.Layout;
 const WidgetIdx = w.WidgetIdx;
+const std = @import("std");
 
 orientation: Orientation = .horizontal,
 
@@ -86,6 +87,7 @@ const Orientation = enum {
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     const flex_rect = layout.get(idx, .rect);
     _ = flex_rect; // autofix
+    std.log.info("constraints flex={}", .{constraints});
     const children = layout.get(idx, .children);
     const self = layout.data(idx, Flex);
     var minor: u32 = self.orientation.minorLen(constraints.min);
@@ -134,7 +136,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
                 px_per_flex * child_flex,
                 self.orientation.minorLen(constraints.min),
             );
-            const child_min = layout.call(child_idx, .size, .{Size.Minmax.ZERO});
+            const child_min = layout.call(child_idx, .size, .{Size.Minmax.loose(child_max)});
 
             layout.set(child_idx, .rect, .{
                 .width = @max(child_min.width, child_max.width),

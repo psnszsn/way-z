@@ -17,6 +17,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
 
     paint_ctx.panel(.{ .hover = hover, .press = pressed });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });
+    std.log.info("paint_ctx.clip={}", .{paint_ctx.clip});
 
     return true;
 }
