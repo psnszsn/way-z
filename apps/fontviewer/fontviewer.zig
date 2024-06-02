@@ -56,10 +56,10 @@ pub fn find_next_range(font: *const Font, current: u32, reverse: bool) ?u32 {
     const max = 64 * font.range_masks.len - 1;
     var range: u32 = current + 1;
     while (true) {
-        std.log.info("range={}/{}", .{ range, max });
+        // std.log.info("range={}/{}", .{ range, max });
         if (range > max) return null;
         if (font.range_index(range)) |_| {
-            std.log.info("selected range: {}", .{range});
+            // std.log.info("selected range: {}", .{range});
             return range;
         } else {
             if (reverse) {
@@ -144,12 +144,9 @@ pub fn main() !void {
                 });
                 i += 1;
             }
-            // for (&btns) |*btn| {
-            //     btn.* = layout.add2(.button, .{});
-            // }
             const subflex = layout.add2(.flex, .{ .orientation = .vertical });
 
-            const scrollable = layout.add2(.scrollable, .{ .widget = subflex });
+            const scrollable = layout.add4(.scrollable, .{ .content = subflex });
             layout.set(subflex, .children, btns[0..i]);
             layout.set(scrollable, .flex, 1);
             break :s scrollable;

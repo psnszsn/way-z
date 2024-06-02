@@ -159,6 +159,10 @@ pub fn destroy(self: *Surface) void {
     _ = self.app.surfaces.remove(self.wl_surface);
 }
 
+pub fn re_size(surf: *Surface) void {
+    surf.app.layout.set_size(surf.root, Size.Minmax.tight(surf.size));
+}
+
 pub fn schedule_redraw(self: *Surface) void {
     if (!self.frame_done) return;
     const client = self.app.client;

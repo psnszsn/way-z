@@ -30,10 +30,10 @@ pub fn PaintCtx(comptime Color: type) type {
         };
 
         pub inline fn pixel(self: *const Self, x: u32, y: u32, opts: DrawCharOpts) void {
-            // const actual_y = if (opts.rect) |r| r.y + y else y;
-            // const actual_x = if (opts.rect) |r| r.x + x else x;
-            const actual_y = self.clip.y + y;
-            const actual_x = self.clip.x + x;
+            const actual_y = y;
+            const actual_x = x;
+            // const actual_y = self.clip.y + y;
+            // const actual_x = self.clip.x + x;
             if (opts.scale == 1) {
                 if (!self.clip.contains(actual_x, actual_y)) return;
                 if (actual_x >= self.width or actual_y >= self.height) return;
@@ -74,7 +74,7 @@ pub fn PaintCtx(comptime Color: type) type {
                 for (0..bitmap.width) |_x| {
                     const x: u8 = @intCast(_x);
                     if (bitmap.bitAt(x, y)) {
-                        self.pixel(x, y, .{ .color = opts.color, .scale = opts.scale });
+                        self.pixel(self.clip.x + x, self.clip.y + y, .{ .color = opts.color, .scale = opts.scale });
                     }
                 }
             }
