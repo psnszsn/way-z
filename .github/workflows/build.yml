@@ -5,9 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.12.0
+      - uses: mlugg/setup-zig@v1
       - run: zig build 
 
       - name: Bar
@@ -22,7 +20,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.12.0
+      - uses: mlugg/setup-zig@v1
       - run: zig fmt --check .

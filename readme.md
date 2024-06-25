@@ -11,7 +11,7 @@ This can be used to crate a statically linked binary capable of displaying CPU r
 
 ### Dependencies
 
-* Zig 0.12.0
+* Zig 0.13.0
 
 ### Runnig examples
 

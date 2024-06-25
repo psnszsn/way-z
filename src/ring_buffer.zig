@@ -71,8 +71,8 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             const post_wrap_count = self.count - pre_wrap_count;
 
             return .{
-                .{ .iov_base = self.bfr[self.index..].ptr, .iov_len = pre_wrap_count },
-                .{ .iov_base = &self.bfr, .iov_len = post_wrap_count },
+                .{ .base = self.bfr[self.index..].ptr, .len = pre_wrap_count },
+                .{ .base = &self.bfr, .len = post_wrap_count },
             };
         }
         pub fn get_write_iovecs(self: *Self) [2]std.posix.iovec {
@@ -84,8 +84,8 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             const post_wrap_count = max_bytes - pre_wrap_count;
 
             return .{
-                .{ .iov_base = self.bfr[pre_wrap_start..].ptr, .iov_len = pre_wrap_count },
-                .{ .iov_base = &self.bfr, .iov_len = post_wrap_count },
+                .{ .base = self.bfr[pre_wrap_start..].ptr, .len = pre_wrap_count },
+                .{ .base = &self.bfr, .len = post_wrap_count },
             };
         }
     };

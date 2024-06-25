@@ -38,7 +38,8 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
             .width = 16,
             .height = rect.height,
         };
-        paint_ctx.with_clip(r).fill(.{ .color = .gainsboro });
+        // paint_ctx.with_clip(r).fill(.{ .color = .gainsboro });
+        paint_ctx.with_clip(r).fill(.{ .color = .olive });
     }
 
     {

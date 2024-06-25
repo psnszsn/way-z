@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "fontviewer",
-        .root_source_file = .{ .path = "fontviewer.zig" },
+        .root_source_file = b.path("fontviewer.zig"),
         .target = target,
         .optimize = optimize,
     });
