@@ -19,8 +19,8 @@ const SurfaceCtx = struct {
     wl_surface: wl.Surface,
     layer_surface: wayland.zwlr.LayerSurfaceV1,
     shortcut_inhibitor: zwp.KeyboardShortcutsInhibitorV1,
-    width: u32,
-    height: u32,
+    width: u31,
+    height: u31,
     offset: f32,
     last_frame: u32,
 };

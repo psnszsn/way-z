@@ -63,8 +63,7 @@ pub const CursorShapeManagerV1 = enum(u32) {
     };
 };
 
-/// This interface advertises the list of supported cursor shapes for a
-/// device, and allows clients to set the cursor shape.
+/// This interface allows clients to set the cursor shape.
 pub const CursorShapeDeviceV1 = enum(u32) {
     _,
     pub const interface = Interface{

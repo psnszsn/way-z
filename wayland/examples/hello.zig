@@ -14,8 +14,8 @@ const SurfaceCtx = struct {
     wl_surface: wl.Surface,
     xdg_surface: xdg.Surface,
     xdg_toplevel: xdg.Toplevel,
-    width: u32,
-    height: u32,
+    width: u31,
+    height: u31,
     offset: f32,
     last_frame: u32,
 };

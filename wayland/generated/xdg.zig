@@ -270,7 +270,7 @@ pub const Positioner = enum(u32) {
         ///
         /// The default adjustment is none.
         set_constraint_adjustment: struct {
-            constraint_adjustment: u32, // bit mask of constraint adjustments
+            constraint_adjustment: ConstraintAdjustment, // bit mask of constraint adjustments
         },
         /// Specify the surface position offset relative to the position of the
         /// anchor on the anchor rectangle and the anchor on the surface. For

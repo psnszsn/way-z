@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # pyright: strict
 # TODO: Use ZigEtc everywhere
 
@@ -781,13 +782,14 @@ class Namespace:
             const {g} = @import("{g}.zig");"""
             )
 
+script_dir = Path(__file__).parent
 
 def main():
     global protocols
     xml_protocols = [
         "/usr/share/wayland/wayland.xml",
         "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml",
-        "./protocols/wlr-layer-shell-unstable-v1.xml",
+        script_dir / "./protocols/wlr-layer-shell-unstable-v1.xml",
         "/usr/share/wayland-protocols/unstable/tablet/tablet-unstable-v2.xml",
         "/usr/share/wayland-protocols/staging/cursor-shape/cursor-shape-v1.xml",
         "/usr/share/wayland-protocols/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml",
@@ -799,7 +801,7 @@ def main():
         Namespace.get(p.prefix).protocols.append(p)
 
     for ns in Namespace.instances.values():
-        out = Path(__file__).parent / f"src/generated/{ns.name}.zig"
+        out =  script_dir / f"generated/{ns.name}.zig"
         out.parent.mkdir(exist_ok=True)
         with out.open("w") as f:
             ns.emit(f)

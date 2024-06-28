@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const libxev = b.dependency("libxev", .{}).module("xev");
 
     const wayland = b.addModule("wayland", .{
-        .root_source_file = b.path("./src/lib.zig"),
+        .root_source_file = b.path("./wayland/lib.zig"),
         .imports = &.{
             .{ .name = "xev", .module = libxev },
         },
@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
     inline for (.{ "globals", "seats", "hello", "kb_grab" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
-            .root_source_file = b.path("examples/" ++ example ++ ".zig"),
+            .root_source_file = b.path("wayland/examples/" ++ example ++ ".zig"),
             .target = target,
             .optimize = optimize,
         });
