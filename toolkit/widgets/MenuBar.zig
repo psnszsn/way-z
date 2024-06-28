@@ -1,7 +1,8 @@
 on_click_widx: ?WidgetIdx = null,
 on_click_event: u8 = 0,
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
+pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
+    _ = rect; // autofix
     const hover = layout.get(idx, .hover);
     const pressed = layout.get(idx, .pressed);
 

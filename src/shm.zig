@@ -92,12 +92,12 @@ pub const Pool = struct {
 
 pub const Buffer = struct {
     pool: *Pool,
-    width: u32,
-    height: u32,
+    width: u31,
+    height: u31,
     busy: bool,
     wl_buffer: wl.Buffer,
 
-    pub fn get(client: *way.Client, shm: wl.Shm, _width: u32, _height: u32) !*Buffer {
+    pub fn get(client: *way.Client, shm: wl.Shm, _width: u31, _height: u31) !*Buffer {
         const w = struct {
             var pools: [1]Pool = [1]Pool{.{}} ** 1;
         };
@@ -120,7 +120,7 @@ pub const Buffer = struct {
         return error.BufferBuzy;
     }
 
-    pub fn resize(self: *Buffer, width: u32, height: u32) !void {
+    pub fn resize(self: *Buffer, width: u31, height: u31) !void {
         const stride = width * 4;
         const newsize = stride * height;
         try self.pool.resize(newsize);

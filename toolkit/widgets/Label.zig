@@ -6,11 +6,11 @@ const widget = tk.widget;
 const Layout = widget.Layout;
 const WidgetIdx = widget.WidgetIdx;
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
+pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx) bool {
     _ = idx; // autofix
     const font = layout.get_window().app.font;
 
-    paint_ctx.text("Hello", .{ .font = font, .color = .blue });
+    paint_ctx.text("Hello", rect, .{ .font = font, .color = .blue });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });
 
     return true;

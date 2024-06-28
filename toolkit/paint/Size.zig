@@ -1,8 +1,8 @@
 const Size = @This();
 const Rect = @import("Rect.zig");
 
-width: u32,
-height: u32,
+width: u31,
+height: u31,
 
 pub const ZERO = Size{
     .width = 0,
@@ -13,8 +13,8 @@ pub fn to_rect(self: Size) Rect {
     return .{
         .x = 0,
         .y = 0,
-        .width = self.width,
-        .height = self.height,
+        .width = @intCast(self.width),
+        .height = @intCast(self.height),
     };
 }
 

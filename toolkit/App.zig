@@ -173,12 +173,13 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             break :blk null;
         },
         .axis => |ev| blk: {
-            std.log.info("ev={}", .{ev});
+            // std.log.info("ev={}", .{ev});
 
             break :blk .{ .axis = .{ .value = ev.value.toInt() } };
         },
         else => |d| blk: {
-            std.log.info("pointer event: {}\n", .{d});
+            _ = d;
+            // std.log.info("pointer event: {}\n", .{d});
             break :blk null;
         },
     };

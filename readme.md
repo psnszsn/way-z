@@ -1,12 +1,14 @@
 # Way-Z
 
-Native Zig Wayland implementation
+Native Zig Wayland client library and widget toolkit
 
 ## Description
 
-Wayland client library for Zig apps.
-This can be used to crate a statically linked binary capable of displaying CPU rendered graphics.
-
+This project has a few different parts:
+    - Wayland client library (in `src/`): This can be used to crate a statically linked binary capable of displaying CPU rendered graphics.
+    - Widget toolkit (in `toolkit/`): This builds over the wayland client and povides a Data Oriented library for creating GUI apps
+    - Apps (in `apps/`): Demo apps built using the widget toolkit
+    
 ## Getting Started
 
 ### Dependencies

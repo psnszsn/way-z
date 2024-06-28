@@ -1,10 +1,10 @@
 const Rect = @This();
 const std = @import("std");
 
-x: u32 = 0,
-y: u32 = 0,
-width: u32,
-height: u32,
+x: i32 = 0,
+y: i32 = 0,
+width: u31,
+height: u31,
 
 pub const ZERO = Rect{
     .width = 0,
@@ -12,20 +12,20 @@ pub const ZERO = Rect{
 };
 
 pub const MAX = Rect{
-    .width = std.math.maxInt(u32),
-    .height = std.math.maxInt(u32),
+    .width = std.math.maxInt(i32),
+    .height = std.math.maxInt(i32),
 };
 
-pub inline fn left(self: *const Rect) u32 {
+pub inline fn left(self: *const Rect) i32 {
     return self.x;
 }
-pub inline fn right(self: *const Rect) u32 {
+pub inline fn right(self: *const Rect) i32 {
     return self.x + (self.width);
 }
-pub inline fn top(self: *const Rect) u32 {
+pub inline fn top(self: *const Rect) i32 {
     return self.y;
 }
-pub inline fn bottom(self: *const Rect) u32 {
+pub inline fn bottom(self: *const Rect) i32 {
     return self.y + (self.height);
 }
 
@@ -54,11 +54,11 @@ pub fn intersect(self: *Rect, other: Rect) void {
 
     self.x = l;
     self.y = t;
-    self.width = (r - l);
-    self.height = (b - t);
+    self.width = @intCast(r - l);
+    self.height = @intCast(b - t);
 }
 
-pub fn contains(self: Rect, x: u32, y: u32) bool {
+pub fn contains(self: Rect, x: i32, y: i32) bool {
     return x >= self.x and
         x < self.x + self.width and
         y >= self.y and
@@ -72,7 +72,7 @@ pub fn contains_point(self: Rect, point: Point) bool {
         point.y < self.y + self.height;
 }
 
-pub fn shrink(self: *Rect, top_: u32, right_: u32, bottom_: u32, left_: u32) void {
+pub fn shrink(self: *Rect, top_: u31, right_: u31, bottom_: u31, left_: u31) void {
     // std.debug.print("self: {} \n", .{self});
     self.x += left_;
     self.y += top_;
@@ -82,21 +82,21 @@ pub fn shrink(self: *Rect, top_: u32, right_: u32, bottom_: u32, left_: u32) voi
     self.height -= top_ + bottom_;
 }
 
-pub fn shrink_uniform(self: *Rect, s: u32) void {
+pub fn shrink_uniform(self: *Rect, s: u31) void {
     self.shrink(s, s, s, s);
 }
 
-pub fn shrunken(self: Rect, t: u32, r: u32, b: u32, l: u32) Rect {
+pub fn shrunken(self: Rect, t: u31, r: u31, b: u31, l: u31) Rect {
     var rect = self;
     rect.shrink(t, r, b, l);
     return rect;
 }
 
-pub fn shrunken_uniform(self: Rect, s: u32) Rect {
+pub fn shrunken_uniform(self: Rect, s: u31) Rect {
     return self.shrunken(s, s, s, s);
 }
 
-pub fn translate_by(self: *Rect, x: u32, y: u32) void {
+pub fn translate_by(self: *Rect, x: i32, y: i32) void {
     self.x += x;
     self.y += y;
     // _ = y;
@@ -115,15 +115,15 @@ pub fn add_sat(x: anytype, y: anytype) struct { @TypeOf(x), @TypeOf(x) } {
         return .{ 0, 0 };
     }, 0 };
 }
-pub fn translated(self: Rect, x: i64, y: i64) Rect {
-    // pub fn translated(self: Rect, x: u32, y: u32) Rect {
-    const res, const overflow = add_sat(self.x, x);
-    const resy, const overflowy = add_sat(self.y, y);
+pub fn translated(self: Rect, x: i32, y: i32) Rect {
+    // pub fn translated(self: Rect, x: i32, y: i32) Rect {
+    // const res, const overflow = add_sat(self.x, x);
+    // const resy, const overflowy = add_sat(self.y, y);
     return .{
-        .x = res,
-        .y = resy,
-        .width = self.width - overflow,
-        .height = self.height - overflowy,
+        .x = self.x + x,
+        .y = self.y + y,
+        .width = self.width,
+        .height = self.height,
     };
 }
 
@@ -145,7 +145,7 @@ pub fn get_size(self: *const Rect) Size {
     return .{ .width = self.width, .height = self.height };
 }
 
-pub fn get_position(self: Rect) Point {
+pub fn pos(self: Rect) Point {
     return .{ .x = self.x, .y = self.y };
 }
 

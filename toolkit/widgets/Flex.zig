@@ -17,27 +17,27 @@ const Orientation = enum {
     vertical,
     horizontal,
 
-    pub fn majorLen(self: Orientation, s: Size) u32 {
+    pub fn majorLen(self: Orientation, s: Size) u31 {
         switch (self) {
             .horizontal => return s.width,
             .vertical => return s.height,
         }
     }
-    pub fn minorLen(self: Orientation, s: Size) u32 {
+    pub fn minorLen(self: Orientation, s: Size) u31 {
         switch (self) {
             .horizontal => return s.height,
             .vertical => return s.width,
         }
     }
 
-    pub fn pack(self: Orientation, major: u32, minor: u32) Point {
+    pub fn pack(self: Orientation, major: u31, minor: u31) Point {
         switch (self) {
             .horizontal => return Point{ .x = major, .y = minor },
             .vertical => return Point{ .x = minor, .y = major },
         }
     }
 
-    pub fn majorSize(self: Orientation, major: u32, minor: u32) Size {
+    pub fn majorSize(self: Orientation, major: u31, minor: u31) Size {
         switch (self) {
             .horizontal => return Size{ .width = major, .height = minor },
             .vertical => return Size{ .width = minor, .height = major },
@@ -46,8 +46,8 @@ const Orientation = enum {
     pub fn constraints(
         self: Orientation,
         mm: Size.Minmax,
-        min_major: u32,
-        major: u32,
+        min_major: u31,
+        major: u31,
     ) Size.Minmax {
         switch (self) {
             .horizontal => return Size.Minmax{
@@ -87,13 +87,13 @@ const Orientation = enum {
 pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     const flex_rect = layout.get(idx, .rect);
     _ = flex_rect; // autofix
-    std.log.info("constraints flex={}", .{constraints});
+    // std.log.info("constraints flex={}", .{constraints});
     const children = layout.get(idx, .children);
     const self = layout.data(idx, Flex);
-    var minor: u32 = self.orientation.minorLen(constraints.min);
+    var minor: u31 = self.orientation.minorLen(constraints.min);
 
-    var non_flex_major_sum: u32 = 0;
-    var flex_factor_sum: u32 = 0;
+    var non_flex_major_sum: u31 = 0;
+    var flex_factor_sum: u31 = 0;
 
     // Measure non-flex children
     for (children) |child_idx| {
@@ -145,7 +145,7 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
         }
     }
 
-    var major: u32 = 0;
+    var major: u31 = 0;
     for (children) |child_idx| {
         const origin_point = self.orientation.pack(major, 0);
         var rect = layout.get(child_idx, .rect);
@@ -157,7 +157,8 @@ pub fn size(layout: *Layout, idx: WidgetIdx, constraints: Size.Minmax) Size {
     return self.orientation.majorSize(major, minor);
 }
 
-pub fn draw(_: *Layout, _: WidgetIdx, _: PaintCtx) bool {
+pub fn draw(_: *Layout, _: WidgetIdx, rect: Rect, _: PaintCtx) bool {
+    _ = rect; // autofix
     return true;
 }
 

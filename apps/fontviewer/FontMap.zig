@@ -25,25 +25,24 @@ fn getOuterRect(font: *const Font, cols: u16, code_point: u21) Rect {
     };
 }
 
-pub fn draw(layout: *Layout, idx: WidgetIdx, paint_ctx: PaintCtx) bool {
+pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {
     // std.log.warn("size:::: {}", .{paint_ctx.rect()});
     const self = layout.data(idx, FontMap);
     const font = self.font;
 
-    paint_ctx.fill(.{ .color = .white });
-    const rect = paint_ctx.clip;
+    paint_ctx.fill(rect, .{ .color = .white });
 
     for (0..256) |glyph_n| {
         const glyph: u21 = @intCast(glyph_n + self.selected_range * 256);
         const bitmap = font.glyphBitmap(glyph);
         var glyph_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
         if (glyph == self.selected_code_point) {
-            paint_ctx.with_clip(glyph_rect).fill(.{ .color = .red });
+            paint_ctx.fill(glyph_rect, .{ .color = .red });
         }
         glyph_rect.shrink_uniform(letter_padding / 2);
 
         glyph_rect.x = glyph_rect.get_center().x - bitmap.width / 2;
-        _ = paint_ctx.with_clip(glyph_rect).char(glyph, .{ .font = font, .color = .black });
+        _ = paint_ctx.char(glyph, glyph_rect.pos(), .{ .font = font, .color = .black });
     }
 
     return true;

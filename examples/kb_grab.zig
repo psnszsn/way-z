@@ -154,7 +154,7 @@ fn seat_listener(client: *wayland.Client, seat: wl.Seat, event: wl.Seat.Event, a
 }
 fn keyboard_listener(client: *wayland.Client, _: wl.Keyboard, event: wl.Keyboard.Event, app: *Globals) void {
     _ = app; // autofix
-    std.log.info("_event={}", .{event});
+    // std.log.info("_event={}", .{event});
 
     switch (event) {
         .key => |e| {

@@ -10,9 +10,13 @@ pub fn PaintCtx(comptime Color: type) type {
     return struct {
         const Self = @This();
         buffer: []Color,
-        width: u32,
-        height: u32,
+        width: u31,
+        height: u31,
         clip: Rect,
+        clip_overflow: enum {
+            top,
+            bottom,
+        } = .bottom,
 
         pub inline fn rect(self: *const Self) Rect {
             return .{
@@ -26,46 +30,51 @@ pub fn PaintCtx(comptime Color: type) type {
         const DrawCharOpts = struct {
             color: Color = Color.default,
             font: ?*Font = null,
-            scale: u32 = 1,
+            scale: u31 = 1,
         };
 
-        pub inline fn pixel(self: *const Self, x: u32, y: u32, opts: DrawCharOpts) void {
-            const actual_y = y;
-            const actual_x = x;
+        pub inline fn pixel(self: *const Self, x: i32, y: i32, opts: DrawCharOpts) void {
+            if (x < 0) return;
+            if (y < 0) return;
+            const actual_y: u31 = @intCast(y);
+            const actual_x: u31 = @intCast(x);
             // const actual_y = self.clip.y + y;
             // const actual_x = self.clip.x + x;
             if (opts.scale == 1) {
                 if (!self.clip.contains(actual_x, actual_y)) return;
-                if (actual_x >= self.width or actual_y >= self.height) return;
+                if (actual_y >= self.height) return;
                 std.debug.assert(actual_x < self.width);
                 std.debug.assert(actual_y < self.height);
                 self.buffer[actual_y * self.width + actual_x] = opts.color;
             } else {
-                const nc = self.with_clip(.{
+                const rct = .{
                     .x = actual_x,
                     .y = actual_y,
                     // .x = actual_x * opts.scale,
                     // .y = actual_y * opts.scale,
                     .width = opts.scale,
                     .height = opts.scale,
-                });
-                nc.fill(.{
+                };
+                self.fill(rct, .{
                     .color = opts.color,
                 });
             }
         }
 
-        pub fn fill(self: *const Self, opts: DrawCharOpts) void {
-            var rct = self.clip;
-            rct.intersect(self.rect());
+        pub fn fill(self: *const Self, rctt: Rect, opts: DrawCharOpts) void {
+            var rct = rctt.intersected(self.clip);
+            // rct.intersect(self.rect());
             // std.log.info("top {} bottom {}", .{top,bottom});
-            for (rct.top()..rct.bottom()) |y| {
+            const top = @max(0, rct.top());
+            const bottom = @max(0, rct.bottom());
+            for (top..bottom) |y| {
                 // for (top..bottom + 1) |y| {
-                @memset(self.buffer[y * self.width + rct.x ..][0..rct.width], opts.color);
+                const x: u31 = @intCast(rct.x);
+                @memset(self.buffer[y * self.width + x ..][0..rct.width], opts.color);
             }
         }
 
-        pub fn char(self: *const Self, code_point: u21, opts: DrawCharOpts) Rect {
+        pub fn char(self: *const Self, code_point: u21, point: Point, opts: DrawCharOpts) Rect {
             const font = opts.font.?;
             const bitmap = font.glyphBitmap(code_point);
 
@@ -74,16 +83,16 @@ pub fn PaintCtx(comptime Color: type) type {
                 for (0..bitmap.width) |_x| {
                     const x: u8 = @intCast(_x);
                     if (bitmap.bitAt(x, y)) {
-                        self.pixel(self.clip.x + x, self.clip.y + y, .{ .color = opts.color, .scale = opts.scale });
+                        self.pixel(point.x + x, point.y + y, .{ .color = opts.color, .scale = opts.scale });
                     }
                 }
             }
             return .{ .width = bitmap.width, .height = bitmap.height };
         }
-        pub fn text(self: *const Self, _text: []const u8, opts: DrawCharOpts) void {
+        pub fn text(self: *const Self, _text: []const u8, rct: Rect, opts: DrawCharOpts) void {
             const s = std.unicode.Utf8View.init(_text) catch unreachable;
             var it = s.iterator();
-            var glyph_rect = self.clip;
+            var glyph_rect = rct;
 
             const font = opts.font.?;
             glyph_rect.width = font.glyph_width;
@@ -93,20 +102,20 @@ pub fn PaintCtx(comptime Color: type) type {
                 // if (code_point == ' ') {
                 //     continue;
                 // }
-                var nc = self.with_clip(glyph_rect);
-                const drawn_size = nc.char(code_point, .{ .font = font, .color = opts.color, .scale = opts.scale });
+                const pos = glyph_rect.pos();
+                const drawn_size = self.char(code_point, pos, .{ .font = font, .color = opts.color, .scale = opts.scale });
                 glyph_rect.translate_by(drawn_size.width + font.glyph_spacing, 0);
             }
         }
 
-        pub fn line(self: *const Self, pa1: *const Point, pa2: *const Point, color: Color, thickness: u32) void {
+        pub fn line(self: *const Self, pa1: *const Point, pa2: *const Point, color: Color, thickness: u31) void {
             var p1 = pa1.*;
             var p2 = pa2.*;
 
             if (p1.x == p2.x) {
                 if (p1.y > p2.y)
                     std.mem.swap(Point, &p1, &p2);
-                var y: u32 = p1.y;
+                var y: i32 = p1.y;
                 while (y < p2.y) : (y += thickness) {
                     self.pixel(p1.x, y, .{ .scale = thickness, .color = color });
                 }
@@ -117,7 +126,7 @@ pub fn PaintCtx(comptime Color: type) type {
             if (p1.y == p2.y) {
                 if (p1.x > p2.x)
                     std.mem.swap(Point, &p1, &p2);
-                var x: u32 = p1.x;
+                var x: i32 = p1.x;
                 while (x < p2.x) : (x += thickness) {
                     self.pixel(x, p1.y, .{ .scale = thickness, .color = color });
                 }
@@ -158,9 +167,9 @@ pub fn PaintCtx(comptime Color: type) type {
                     err += delta_error;
                     if (err >= dx) {
                         if (y_step > 0) {
-                            y += @as(u32, @intCast(@abs(y_step)));
+                            y += @as(i32, @intCast(@abs(y_step)));
                         } else {
-                            const abs_y = @as(u32, @intCast(@abs(y_step)));
+                            const abs_y = @as(i32, @intCast(@abs(y_step)));
                             if (y > abs_y) {
                                 y -= abs_y;
                             } else {
@@ -185,10 +194,10 @@ pub fn PaintCtx(comptime Color: type) type {
                     err += delta_error;
                     if (err >= dy) {
                         if (x_step > 0) {
-                            x += @as(u32, @intCast(@abs(x_step)));
+                            x += @as(i32, @intCast(@abs(x_step)));
                         } else {
                             // print("x value: {}\n", .{x_step});
-                            const abs_x = @as(u32, @intCast(@abs(x_step)));
+                            const abs_x = @as(i32, @intCast(@abs(x_step)));
                             if (x > abs_x) {
                                 x -= abs_x;
                             } else {
@@ -230,11 +239,11 @@ pub fn PaintCtx(comptime Color: type) type {
                 // color_bg = Color.NamedColor.teal;
             }
 
+            const rectt = self.clip;
             // background
-            self.fill(.{ .color = color_bg });
+            self.fill(rectt, .{ .color = color_bg });
             const offset = opts.depth;
 
-            const rectt = self.clip;
             //shadow
             self.line(
                 &Point.init(rectt.right() - offset, rectt.top()),

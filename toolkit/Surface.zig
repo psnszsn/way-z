@@ -173,7 +173,7 @@ pub fn schedule_redraw(self: *Surface) void {
 }
 
 pub fn draw(self: *Surface) void {
-    std.log.info("draw {}", .{std.meta.activeTag(self.role)});
+    // std.log.info("draw {}", .{std.meta.activeTag(self.role)});
     const client = self.app.client;
     const size = self.app.layout.get(self.root, .rect).get_size();
     const buf = self.pool.get_buffer(client, size.width, size.height);
@@ -208,7 +208,7 @@ pub fn draw_root_widget(surf: *Surface, ctx: PaintCtx) void {
     while (iter.next()) |idx| {
         const rect = layout.absolute_rect(idx);
         const ctxx = ctx.with_clip(rect);
-        _ = layout.call(idx, .draw, .{ctxx});
+        _ = layout.call(idx, .draw, .{ rect, ctxx });
     }
 }
 
@@ -223,8 +223,8 @@ fn layer_suface_listener(client: *wlnd.Client, layer_suface: zwlr.LayerSurfaceV1
             }
 
             const size = Size{
-                .width = configure.width,
-                .height = configure.height,
+                .width = @intCast(configure.width),
+                .height = @intCast(configure.height),
             };
 
             surf.app.layout.set(surf.root, .rect, size.to_rect());
@@ -260,7 +260,7 @@ fn frame_listener(_: *wlnd.Client, _: wl.Callback, event: wl.Callback.Event, sur
 fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: xdg.Surface.Event, surf: *Surface) void {
     switch (event) {
         .configure => |configure| {
-            std.log.info("configure={}", .{configure});
+            // std.log.info("configure={}", .{configure});
             client.request(xdg_surface, .ack_configure, .{ .serial = configure.serial });
             if (!surf.initial_draw) {
                 surf.draw();
@@ -276,7 +276,7 @@ fn xdg_surface_listener(client: *wlnd.Client, xdg_surface: xdg.Surface, event: x
 fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.Event, surf: *Surface) void {
     switch (event) {
         .configure => |configure| {
-            std.log.info("configure_top={}", .{configure});
+            // std.log.info("configure_top={}", .{configure});
             const configure_size = Size{
                 .width = @intCast(configure.width),
                 .height = @intCast(configure.height),
@@ -295,7 +295,7 @@ fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.E
             surf.app.layout.set_size(surf.root, Size.Minmax.tight(new_size));
             surf.schedule_redraw();
 
-            std.log.info("w: {} h: {}", .{ new_size.width, new_size.height });
+            // std.log.info("w: {} h: {}", .{ new_size.width, new_size.height });
         },
         .close => {
             surf.app.client.connection.is_running = false;
@@ -306,7 +306,8 @@ fn xdg_toplevel_listener(_: *wlnd.Client, _: xdg.Toplevel, event: xdg.Toplevel.E
 fn xdg_popup_listener(_: *wlnd.Client, xdg_popup: xdg.Popup, event: xdg.Popup.Event, win: *Surface) void {
     switch (event) {
         .configure => |configure| {
-            std.log.info("popup configure :{}", .{configure});
+            _ = configure; // autofix
+            // std.log.info("popup configure :{}", .{configure});
         },
         .popup_done => {
             std.log.info("popup done {}", .{xdg_popup});
