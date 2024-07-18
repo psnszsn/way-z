@@ -23,7 +23,7 @@ pub const Event = union(enum) {
         button: struct {
             button: MouseButton, // button that produced the event
             state: wl.Pointer.ButtonState, // physical state of the button
-
+            pos: Point,
         },
     };
 };

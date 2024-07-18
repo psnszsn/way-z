@@ -51,16 +51,18 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bo
 pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
     const self = layout.data(idx, FontMap);
     const font = layout.get_window().app.font;
-    const rect = layout.get(idx, .rect);
-    const app = layout.get_app();
     switch (event.pointer) {
         .enter => layout.set_cursor_shape(.pointer),
-        .button => |_| {
+        .button => |btn| {
             for (0..256) |glyph_n| {
                 const glyph: u21 = @intCast(glyph_n + self.selected_range * 256);
-                var outer_rect = getOuterRect(font, self.columns, glyph).relative_to(rect);
-                if (outer_rect.contains(app.pointer_position.x, app.pointer_position.y)) {
-                    layout.emit_event(idx, &Event{ .code_point_clicked = glyph });
+                var outer_rect = getOuterRect(font, self.columns, glyph);
+                if (outer_rect.contains_point(btn.pos)) {
+                    self.selected_code_point = glyph;
+                    std.log.info("glyph={}", .{glyph});
+                    std.log.info("pos={}", .{btn.pos});
+                    layout.request_draw(idx);
+                    // layout.emit_event(idx, &Event{ .code_point_clicked = glyph });
                     break;
                 }
             }

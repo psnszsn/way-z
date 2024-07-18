@@ -119,8 +119,33 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
                     self.offset = @min(self.offset, max_offset(layout, idx));
                 }
                 layout.get_window().re_size();
+                return;
             },
-            else => {},
+            else => {
+                const pos = layout.get_app().pointer_position;
+                const abs_rect = layout.absolute_rect(idx);
+                var iter = layout.child_iterator(self.content);
+                while (iter.next()) |idxx| {
+                    const offset_i32: i32 = @intCast(self.offset);
+                    const rectx = layout.absolute_rect(idxx)
+                        .translated(abs_rect.x, abs_rect.y)
+                        .translated(0, -offset_i32);
+                    if (rectx.contains_point(pos)) {
+                        const wpos = pos.subtracted(rectx.pos());
+                        const ev2 = if (ev == .button) b: {
+                            var c = ev;
+                            c.button.pos = wpos;
+                            break :b c;
+                        } else ev;
+                        std.log.info("asdf", .{});
+                        _ = layout.call(
+                            idxx,
+                            .handle_event,
+                            .{tk.Event{ .pointer = ev2 }},
+                        );
+                    }
+                }
+            },
         },
         else => {},
     }

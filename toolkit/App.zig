@@ -148,7 +148,7 @@ fn seat_listener(client: *wlnd.Client, seat: wl.Seat, event: wl.Seat.Event, app:
 }
 
 fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Event, app: *App) void {
-    const event: ?Event.PointerEvent = switch (_event) {
+    var event: ?Event.PointerEvent = switch (_event) {
         .enter => |ev| blk: {
             std.log.info("ENter  - {}", .{ev});
             app.pointer_position = Point{ .x = @abs(ev.surface_x.toInt()), .y = @abs(ev.surface_y.toInt()) };
@@ -166,7 +166,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             break :blk .{ .leave = {} };
         },
         .button => |ev| blk: {
-            break :blk .{ .button = .{ .button = @enumFromInt(ev.button), .state = ev.state } };
+            break :blk .{ .button = .{ .button = @enumFromInt(ev.button), .state = ev.state, .pos = undefined } };
         },
         .frame => |_| blk: {
             // TODO
@@ -193,6 +193,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
         const was_pressed = app.layout.get(idx, .pressed);
         const was_hover = app.layout.get(idx, .hover);
         const is_hover = rect.contains_point(app.pointer_position);
+        const widget_pos = app.pointer_position.subtracted(rect.pos());
 
         if (is_hover != was_hover) {
             // TODO: root widget is always hovered
@@ -203,16 +204,17 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             app.layout.call(idx, .handle_event, .{ev});
         }
 
-        if (event) |ev| {
+        if (event) |*ev| {
             if (is_hover or was_pressed) {
-                if (ev == .button) {
+                if (ev.* == .button) {
                     app.layout.set(idx, .pressed, ev.button.state == .pressed);
                     if (ev.button.state == .released)
                         app.layout.call(idx, .handle_event, .{.{ .pointer = .leave }});
                 }
             }
             if (is_hover) {
-                app.layout.call(idx, .handle_event, .{Event{ .pointer = ev }});
+                if (ev.* == .button) ev.button.pos = widget_pos;
+                app.layout.call(idx, .handle_event, .{Event{ .pointer = ev.* }});
             }
         }
     }
