@@ -79,7 +79,7 @@ pub fn main() !void {
     try client.roundtrip();
 
     const buf = try Buffer.get(client, shm, surface.width, surface.height);
-    @memset(buf.pool.mmap, 0xff);
+    @memset(buf.mem(), 0xff);
     client.request(surface.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
 
     client.request(surface.wl_surface, .commit, {});

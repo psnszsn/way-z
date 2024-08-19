@@ -137,7 +137,6 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
                             c.button.pos = wpos;
                             break :b c;
                         } else ev;
-                        std.log.info("asdf", .{});
                         _ = layout.call(
                             idxx,
                             .handle_event,

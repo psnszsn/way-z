@@ -82,7 +82,7 @@ pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
         .size = size,
         .last_frame = 0,
         .root = root_widget,
-        .pool = try wlnd.shm.Pool.init(client, app.shm.?, size.width, size.height),
+        .pool = try wlnd.shm.AutoMemPool.init(client, app.shm.?),
     };
 
     return surf;
