@@ -3,17 +3,172 @@ const os = std.posix;
 const wl = @import("generated/wl.zig");
 const way = @import("lib.zig");
 
-fn bufferListener(_: *way.Client, _: wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
-    switch (event) {
-        .release => {
-            // std.log.warn("release {}x{}", .{ buffer.width, buffer.height });
-            std.debug.assert(buffer.busy == true);
-            buffer.busy = false;
-        },
+pub const AutoMemPool = struct {
+    pub const FreeItem = struct { offset: u31, len: u31 };
+    pool: Pool,
+    free_list: std.ArrayListUnmanaged(FreeItem),
+    buffers: std.AutoHashMapUnmanaged(wl.Buffer, Buffer) = .{},
+    pub fn init(client: *way.Client, shm: wl.Shm) !AutoMemPool {
+        const fl = try std.ArrayListUnmanaged(FreeItem).initCapacity(client.allocator, 10);
+        var buffers = std.AutoHashMapUnmanaged(wl.Buffer, Buffer){};
+        try buffers.ensureTotalCapacity(client.allocator, 6);
+        return .{
+            .pool = try Pool.init(client, shm, 200, 200),
+            .free_list = fl,
+            .buffers = buffers,
+        };
     }
+
+    fn alloc(self: *AutoMemPool, client: *way.Client, size: u31) u31 {
+        if (self.free_list.items.len == 0) {
+            self.free_list.appendAssumeCapacity(.{ .offset = 0, .len = @intCast(self.pool.size) });
+        }
+        for (self.free_list.items) |*item| {
+            if (item.len >= size) {
+                const r = item.offset;
+                item.len -= size;
+                item.offset += size;
+                return r;
+            }
+        }
+        const pool_size: u31 = @intCast(self.pool.size);
+        var r = pool_size;
+        var pop = false;
+        if (self.free_list.getLastOrNull()) |last| {
+            if (last.offset + last.len == self.pool.size) {
+                r -= last.len;
+                pop = true;
+            }
+        }
+
+        const target = @max(r + size, pool_size * 2);
+        self.pool.resize(client, @intCast(target)) catch unreachable;
+
+        if (pop) _ = self.free_list.pop();
+
+        if (target > r + size) {
+            self.free_list.appendAssumeCapacity(.{ .offset = r + size, .len = target - r - size });
+        }
+        return r;
+    }
+
+    fn free(self: *AutoMemPool, offset_r: u31, len_r: u31) void {
+        var offset = offset_r;
+        var len = len_r;
+        {
+            const start: usize = for (self.free_list.items, 0..) |item, i| {
+                if (item.offset + item.len == offset) {
+                    break i;
+                }
+                if (item.offset == offset + len) {
+                    break i;
+                }
+            } else self.free_list.items.len;
+
+            const l = b: {
+                var res: u31 = 0;
+                for (self.free_list.items[start..]) |item| {
+                    if (item.offset + item.len == offset) {
+                        offset = item.offset;
+                        len += item.len;
+                        res += 1;
+                        continue;
+                    }
+                    if (item.offset == offset + len) {
+                        len += item.len;
+                        res += 1;
+                        continue;
+                    }
+                    break :b res;
+                }
+                break :b res;
+            };
+            // std.log.info("free={} {}", .{ start, l });
+            self.free_list.replaceRangeAssumeCapacity(start, l, &[_]FreeItem{.{ .offset = offset, .len = len }});
+        }
+    }
+
+    pub fn buffer(
+        self: *AutoMemPool,
+        client: *way.Client,
+        width: u31,
+        height: u31,
+    ) *Buffer {
+        const stride = width * 4;
+        const size = stride * height;
+        const offset = self.alloc(client, size);
+        const wl_buffer = client.request(self.pool.wl_pool, .create_buffer, .{
+            .offset = @intCast(offset),
+            .width = @intCast(width),
+            .height = @intCast(height),
+            .stride = @intCast(stride),
+            .format = wl.Shm.Format.argb8888,
+        });
+
+        const res = self.buffers.getOrPutAssumeCapacity(wl_buffer);
+        const buf = res.value_ptr;
+        buf.* = Buffer{
+            .amp = self,
+            .width = width,
+            .height = height,
+            .offset = offset,
+            .wl_buffer = wl_buffer,
+        };
+
+        const w = struct {
+            fn bufferListener(c: *way.Client, _: wl.Buffer, event: wl.Buffer.Event, b: *Buffer) void {
+                switch (event) {
+                    .release => {
+                        // std.log.info("release", .{});
+                        c.request(b.wl_buffer, .destroy, {});
+                        b.amp.free(b.offset, b.size());
+                        _ = b.amp.buffers.remove(b.wl_buffer);
+                    },
+                }
+            }
+        };
+        client.set_listener(wl_buffer, *Buffer, w.bufferListener, buf);
+        return buf;
+    }
+};
+
+test "free" {
+    const fl = try std.ArrayListUnmanaged(AutoMemPool.FreeItem).initCapacity(std.testing.allocator, 10);
+    var p = AutoMemPool{ .pool = undefined, .free_list = fl };
+    defer p.free_list.clearAndFree(std.testing.allocator);
+
+    {
+        p.free_list.appendAssumeCapacity(.{ .offset = 3, .len = 2 });
+        p.free(2, 1);
+        try std.testing.expectEqualSlices(AutoMemPool.FreeItem, &.{.{ .offset = 2, .len = 3 }}, p.free_list.items);
+        p.free_list.clearRetainingCapacity();
+    }
+    {
+        p.free_list.appendAssumeCapacity(.{ .offset = 0, .len = 2 });
+        p.free(2, 3);
+        try std.testing.expectEqualSlices(AutoMemPool.FreeItem, &.{.{ .offset = 0, .len = 5 }}, p.free_list.items);
+        p.free_list.clearRetainingCapacity();
+    }
+    {
+        p.free_list.appendAssumeCapacity(.{ .offset = 0, .len = 2 });
+        p.free_list.appendAssumeCapacity(.{ .offset = 4, .len = 2 });
+        p.free(2, 2);
+        try std.testing.expectEqualSlices(AutoMemPool.FreeItem, &.{.{ .offset = 0, .len = 6 }}, p.free_list.items);
+        p.free_list.clearRetainingCapacity();
+    }
+    {
+        p.free_list.appendAssumeCapacity(.{ .offset = 0, .len = 2 });
+        p.free(19, 2);
+        try std.testing.expectEqualSlices(AutoMemPool.FreeItem, &.{
+            .{ .offset = 0, .len = 2 },
+            .{ .offset = 19, .len = 2 },
+        }, p.free_list.items);
+        p.free_list.clearRetainingCapacity();
+    }
+    std.debug.print("list {any}", .{p.free_list.items});
 }
 
-pub const Pool = struct {
+const Pool = struct {
     const max_size = 512 * 1024 * 1024;
     wl_pool: wl.ShmPool = undefined,
     backing_fd: os.fd_t = -1,
@@ -43,42 +198,6 @@ pub const Pool = struct {
         };
     }
 
-    pub fn get_buffer(pool: *Pool, client: *way.Client, width: u32, height: u32) *Buffer {
-        const stride = width * 4;
-        // std.debug.assert(stride * height <= pool.size);
-        if (pool.size < stride * height) {
-            pool.resize(client, stride * height) catch unreachable;
-        }
-
-        defer pool.buffer.?.busy = true;
-
-        if (pool.buffer) |*bfr| {
-            if (bfr.width == width and bfr.height == height) {
-                std.debug.assert(bfr.busy == false);
-                return bfr;
-            }
-            client.request(bfr.wl_buffer, .destroy, {});
-        }
-
-        const wl_buffer = client.request(pool.wl_pool, .create_buffer, .{
-            .offset = 0,
-            .width = @intCast(width),
-            .height = @intCast(height),
-            .stride = @intCast(stride),
-            .format = wl.Shm.Format.argb8888,
-        });
-        pool.buffer = .{
-            .pool = pool,
-            .width = @intCast(width),
-            .height = @intCast(height),
-            .busy = false,
-            .wl_buffer = wl_buffer,
-        };
-
-        client.set_listener(wl_buffer, *Buffer, bufferListener, &pool.buffer.?);
-        return &pool.buffer.?;
-    }
-
     pub fn resize(self: *Pool, client: *way.Client, newsize: u32) !void {
         if (newsize > self.size) {
             try os.ftruncate(self.backing_fd, newsize);
@@ -91,56 +210,28 @@ pub const Pool = struct {
 };
 
 pub const Buffer = struct {
-    pool: *Pool,
+    amp: *AutoMemPool,
     width: u31,
     height: u31,
-    busy: bool,
+    offset: u31,
     wl_buffer: wl.Buffer,
+
+    pub fn size(b: *const Buffer) u31 {
+        return b.width * b.height * 4;
+    }
+    pub fn mem(b: *const Buffer) []align(32) u8 {
+        return @alignCast(b.amp.pool.mmap[b.offset..][0..b.size()]);
+    }
 
     pub fn get(client: *way.Client, shm: wl.Shm, _width: u31, _height: u31) !*Buffer {
         const w = struct {
-            var pools: [1]Pool = [1]Pool{.{}} ** 1;
+            var amp: ?AutoMemPool = null;
         };
+        if (w.amp == null) w.amp = try AutoMemPool.init(client, shm);
 
         const width = if (_width == 0) 300 else _width;
         const height = if (_height == 0) 300 else _height;
-        std.log.info("pool width={} height={}", .{ width, height });
-
-        for (&w.pools) |*pool| {
-            std.log.info("pool fd {}", .{pool.backing_fd});
-        }
-        for (&w.pools) |*pool| {
-            if (pool.backing_fd == -1) pool.* = try Pool.init(client, shm, width, height);
-            // if (pool.size < width * height * 4) continue;
-            if (pool.buffer != null and pool.buffer.?.busy) continue;
-            // if (pool.buffer == null) return pool.get_buffer(client, width, height);
-
-            return pool.get_buffer(client, width, height);
-        }
-        return error.BufferBuzy;
+        // std.log.info("pool width={} height={}", .{ width, height });
+        return w.amp.?.buffer(client, width, height);
     }
-
-    pub fn resize(self: *Buffer, width: u31, height: u31) !void {
-        const stride = width * 4;
-        const newsize = stride * height;
-        try self.pool.resize(newsize);
-        if (self.width != width or self.height != height) {
-            self.client.request(self.wl_buffer, .destroy, {});
-            self.wl_buffer = self.client.request(self.pool.wl_pool, .create_buffer, .{
-                .offset = 0,
-                .width = @intCast(width),
-                .height = @intCast(height),
-                .stride = @intCast(stride),
-                .format = wl.Shm.Format.argb8888,
-            });
-            self.client.set_listener(self.wl_buffer, *Buffer, bufferListener, self);
-            self.width = width;
-            self.height = height;
-        }
-    }
-
-    // pub fn get_mem(self: *Buffer) []align(4096) u8 {
-    //     const pool: *Pool = @alignCast(@fieldParentPtr("buffer", @as(*?Buffer, @ptrCast(self))));
-    //     return pool.mmap;
-    // }
 };
