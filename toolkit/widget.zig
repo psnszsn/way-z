@@ -41,7 +41,7 @@ const WidgetType = b: {
         };
     }
     break :b @Type(.{
-        .Enum = .{
+        .@"enum" = .{
             .tag_type = u8,
             .fields = &enumFields,
             .decls = &.{},
@@ -77,7 +77,7 @@ pub const WidgetFn = enum {
         };
     }
     pub fn ReturnType(comptime self: WidgetFn) type {
-        return @typeInfo(Signature(self)).Fn.return_type orelse void;
+        return @typeInfo(Signature(self)).@"fn".return_type orelse void;
     }
 };
 
@@ -275,7 +275,7 @@ pub const Layout = struct {
         idx: WidgetIdx,
         handler: anytype,
     ) void {
-        const T = @typeInfo(@TypeOf(handler)).Pointer.child;
+        const T = @typeInfo(@TypeOf(handler)).pointer.child;
         self.set(idx, .event_handler, @ptrCast(&T.handle_event));
         self.set(idx, .event_handler_data, @ptrCast(handler));
     }

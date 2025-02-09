@@ -5,17 +5,18 @@ const W = struct {
 
 pub fn Signal(T: type) type {
     const t_fields = std.meta.fields(T);
+    const S = struct { i: u32 = 0, len: u32 = 0 };
     return struct {
         inner: T,
         layout: *tk.Layout,
-        signals: [t_fields.len]struct { i: u32 = 0, len: u32 = 0 },
+        signals: [t_fields.len]S,
         data: std.ArrayListUnmanaged(W) = .{},
         const State = @This();
         pub fn init(layout: *tk.Layout, alloc: std.mem.Allocator) State {
             return .{
                 .inner = undefined,
                 .layout = layout,
-                .signals = .{.{ .i = 0, .len = 0 }} ** t_fields.len,
+                .signals = .{S{ .i = 0, .len = 0 }} ** t_fields.len,
                 .data = std.ArrayListUnmanaged(W).initCapacity(alloc, 10) catch @panic("TODO"),
             };
         }

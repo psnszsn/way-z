@@ -2,14 +2,21 @@ const std = @import("std");
 const mem = std.mem;
 
 pub const Glyph = struct {
-    rows: std.PackedIntSliceEndian(u1, .big),
+    rows: []u8,
     width: u8 = 5,
     height: u8 = 13,
 
     pub fn bitAt(self: *const Glyph, x: usize, y: usize) bool {
         // std.log.info("asd{}", .{y});
-        const bits_per_row = (self.width / 9 + 1) * 8;
-        return self.rows.get(bits_per_row * y + x) == 1;
+        // std.debug.print("{any}", .{self.rows});
+
+        const bytes_per_row = self.width / 9 + 1;
+        return std.mem.readPackedInt(
+            u1,
+            self.rows[bytes_per_row * y ..][0..bytes_per_row],
+            bytes_per_row * 8 - x - 1,
+            .big,
+        ) == 1;
     }
 
     pub fn format(self: Glyph, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
@@ -83,7 +90,7 @@ pub const Font = struct {
 
         const glyph_data = self.glyph_data[_glyph_index * _glyph_size ..][0.._glyph_size];
         return Glyph{
-            .rows = std.PackedIntSliceEndian(u1, .big).init(glyph_data, _glyph_size),
+            .rows = glyph_data,
             .width = self.glyph_widths[_glyph_index],
             .height = self.glyph_height,
         };
@@ -148,7 +155,7 @@ pub const BdfParser = struct {
     };
     pub fn parse(buf: []const u8, alloc: std.mem.Allocator) !Font {
         var p = BdfParser{};
-        var it = mem.tokenize(u8, buf, "\n");
+        var it = mem.tokenizeScalar(u8, buf, '\n');
 
         while (it.next()) |line| {
             if (parse_prop(line, "FONTBOUNDINGBOX")) |val| {
@@ -192,7 +199,8 @@ pub const BdfParser = struct {
                         const bytes_per_line = char.bbx.width / 9 + 1;
                         for (0..bytes_per_line) |b| {
                             const h2 = try std.fmt.parseInt(u8, s[b * bytes_per_line ..][0..2], 16);
-                            glyph.rows.bytes[bytes_per_line * i + b] = h2;
+                            glyph.rows[bytes_per_line * i + b] = h2;
+                            // std.mem.writePackedInt(u1, glyph.rows, bytes_per_line * i + b, h2, .big);
                         }
                     }
                     for (0..overflow) |_| {
@@ -246,15 +254,15 @@ pub const BdfParser = struct {
     }
 
     pub fn parse_bdf_value(value: []const u8, comptime T: type) !T {
-        var it = mem.tokenize(u8, value, " ");
+        var it = mem.tokenizeScalar(u8, value, ' ');
         var result: T = undefined;
         switch (@typeInfo(T)) {
-            .Struct => |s| {
+            .@"struct" => |s| {
                 inline for (s.fields) |field| {
                     @field(result, field.name) = try std.fmt.parseInt(field.type, it.next().?, 0);
                 }
             },
-            .Int => {
+            .int => {
                 result = try std.fmt.parseInt(T, it.next().?, 0);
             },
             else => unreachable,

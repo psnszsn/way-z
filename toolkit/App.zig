@@ -13,7 +13,7 @@ pointer             : ?wl.Pointer              = null,
 subcompositor       : ?wl.Subcompositor        = null,
 // zig fmt: on
 
-font: *font.Font,
+font: *fnt.Font,
 pointer_enter_serial: u32 = 0,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
@@ -35,7 +35,7 @@ pub fn new(alloc: std.mem.Allocator) !*App {
         .shm = null,
         .compositor = null,
         .wm_base = null,
-        .font = try font.cozette(alloc),
+        .font = try fnt.cozette(alloc),
     };
 
     client.set_listener(registry, *App, App.registry_listener, app);
@@ -209,7 +209,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
                 if (ev.* == .button) {
                     app.layout.set(idx, .pressed, ev.button.state == .pressed);
                     if (ev.button.state == .released)
-                        app.layout.call(idx, .handle_event, .{.{ .pointer = .leave }});
+                        app.layout.call(idx, .handle_event, .{Event{ .pointer = .leave }});
                 }
             }
             if (is_hover) {
@@ -229,7 +229,7 @@ const std = @import("std");
 const App = @This();
 const Point = @import("paint/Point.zig");
 const Size = @import("paint/Size.zig");
-const font = @import("font/bdf.zig");
+const fnt = @import("font/bdf.zig");
 const Event = @import("event.zig").Event;
 pub const Surface = @import("Surface.zig");
 

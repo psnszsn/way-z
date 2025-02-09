@@ -136,7 +136,7 @@ pub fn request_to_args(
 
     if (@TypeOf(payload) != void) {}
     var args: RA = undefined;
-    const len = @typeInfo(RA).Array.len;
+    const len = @typeInfo(RA).array.len;
     _ = len; // autofix
     const payload_fields = if (@TypeOf(payload) == void) .{} else std.meta.fields(@TypeOf(payload));
 
@@ -162,14 +162,14 @@ pub fn request_to_args(
             *anyopaque => .{ .object = @intFromEnum(field_value) },
             argm.Fixed => .{ .fixed = field_value },
             else => |v| switch (@typeInfo(v)) {
-                .Optional => .{ .object = if (field_value) |b| @intFromEnum(b) else 0 },
-                .Struct => |s| if (s.layout == .@"packed") .{
+                .optional => .{ .object = if (field_value) |b| @intFromEnum(b) else 0 },
+                .@"struct" => |s| if (s.layout == .@"packed") .{
                     .object = @bitCast(field_value),
                 } else .{
                     .uint = @bitCast(field_value),
                 },
                 // TODO: packed struct -> uint
-                .Enum => if (v == RT) b: {
+                .@"enum" => if (v == RT) b: {
                     std.debug.assert(i == 0);
                     break :b .{ .new_id = @intFromEnum(field_value) };
                 } else .{ .uint = @intCast(@intFromEnum(field_value)) },

@@ -47,7 +47,7 @@ pub fn PaintCtx(comptime Color: type) type {
                 std.debug.assert(actual_y < self.height);
                 self.buffer[actual_y * self.width + actual_x] = opts.color;
             } else {
-                const rct = .{
+                const rct: Rect = .{
                     .x = actual_x,
                     .y = actual_y,
                     // .x = actual_x * opts.scale,

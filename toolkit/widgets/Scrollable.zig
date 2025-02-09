@@ -32,7 +32,7 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx)
     // paint_ctx.text("Hello", .{ .font = font, .color = .blue });
 
     {
-        const r = .{
+        const r: tk.Rect = .{
             .x = rect.right() - 16,
             .y = rect.y,
             .width = 16,

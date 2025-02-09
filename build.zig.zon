@@ -5,8 +5,8 @@
     .paths = .{""},
     .dependencies = .{
         .libxev = .{
-            .url = "https://github.com/mitchellh/libxev/archive/main.tar.gz",
-            .hash = "1220aec83b6367c6bc64ca781828e0ad817fb38e7fca7331bd6d736b6896910f6637",
+            .url = "git+https://github.com/leroycep/libxev.git?ref=zig-0.14.0#a6e636fad2a6ecfc9e083409ab841913819bd827",
+            .hash = "1220cec72f20b6a6c382c56bc76c27a1720845fd1217f1169e2894913913f743c188",
         },
     },
 }
