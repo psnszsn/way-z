@@ -1,6 +1,7 @@
 .{
-    .name = "fontviewer",
+    .name = .fontviewer,
     .version = "0.0.0",
+    .fingerprint = 0xd3711973a87ed197,
 
     .dependencies = .{
         .@"way-z" = .{

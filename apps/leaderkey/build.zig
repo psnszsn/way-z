@@ -7,10 +7,9 @@ pub fn build(b: *std.Build) void {
     const libxev = way_z.builder.dependency("libxev", .{});
 
     const exe = b.addExecutable(.{
-        .name = "fontviewer",
-        .root_source_file = b.path("fontviewer.zig"),
+        .name = "bar",
+        .root_source_file = b.path("bar.zig"),
         .target = target,
-        .use_llvm = false,
         .optimize = optimize,
     });
 

@@ -8,7 +8,7 @@ const WidgetIdx = widget.WidgetIdx;
 
 pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx) bool {
     _ = idx; // autofix
-    const font = layout.get_window().app.font;
+    const font = layout.get_app().font;
 
     paint_ctx.text("Hello", rect, .{ .font = font, .color = .blue });
     // std.log.info("btn {} hover {}", .{ @intFromEnum(idx), hover });

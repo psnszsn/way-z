@@ -1,5 +1,5 @@
 .{
-    .name = .bar,
+    .name = .leraderkey,
     .version = "0.0.0",
 
     .dependencies = .{
@@ -9,5 +9,5 @@
     },
 
     .paths = .{""},
-    .fingerprint = 0x76ff8caad82c10b0,
+    .fingerprint = 0x8b4136020a3b764b,
 }

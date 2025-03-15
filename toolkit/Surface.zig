@@ -42,7 +42,14 @@ pub const SurfaceRole = enum {
 pub const SurfaceRoleInit = union(SurfaceRole) {
     xdg_toplevel: void,
     xdg_popup: struct { parent: xdg.Surface, anchor: Rect },
-    wlr_layer_surface: void,
+    wlr_layer_surface: struct {
+        layer: zwlr.LayerShellV1.Layer,
+        anchor: zwlr.LayerSurfaceV1.Anchor,
+        size: struct {
+            width: u32,
+            height: u32,
+        },
+    },
     wl_subsurface: struct { parent: wl.Surface },
 };
 
@@ -53,17 +60,17 @@ pub fn init_role(
     const app = surface.app;
     const client = app.client;
     switch (role) {
-        .wlr_layer_surface => {
+        .wlr_layer_surface => |opts| {
             std.debug.assert(app.layer_shell != null);
             const layer_surface = client.request(app.layer_shell.?, .get_layer_surface, .{
                 .surface = surface.wl_surface,
                 .output = null,
-                .layer = .bottom,
+                .layer = opts.layer,
                 .namespace = "",
             });
             errdefer client.request(layer_surface, .destroy, {});
-            client.request(layer_surface, .set_size, .{ .width = 0, .height = 30 });
-            client.request(layer_surface, .set_anchor, .{ .anchor = .{ .top = true, .left = true, .right = true } });
+            client.request(layer_surface, .set_size, .{ .width = opts.size.width, .height = opts.size.height });
+            client.request(layer_surface, .set_anchor, .{ .anchor = opts.anchor });
             client.request(layer_surface, .set_exclusive_zone, .{ .zone = 35 });
             client.set_listener(layer_surface, *Surface, Surface.layer_suface_listener, surface);
 
@@ -179,7 +186,7 @@ pub fn draw(self: *Surface) void {
     const buf = self.pool.buffer(client, size.width, size.height);
     if (size.contains(self.min_size)) {
         const ctx = PaintCtx{
-            .buffer = @ptrCast(std.mem.bytesAsSlice(u32, buf.mem())),
+            .buffer = @ptrCast(buf.mem()),
             //TODO: use ptrCast directly when implemented in zig
             // .buffer = @ptrCast(buf.pool.mmap),
             .width = buf.width,

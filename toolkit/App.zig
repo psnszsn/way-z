@@ -11,6 +11,7 @@ cursor_shape_manager: ?wp.CursorShapeManagerV1 = null,
 cursor_shape_device : ?wp.CursorShapeDeviceV1  = null,
 pointer             : ?wl.Pointer              = null,
 subcompositor       : ?wl.Subcompositor        = null,
+keyboard            : ?wl.Keyboard             = null,
 // zig fmt: on
 
 font: *fnt.Font,
@@ -140,6 +141,12 @@ fn seat_listener(client: *wlnd.Client, seat: wl.Seat, event: wl.Seat.Event, app:
                     }
                 }
             }
+            if (data.capabilities.keyboard) {
+                if (app.keyboard == null) {
+                    app.keyboard = client.request(seat, .get_keyboard, .{});
+                    client.set_listener(app.keyboard.?, *App, keyboard_listener, app);
+                }
+            }
         },
         .name => |name| {
             std.debug.print("seat name: {s}\n", .{name.name});
@@ -222,6 +229,19 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
         .serial = app.pointer_enter_serial,
         .shape = app.cursor_shape,
     });
+}
+
+fn keyboard_listener(client: *wlnd.Client, _: wl.Keyboard, event: wl.Keyboard.Event, app: *App) void {
+    // std.log.info("_event={}", .{event});
+    _ = app;
+
+    switch (event) {
+        .key => |e| {
+            std.debug.print("key: {}\n", .{e.key});
+            if (e.key == 16) client.connection.is_running = false;
+        },
+        else => {},
+    }
 }
 
 const std = @import("std");

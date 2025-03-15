@@ -1,12 +1,12 @@
-// vi: ft=zig
 .{
-    .name = "way-z",
+    .name = .wayz,
     .version = "0.0.0",
     .paths = .{""},
+    .fingerprint = 0xd094bcb34edcca6e,
     .dependencies = .{
         .libxev = .{
-            .url = "git+https://github.com/leroycep/libxev.git?ref=zig-0.14.0#a6e636fad2a6ecfc9e083409ab841913819bd827",
-            .hash = "1220cec72f20b6a6c382c56bc76c27a1720845fd1217f1169e2894913913f743c188",
+            .url = "git+https://github.com/mitchellh/libxev.git#94ed6af7b2aaaeab987fbf87fcee410063df715b",
+            .hash = "libxev-0.0.0-86vtc-zkEgB7uv1i0Sa6ytJETZQi_lHJrImu9mLb9moi",
         },
     },
 }
