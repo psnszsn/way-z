@@ -352,5 +352,5 @@ const Argument = @import("../argument.zig").Argument;
 const Fixed = @import("../argument.zig").Fixed;
 const Client = @import("../client.zig").Client;
 
-const wl = @import("wl.zig");
 const xdg = @import("xdg.zig");
+const wl = @import("wl.zig");

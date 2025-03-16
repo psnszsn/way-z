@@ -23,7 +23,7 @@ pub const AutoMemPool = struct {
     }
     pub fn deinit(amp: *AutoMemPool, client: *way.Client) void {
         const w = struct {
-            fn bufferListener(c: *way.Client, wlbuf: wl.Buffer, event: wl.Buffer.Event, _: ?*anyopaque) void {
+            fn buffer_listener(c: *way.Client, wlbuf: wl.Buffer, event: wl.Buffer.Event, _: ?*anyopaque) void {
                 switch (event) {
                     .release => {
                         c.request(wlbuf, .destroy, {});
@@ -35,7 +35,7 @@ pub const AutoMemPool = struct {
         // change the listener for in flight buffers
         var it = amp.buffers.keyIterator();
         while (it.next()) |wl_buffer| {
-            client.set_listener(wl_buffer.*, ?*anyopaque, w.bufferListener, null);
+            client.set_listener(wl_buffer.*, ?*anyopaque, w.buffer_listener, null);
         }
         amp.pool.deinit(client);
         amp.free_list.deinit(client.allocator);
@@ -156,7 +156,7 @@ pub const AutoMemPool = struct {
         };
 
         const w = struct {
-            fn bufferListener(c: *way.Client, wlbuf: wl.Buffer, event: wl.Buffer.Event, _amp: *AutoMemPool) void {
+            fn buffer_listener(c: *way.Client, wlbuf: wl.Buffer, event: wl.Buffer.Event, _amp: *AutoMemPool) void {
                 switch (event) {
                     .release => {
                         c.request(wlbuf, .destroy, {});
@@ -168,7 +168,7 @@ pub const AutoMemPool = struct {
                 }
             }
         };
-        client.set_listener(wl_buffer, *AutoMemPool, w.bufferListener, amp);
+        client.set_listener(wl_buffer, *AutoMemPool, w.buffer_listener, amp);
         return buf;
     }
 };
