@@ -99,7 +99,7 @@ fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Re
 
 const palette = [_]u32{ 0xff1a1c2c, 0xff5d275d, 0xffb13e53, 0xffef7d57, 0xffffcd75, 0xffa7f070, 0xff38b764, 0xff257179, 0xff29366f, 0xff3b5dc9, 0xff41a6f6, 0xff73eff7, 0xfff4f4f4, 0xff94b0c2, 0xff566c86, 0xff333c57 };
 
-fn draw(buf: []align(32) u8, width: u32, height: u32, _offset: f32) void {
+fn draw(buf: []align(4) u8, width: u32, height: u32, _offset: f32) void {
     const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
 
     const sin = std.math.sin;
@@ -113,7 +113,7 @@ fn draw(buf: []align(32) u8, width: u32, height: u32, _offset: f32) void {
     }
 }
 
-fn draw2(buf: []align(4096) u8, width: u32, height: u32, _offset: f32) void {
+fn draw2(buf: []align(4) u8, width: u32, height: u32, _offset: f32) void {
     const offset_int: u32 = @intFromFloat(_offset);
     const offset = offset_int % 8;
     const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);
@@ -171,7 +171,7 @@ fn frame_listener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.E
             defer client.request(surf.wl_surface, .commit, {});
 
             const buf = Buffer.get(client, surf.ctx.shm.?, surf.width, surf.height) catch return;
-            draw(buf.mem(), surf.width, surf.height, surf.offset);
+            draw2(buf.mem(), surf.width, surf.height, surf.offset);
             client.request(surf.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
             client.request(surf.wl_surface, .damage, .{
                 .x = 0,

@@ -79,7 +79,7 @@ fn registryListener(client: *wayland.Client, registry: wl.Registry, event: wl.Re
     }
 }
 
-fn draw(buf: []align(32) u8, width: u32, height: u32, _offset: f32) void {
+fn draw(buf: []align(4) u8, width: u32, height: u32, _offset: f32) void {
     const offset_int: u32 = @intFromFloat(_offset);
     const offset = offset_int % 8;
     const data_u32: []u32 = std.mem.bytesAsSlice(u32, buf);

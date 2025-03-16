@@ -163,6 +163,7 @@ pub fn destroy(self: *Surface) void {
         },
     }
     client.request(self.wl_surface, .destroy, {});
+    self.pool.deinit(client);
     _ = self.app.surfaces.remove(self.wl_surface);
 }
 

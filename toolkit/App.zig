@@ -225,10 +225,12 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
             }
         }
     }
-    if (old_shape != app.cursor_shape) client.request(app.cursor_shape_device.?, .set_shape, .{
-        .serial = app.pointer_enter_serial,
-        .shape = app.cursor_shape,
-    });
+    if (app.cursor_shape_device) |csd| {
+        if (old_shape != app.cursor_shape) client.request(csd, .set_shape, .{
+            .serial = app.pointer_enter_serial,
+            .shape = app.cursor_shape,
+        });
+    }
 }
 
 fn keyboard_listener(client: *wlnd.Client, _: wl.Keyboard, event: wl.Keyboard.Event, app: *App) void {

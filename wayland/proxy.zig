@@ -65,6 +65,7 @@ pub const Proxy = struct {
             argdata = argdata[args[i].len()..];
         }
         if (listener) |l| {
+            // std.debug.print("listener {s}\n", .{interface.name});
             l(self.client, self.id, opcode, args[0..signature.len], listener_data);
         }
     }

@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("wayland/examples/" ++ example ++ ".zig"),
             .target = target,
             .optimize = optimize,
+            .use_llvm = true,
         });
 
         exe.root_module.addImport("wayland", wayland);
