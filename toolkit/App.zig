@@ -2,16 +2,17 @@ client: *wlnd.Client,
 
 // Wayland object ids
 // zig fmt: off
-shm                 : ?wl.Shm                  = null,
-compositor          : ?wl.Compositor           = null,
-wm_base             : ?xdg.WmBase              = null,
-layer_shell         : ?zwlr.LayerShellV1       = null,
-seat                : ?wl.Seat                 = null,
-cursor_shape_manager: ?wp.CursorShapeManagerV1 = null,
-cursor_shape_device : ?wp.CursorShapeDeviceV1  = null,
-pointer             : ?wl.Pointer              = null,
-subcompositor       : ?wl.Subcompositor        = null,
-keyboard            : ?wl.Keyboard             = null,
+shm                 : ?wl.Shm                   = null,
+compositor          : ?wl.Compositor            = null,
+wm_base             : ?xdg.WmBase               = null,
+layer_shell         : ?zwlr.LayerShellV1        = null,
+seat                : ?wl.Seat                  = null,
+cursor_shape_manager: ?wp.CursorShapeManagerV1  = null,
+cursor_shape_device : ?wp.CursorShapeDeviceV1   = null,
+decoration_manager  : ?zxdg.DecorationManagerV1 = null,
+pointer             : ?wl.Pointer               = null,
+subcompositor       : ?wl.Subcompositor         = null,
+keyboard            : ?wl.Keyboard              = null,
 // zig fmt: on
 
 font: *fnt.Font,
@@ -113,6 +114,8 @@ pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.
                 context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
                 context.cursor_shape_manager = client.bind(registry, global.name, wp.CursorShapeManagerV1, global.version);
+            } else if (std.mem.orderZ(u8, global.interface, zxdg.DecorationManagerV1.interface.name) == .eq) {
+                context.decoration_manager = client.bind(registry, global.name, zxdg.DecorationManagerV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Subcompositor.interface.name) == .eq) {
                 context.subcompositor = client.bind(registry, global.name, wl.Subcompositor, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
@@ -265,3 +268,4 @@ const wl = wlnd.wl;
 const wp = wlnd.wp;
 const xdg = wlnd.xdg;
 const zwlr = wlnd.zwlr;
+const zxdg = wlnd.zxdg;

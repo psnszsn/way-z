@@ -7,6 +7,7 @@ role: union(SurfaceRole) {
     xdg_toplevel: struct {
         xdg_surface: xdg.Surface,
         xdg_toplevel: xdg.Toplevel,
+        zxdg_toplevel_decoration: ?wlnd.zxdg.ToplevelDecorationV1,
     },
     xdg_popup: struct {
         xdg_surface: xdg.Surface,
@@ -90,9 +91,19 @@ pub fn init_role(
                 .height = @intCast(surface.min_size.height),
             });
 
+            const zxdg_toplevel_decoration = if (app.decoration_manager) |m| blk: {
+                const top_decor = client.request(m, .get_toplevel_decoration, .{ .toplevel = xdg_toplevel });
+
+                client.request(top_decor, .set_mode, .{
+                    .mode = .server_side,
+                });
+                break :blk top_decor;
+            } else null;
+
             return .{ .xdg_toplevel = .{
                 .xdg_surface = xdg_surface,
                 .xdg_toplevel = xdg_toplevel,
+                .zxdg_toplevel_decoration = zxdg_toplevel_decoration,
             } };
         },
         .wl_subsurface => |opts| {
@@ -155,7 +166,13 @@ pub fn destroy(self: *Surface) void {
             client.request(x.xdg_popup, .destroy, {});
             client.request(x.xdg_surface, .destroy, {});
         },
-        .xdg_toplevel => |_| {},
+        .xdg_toplevel => |x| {
+            if (x.zxdg_toplevel_decoration) |decor| {
+                client.request(decor, .destroy, {});
+            }
+            client.request(x.xdg_surface, .destroy, {});
+            client.request(x.xdg_toplevel, .destroy, {});
+        },
 
         .wlr_layer_surface => |_| {},
         .wl_subsurface => |x| {
