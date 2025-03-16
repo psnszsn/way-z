@@ -20,6 +20,10 @@ pub fn Signal(T: type) type {
                 .data = std.ArrayListUnmanaged(W).initCapacity(alloc, 10) catch @panic("TODO"),
             };
         }
+        pub fn deinit(s: *State, alloc: std.mem.Allocator) void {
+            s.data.deinit(alloc);
+            s.* = undefined;
+        }
         pub fn set_value(s: *State, comptime field: std.meta.FieldEnum(T), value: std.meta.FieldType(T, field)) void {
             @field(s.inner, @tagName(field)) = value;
             const sgnls = s.signals[@intFromEnum(field)];

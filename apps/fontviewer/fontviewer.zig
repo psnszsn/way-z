@@ -105,6 +105,7 @@ pub fn main() !void {
     var menu_handler: MenuHandler = undefined;
 
     var s = State.init(layout, allocator);
+    defer s.deinit(allocator);
     s.inner = .{
         .selected_range = 1,
         .selected_glyph = 'a',
@@ -182,6 +183,7 @@ pub fn main() !void {
     // _ = sub_w; // autofix
 
     const bar = try app.new_surface(.xdg_toplevel, main_widget);
+    defer bar.destroy();
     popup_handler = .{
         .wl_surface = null,
         .parent = bar,

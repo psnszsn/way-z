@@ -51,6 +51,7 @@ pub fn deinit(app: *App) void {
     const alloc = app.client.allocator;
     app.client.deinit();
     app.layout.deinit(alloc);
+    app.font.deinit(alloc);
     alloc.destroy(app.font);
     app.surfaces.deinit(alloc);
     alloc.destroy(app);

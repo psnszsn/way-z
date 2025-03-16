@@ -38,6 +38,8 @@ pub const AutoMemPool = struct {
             client.set_listener(wl_buffer.*, ?*anyopaque, w.bufferListener, null);
         }
         amp.pool.deinit(client);
+        amp.free_list.deinit(client.allocator);
+        amp.buffers.deinit(client.allocator);
     }
 
     fn alloc(amp: *AutoMemPool, client: *way.Client, size: u31) u31 {
