@@ -110,6 +110,7 @@ pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.
                 context.shm = client.bind(registry, global.name, wl.Shm, global.version);
             } else if (std.mem.orderZ(u8, global.interface, xdg.WmBase.interface.name) == .eq) {
                 context.wm_base = client.bind(registry, global.name, xdg.WmBase, global.version);
+                client.set_listener(context.wm_base.?, ?*anyopaque, wm_base_listener, null);
             } else if (std.mem.orderZ(u8, global.interface, zwlr.LayerShellV1.interface.name) == .eq) {
                 context.layer_shell = client.bind(registry, global.name, zwlr.LayerShellV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wp.CursorShapeManagerV1.interface.name) == .eq) {
@@ -124,6 +125,14 @@ pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.
             }
         },
         .global_remove => {},
+    }
+}
+
+fn wm_base_listener(client: *wlnd.Client, wm_base: xdg.WmBase, event: xdg.WmBase.Event, _: ?*anyopaque) void {
+    switch (event) {
+        .ping => |data| {
+            client.request(wm_base, .pong, .{ .serial = data.serial });
+        },
     }
 }
 

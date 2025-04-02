@@ -171,7 +171,7 @@ fn frame_listener(client: *wayland.Client, cb: wl.Callback, event: wl.Callback.E
             defer client.request(surf.wl_surface, .commit, {});
 
             const buf = Buffer.get(client, surf.ctx.shm.?, surf.width, surf.height) catch return;
-            draw2(buf.mem(), surf.width, surf.height, surf.offset);
+            draw(buf.mem(), surf.width, surf.height, surf.offset);
             client.request(surf.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
             client.request(surf.wl_surface, .damage, .{
                 .x = 0,
