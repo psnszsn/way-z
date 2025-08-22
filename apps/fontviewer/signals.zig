@@ -24,7 +24,7 @@ pub fn Signal(T: type) type {
             s.data.deinit(alloc);
             s.* = undefined;
         }
-        pub fn set_value(s: *State, comptime field: std.meta.FieldEnum(T), value: std.meta.FieldType(T, field)) void {
+        pub fn set_value(s: *State, comptime field: std.meta.FieldEnum(T), value: @FieldType(T, @tagName(field))) void {
             @field(s.inner, @tagName(field)) = value;
             const sgnls = s.signals[@intFromEnum(field)];
 

@@ -54,7 +54,7 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             try pushSlice(self, items);
             return items.len;
         }
-        pub const Writer = std.io.Writer(*Self, error{NoSpaceLeft}, write);
+        pub const Writer = std.io.GenericWriter(*Self, error{NoSpaceLeft}, write);
         pub fn writer(self: *Self) Writer {
             return .{ .context = self };
         }

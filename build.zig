@@ -25,9 +25,11 @@ pub fn build(b: *std.Build) void {
     inline for (.{ "globals", "seats", "hello", "kb_grab", "animation" }) |example| {
         const exe = b.addExecutable(.{
             .name = example,
-            .root_source_file = b.path("wayland/examples/" ++ example ++ ".zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("wayland/examples/" ++ example ++ ".zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
             .use_llvm = true,
         });
 
@@ -49,9 +51,11 @@ pub fn build(b: *std.Build) void {
     }
     {
         const unit_tests = b.addTest(.{
-            .root_source_file = b.path("wayland/lib.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("wayland/lib.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         unit_tests.root_module.addImport("wayland", wayland);
         unit_tests.root_module.addImport("xev", libxev);

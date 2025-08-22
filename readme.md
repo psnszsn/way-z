@@ -7,16 +7,16 @@ Native Zig Wayland client library and widget toolkit
 This project has a few different parts:
 
 - Wayland client library (in `wayland/`): This can be used to crate a statically linked binary capable of displaying CPU rendered graphics.
-- Widget toolkit (in `toolkit/`): This builds over the wayland client and povides a Data Oriented library for creating GUI apps
+- Widget toolkit (in `toolkit/`): This builds over the wayland client and provides a Data Oriented library for creating GUI apps
 - Apps (in `apps/`): Demo apps built using the widget toolkit
     
 ## Getting Started
 
 ### Dependencies
 
-* Zig 0.14.0-dev.3086+b3c63e5de
+* Zig 0.15.1
 
-### Runnig examples
+### Running examples
 
 * `zig build run-hello`
 

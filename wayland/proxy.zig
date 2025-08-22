@@ -33,7 +33,7 @@ pub const Proxy = struct {
     pub fn get(
         self: Proxy,
         comptime item: std.meta.FieldEnum(ObjectAttrs),
-    ) std.meta.FieldType(ObjectAttrs, item) {
+    ) @FieldType(ObjectAttrs, @tagName(item)) {
         return self.client.objects.items(item)[self.id];
     }
 

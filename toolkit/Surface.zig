@@ -57,7 +57,7 @@ pub const SurfaceRoleInit = union(SurfaceRole) {
 pub fn init_role(
     surface: *Surface,
     role: SurfaceRoleInit,
-) std.meta.FieldType(Surface, .role) {
+) @FieldType(Surface, "role") {
     const app = surface.app;
     const client = app.client;
     switch (role) {

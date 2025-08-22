@@ -80,7 +80,7 @@ pub fn handle_next_range(state: *State, idx: WidgetIdx, ev: *const anyopaque) vo
 
 pub fn font_map_handler(state: *State, idx: WidgetIdx, ev: *const anyopaque) void {
     _ = idx; // autofix
-    const event: *const FontMap.Event = @alignCast(@ptrCast(ev));
+    const event: *const FontMap.Event = @ptrCast(@alignCast(ev));
     state.set_value(.selected_glyph, event.code_point_clicked);
 }
 

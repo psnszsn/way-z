@@ -148,7 +148,7 @@ pub const Layout = struct {
                 const _field: std.meta.FieldEnum(WidgetData(wt)) = @enumFromInt(field);
                 switch (_field) {
                     inline else => |f| {
-                        const val: *const std.meta.FieldType(WidgetData(wt), f) = @alignCast(@ptrCast(value));
+                        const val: *const @FieldType(WidgetData(wt), @tagName(f)) = @ptrCast(@alignCast(value));
                         @field(_data, @tagName(f)) = val.*;
                     },
                 }
@@ -161,7 +161,7 @@ pub const Layout = struct {
         self: *const Layout,
         idx: WidgetIdx,
         comptime item: std.meta.FieldEnum(WidgetAttrs),
-    ) *std.meta.FieldType(WidgetAttrs, item) {
+    ) *@FieldType(WidgetAttrs, @tagName(item)) {
         return &self.widgets.items(item)[@intFromEnum(idx)];
     }
 
@@ -169,7 +169,7 @@ pub const Layout = struct {
         self: *const Layout,
         idx: WidgetIdx,
         comptime item: std.meta.FieldEnum(WidgetAttrs),
-    ) std.meta.FieldType(WidgetAttrs, item) {
+    ) @FieldType(WidgetAttrs, @tagName(item)) {
         return self.widgets.items(item)[@intFromEnum(idx)];
     }
 
@@ -177,7 +177,7 @@ pub const Layout = struct {
         self: *const Layout,
         idx: WidgetIdx,
         comptime item: std.meta.FieldEnum(WidgetAttrs),
-        value: std.meta.FieldType(WidgetAttrs, item),
+        value: @FieldType(WidgetAttrs, @tagName(item)),
     ) void {
         self.widgets.items(item)[@intFromEnum(idx)] = value;
         // if (item != .rect) return;

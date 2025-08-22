@@ -8,10 +8,12 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "fontviewer",
-        .root_source_file = b.path("fontviewer.zig"),
-        .target = target,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("fontviewer.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
         .use_llvm = false,
-        .optimize = optimize,
     });
 
     exe.root_module.addImport("wayland", way_z.module("wayland"));

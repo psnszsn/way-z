@@ -298,7 +298,7 @@ pub const Client = struct {
         self: *Client,
         idx: anytype,
         comptime item: std.meta.FieldEnum(ObjectAttrs),
-        value: std.meta.FieldType(ObjectAttrs, item),
+        value: @FieldType(ObjectAttrs, @tagName(item)),
     ) void {
         self.objects.items(item)[@intFromEnum(idx)] = value;
     }

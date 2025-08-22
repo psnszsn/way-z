@@ -5,8 +5,8 @@
     .fingerprint = 0xd094bcb34edcca6e,
     .dependencies = .{
         .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev.git#94ed6af7b2aaaeab987fbf87fcee410063df715b",
-            .hash = "libxev-0.0.0-86vtc-zkEgB7uv1i0Sa6ytJETZQi_lHJrImu9mLb9moi",
+            .url = "git+https://github.com/mitchellh/libxev.git?ref=main#9f785d202ddccf7a625e799250579253977978b6",
+            .hash = "libxev-0.0.0-86vtcx8dEwDfl6p4tGVxCygft8oOsggfba9JO-k28J2x",
         },
     },
 }
