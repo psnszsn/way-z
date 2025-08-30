@@ -58,7 +58,7 @@ pub const Argument = union(enum) {
         };
         return @intCast(l);
     }
-    pub fn marshal(self: *const Argument, writer: anytype) !void {
+    pub fn marshal(self: *const Argument, writer: *std.Io.Writer) !void {
         // std.log.info("arg: {}", .{self});
         switch (self.*) {
             .new_id,
@@ -77,7 +77,7 @@ pub const Argument = union(enum) {
                 try writer.writeInt(u32, @intCast(inner.len + 1), .little);
                 try writer.writeAll(inner);
                 std.debug.print("self.le {} {}\n", .{ self.len(), inner.len });
-                try writer.writeByteNTimes(0, self.len() - (4 + inner.len));
+                try writer.splatByteAll(0, self.len() - (4 + inner.len));
             },
             .fd => {},
             else => {

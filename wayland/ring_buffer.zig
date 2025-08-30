@@ -6,6 +6,12 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
         bfr: [_size]u8 = undefined,
         index: usize = 0,
         count: usize = 0,
+        writer: std.Io.Writer = .{
+            .vtable = &.{
+                .drain = Self.drain,
+            },
+            .buffer = &.{},
+        },
         const Self = @This();
 
         pub fn free_space(self: *const Self) usize {
@@ -50,13 +56,20 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
             self.count += items.len;
         }
 
-        pub fn write(self: *Self, items: []const u8) error{NoSpaceLeft}!usize {
-            try pushSlice(self, items);
-            return items.len;
-        }
-        pub const Writer = std.io.GenericWriter(*Self, error{NoSpaceLeft}, write);
-        pub fn writer(self: *Self) Writer {
-            return .{ .context = self };
+        pub fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+            const rb: *Self = @alignCast(@fieldParentPtr("writer", w));
+            var written: usize = 0;
+            for (data) |d| {
+                rb.pushSlice(d) catch return error.WriteFailed;
+                written += d.len;
+            }
+            std.debug.assert(splat > 0);
+            for (0..splat - 1) |_| {
+                const d = data[data.len - 1];
+                rb.pushSlice(d) catch return error.WriteFailed;
+                written += d.len;
+            }
+            return written;
         }
 
         pub fn consume(self: *Self, size: usize) void {

@@ -91,32 +91,24 @@ pub const Proxy = struct {
 
     pub fn marshal_request(self: Proxy, opcode: u16, args: []const Argument) !void {
         const connection = self.client.connection;
-        try connection.out.pushSlice(&std.mem.toBytes(self.id));
-        try connection.out.pushSlice(std.mem.asBytes(&opcode));
+        try connection.out.pushSlice(@ptrCast(&self.id));
+        try connection.out.pushSlice(@ptrCast(&opcode));
         var size: u16 = 0;
         for (args) |arg| {
             size += arg.len();
         }
-        try connection.out.pushSlice(&std.mem.toBytes(8 + size));
+        try connection.out.pushSlice(@ptrCast(&(8 + size)));
 
-        const writer = connection.out.writer();
         for (args) |arg| {
-            try arg.marshal(writer);
+            try arg.marshal(&connection.out.writer);
             if (arg == .fd) {
                 const native_endian = @import("builtin").cpu.arch.endian();
-                try connection.fd_out.writer().writeInt(i32, arg.fd, native_endian);
+                // try connection.fd_out.pushSlice(@ptrCast(&std.mem.nativeTo(i32, arg.fd, native_endian)));
+                try connection.fd_out.writer.writeInt(i32, arg.fd, native_endian);
             }
         }
 
         // log.debug("-> {s}@{}.{s}", .{ self.interface.name, self.id, self.interface.request_names[opcode] });
-
-        // const ret = try self.display.connection.send();
-        // _ = ret;
-        // std.debug.print("sent {}\n", .{ret});
-
-        // std.debug.print("{}\n", .{std.fmt.fmtSliceEscapeUpper(connection.out.bfr[0..connection.out.count])});
-        // var get_registry = "\x01\x00\x00\x00\x01\x00\x0c\x00\x02\x00\x00\x00";
-        // std.debug.print("marshal {} {} {any}\n", .{ self.id, opcode, args });
     }
 };
 
