@@ -62,7 +62,7 @@ pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: tk.Event) void {
                     std.log.info("glyph={}", .{glyph});
                     std.log.info("pos={}", .{btn.pos});
                     layout.request_draw(idx);
-                    // layout.emit_event(idx, &Event{ .code_point_clicked = glyph });
+                    layout.emit_event(idx, &Event{ .code_point_clicked = glyph });
                     break;
                 }
             }

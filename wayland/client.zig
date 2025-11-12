@@ -82,7 +82,7 @@ pub const Connection = struct {
             .level = std.posix.SOL.SOCKET,
             .type = 1, //SCM_RIGHTS
         });
-        const len = self.fd_out.copy(std.mem.asBytes(self.send_cmsg.dataPtr()));
+        const len = self.fd_out.copy(@ptrCast(self.send_cmsg.dataPtr()));
         self.fd_out.consume(len);
         const cmsg_len: u32 = @intCast(@TypeOf(self.send_cmsg).data_offset + len);
         self.send_cmsg.headerPtr().len = cmsg_len;
@@ -208,7 +208,7 @@ pub const Client = struct {
         while (true) {
             const pre_wrap = self.connection.in.preWrapSlice();
             var header: Header = undefined;
-            _ = self.connection.in.copy(std.mem.asBytes(&header));
+            _ = self.connection.in.copy(@ptrCast(&header));
 
             if (self.connection.in.count < header.size) break;
             const proxy = Proxy{

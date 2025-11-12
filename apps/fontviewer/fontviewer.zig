@@ -161,8 +161,8 @@ pub fn main() !void {
             scrollable,
         });
 
-        s.connect(.selected_range, font_map, FontMap, .selected_range);
-        s.connect(.selected_glyph, font_map, FontMap, .selected_code_point);
+        // s.connect(.selected_range, font_map, FontMap, .selected_range);
+        // s.connect(.selected_glyph, font_map, FontMap, .selected_code_point);
         s.connect(.selected_glyph, font_view, GlyphView, .code_point);
 
         break :b flex;

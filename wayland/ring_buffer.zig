@@ -103,29 +103,6 @@ pub fn RingBuffer(comptime _size: comptime_int) type {
         }
     };
 }
-const Connection = struct {
-    socket_fd: std.posix.socket_t,
-    in: RingBuffer(512),
-};
-
-const Display = struct {
-    connection: *Connection,
-};
-
-test "asd" {
-    const disp = try testing.allocator.create(Display);
-    disp.* = .{
-        .connection = undefined,
-    };
-    defer testing.allocator.destroy(disp);
-
-    const connection = try testing.allocator.create(Connection);
-    defer testing.allocator.destroy(connection);
-    connection.* = .{
-        .socket_fd = 7,
-        .in = .{},
-    };
-}
 
 test "writev, readv" {
     var tmp = testing.tmpDir(.{});
@@ -170,4 +147,13 @@ test "writev, readv" {
     try testing.expectEqual(res, 6);
     rb1.count += res;
     try testing.expectEqualStrings(rb1.bfr[0..6], "__$$##");
+}
+
+test "ring" {
+    var rb1 = RingBuffer(8){};
+    try rb1.pushSlice(&.{ 7, 7, 8, 9 });
+    try rb1.pushSlice(&.{ 9, 9, 10, 11 });
+    try std.testing.expectError(error.NoSpaceLeft,  rb1.pushSlice(&.{ 10 }));
+    rb1.consume(4);
+
 }
