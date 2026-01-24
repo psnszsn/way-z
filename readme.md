@@ -14,7 +14,7 @@ This project has a few different parts:
 
 ### Dependencies
 
-* Zig 0.15.1
+* Zig 0.16.0-dev.2290+200fb7c2a
 
 ### Running examples
 

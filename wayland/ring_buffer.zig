@@ -153,7 +153,6 @@ test "ring" {
     var rb1 = RingBuffer(8){};
     try rb1.pushSlice(&.{ 7, 7, 8, 9 });
     try rb1.pushSlice(&.{ 9, 9, 10, 11 });
-    try std.testing.expectError(error.NoSpaceLeft,  rb1.pushSlice(&.{ 10 }));
+    try std.testing.expectError(error.NoSpaceLeft, rb1.pushSlice(&.{10}));
     rb1.consume(4);
-
 }

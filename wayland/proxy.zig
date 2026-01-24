@@ -79,8 +79,8 @@ pub const Proxy = struct {
 
         for (args) |*arg| {
             switch (arg.*) {
-                .new_id => |_| arg.* = .{ .new_id = next_proxy.id },
-                // .new_id => |_| arg.* = .{ .object = obj.proxy.id },
+                .new_id => arg.* = .{ .new_id = next_proxy.id },
+                // .new_id => arg.* = .{ .object = obj.proxy.id },
                 else => {},
             }
         }
@@ -113,7 +113,7 @@ pub const Proxy = struct {
 };
 
 pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
-    const Payload = std.meta.TagPayload(Request, tag);
+    const Payload = @FieldType(Request, @tagName(tag));
     const payload_len = if (Payload == void) 0 else std.meta.fields(Payload).len;
     return [payload_len]Argument;
 }
@@ -121,7 +121,7 @@ pub fn RequestArgs(comptime Request: type, tag: std.meta.Tag(Request)) type {
 pub fn request_to_args(
     comptime RequestType: type,
     comptime tag: std.meta.Tag(RequestType),
-    payload: std.meta.TagPayload(RequestType, tag),
+    payload: @FieldType(RequestType, @tagName(tag)),
     // request: std.meta.Tag(Request),
 ) RequestArgs(RequestType, tag) {
     const RA = RequestArgs(RequestType, tag);

@@ -90,12 +90,10 @@ const State = Signal(struct {
     font: *const Font,
 });
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var app = try App.new(allocator);
+    var app = try App.new(allocator, init.environ_map);
     defer app.deinit();
 
     const layout = &app.layout;

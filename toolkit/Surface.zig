@@ -174,7 +174,7 @@ pub fn destroy(self: *Surface) void {
             client.request(x.xdg_toplevel, .destroy, {});
         },
 
-        .wlr_layer_surface => |_| {},
+        .wlr_layer_surface => {},
         .wl_subsurface => |x| {
             client.request(x.wl_subsurface, .destroy, {});
         },

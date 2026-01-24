@@ -2,12 +2,8 @@ pub const std_options = std.Options{
     .log_level = .info,
 };
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    // defer std.debug.assert(gpa.deinit() == .ok);
-    const allocator = gpa.allocator();
-
-    var app = try App.new(allocator);
+pub fn main(init: std.process.Init) !void {
+    var app = try App.new(init.gpa, init.environ_map);
     try app.layout.init(app.client.allocator);
 
     const flex = app.layout.add2(.flex, .{});

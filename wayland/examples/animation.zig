@@ -20,12 +20,10 @@ const SurfaceCtx = struct {
     last_frame: u32,
 };
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    const client = try wayland.Client.connect(allocator);
+    const client = try wayland.Client.connect(allocator, init.environ_map);
     const registry = client.request(client.wl_display, .get_registry, .{});
 
     var context = App{

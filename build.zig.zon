@@ -1,12 +1,8 @@
 .{
     .name = .wayz,
     .version = "0.0.0",
+    .minimum_zig_version = "0.16.0",
     .paths = .{""},
     .fingerprint = 0xd094bcb34edcca6e,
-    .dependencies = .{
-        .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev.git#a86bdc692b384f692a99047466ec89c3705d861c",
-            .hash = "libxev-0.0.0-86vtcz8bEwB9PLXxMMckZwulRxoKleuLsrffobuUv993",
-        },
-    },
+    .dependencies = .{},
 }

@@ -26,8 +26,8 @@ active_surface: ?wl.Surface = null,
 layout: Layout = .{},
 pointer_position: Point = Point.ZERO,
 
-pub fn new(alloc: std.mem.Allocator) !*App {
-    const client = try wlnd.Client.connect(alloc);
+pub fn new(alloc: std.mem.Allocator, environ_map: *std.process.Environ.Map) !*App {
+    const client = try wlnd.Client.connect(alloc, environ_map);
     const registry = client.request(client.wl_display, .get_registry, .{});
 
     // TODO: remove allocation
@@ -188,7 +188,7 @@ fn pointer_listener(client: *wlnd.Client, _: wl.Pointer, _event: wl.Pointer.Even
         .button => |ev| blk: {
             break :blk .{ .button = .{ .button = @enumFromInt(ev.button), .state = ev.state, .pos = undefined } };
         },
-        .frame => |_| blk: {
+        .frame => blk: {
             // TODO
             break :blk null;
         },

@@ -1,5 +1,5 @@
 const std = @import("std");
-const os = std.posix;
+const linux = std.os.linux;
 const wl = @import("generated/wl.zig");
 const way = @import("lib.zig");
 
@@ -212,27 +212,30 @@ test "free" {
 const Pool = struct {
     const max_size = 512 * 1024 * 1024;
     wl_pool: wl.ShmPool = undefined,
-    backing_fd: os.fd_t = -1,
+    backing_fd: linux.fd_t = -1,
     mmap: []align(std.heap.page_size_min) u8 = undefined,
     size: usize = 0,
 
     pub fn init(client: *way.Client, shm: wl.Shm, width: u32, height: u32) !Pool {
         const stride = width * 4;
         const size = stride * height;
-        // const size = max_size;
 
-        const fd = try os.memfd_create("way-z-shm", 0);
-        // defer os.close(fd);
-        try os.ftruncate(fd, size);
-        const data = try os.mmap(null, size, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0);
-        // os.munmap(data);
+        const fd_rc = linux.memfd_create("way-z-shm", 0);
+        if (linux.errno(fd_rc) != .SUCCESS) return error.MemfdCreateFailed;
+        const fd: linux.fd_t = @intCast(fd_rc);
+
+        const trunc_rc = linux.ftruncate(fd, @intCast(size));
+        if (linux.errno(trunc_rc) != .SUCCESS) return error.FtruncateFailed;
+
+        const mmap_rc = linux.mmap(null, size, .{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, fd, 0);
+        if (mmap_rc == std.math.maxInt(usize)) return error.MmapFailed;
+        const data: [*]align(std.heap.page_size_min) u8 = @ptrFromInt(mmap_rc);
 
         const pool = client.request(shm, .create_pool, .{ .fd = fd, .size = @intCast(size) });
-        // defer pool.destroy();
 
         return Pool{
             .size = size,
-            .mmap = data,
+            .mmap = data[0..size],
             .backing_fd = fd,
             .wl_pool = pool,
         };
@@ -240,17 +243,24 @@ const Pool = struct {
 
     pub fn deinit(self: *Pool, client: *way.Client) void {
         client.request(self.wl_pool, .destroy, {});
-        os.munmap(self.mmap);
-        os.close(self.backing_fd);
+        _ = linux.munmap(self.mmap.ptr, self.mmap.len);
+        _ = linux.close(self.backing_fd);
     }
 
     pub fn resize(self: *Pool, client: *way.Client, newsize: u32) !void {
         if (newsize > self.size) {
-            try os.ftruncate(self.backing_fd, newsize);
+            const trunc_rc = linux.ftruncate(self.backing_fd, @intCast(newsize));
+            if (linux.errno(trunc_rc) != .SUCCESS) return error.FtruncateFailed;
+
             client.request(self.wl_pool, .resize, .{ .size = @intCast(newsize) });
             self.size = newsize;
-            os.munmap(self.mmap);
-            self.mmap = try os.mmap(null, newsize, os.PROT.READ | os.PROT.WRITE, .{ .TYPE = .SHARED }, self.backing_fd, 0);
+
+            _ = linux.munmap(self.mmap.ptr, self.mmap.len);
+
+            const mmap_rc = linux.mmap(null, newsize, .{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, self.backing_fd, 0);
+            if (mmap_rc == std.math.maxInt(usize)) return error.MmapFailed;
+            const data: [*]align(std.heap.page_size_min) u8 = @ptrFromInt(mmap_rc);
+            self.mmap = data[0..newsize];
         }
     }
 };

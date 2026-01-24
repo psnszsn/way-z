@@ -4,7 +4,6 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const way_z = b.dependency("way-z", .{});
-    const libxev = way_z.builder.dependency("libxev", .{});
 
     const exe = b.addExecutable(.{
         .name = "bar",
@@ -17,7 +16,6 @@ pub fn build(b: *std.Build) void {
 
     exe.root_module.addImport("wayland", way_z.module("wayland"));
     exe.root_module.addImport("toolkit", way_z.module("toolkit"));
-    exe.root_module.addImport("xev", libxev.module("xev"));
 
     b.installArtifact(exe);
 

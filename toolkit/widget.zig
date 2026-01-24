@@ -32,23 +32,7 @@ const widget_names = std.meta.fieldNames(@TypeOf(root_w_types)) ++ std.meta.fiel
 /// pub fn handle_event(layout: *Layout, idx: WidgetIdx, event: Event) void {}
 /// pub fn size(_: *Layout, _: WidgetIdx, _: Size.Minmax) Size {}
 /// pub fn draw(layout: *Layout, idx: WidgetIdx, rect: Rect, paint_ctx: PaintCtx) bool {}
-const WidgetType = b: {
-    var enumFields: [widget_names.len]std.builtin.Type.EnumField = undefined;
-    for (widget_names, 0..) |name, i| {
-        enumFields[i] = .{
-            .name = name,
-            .value = i,
-        };
-    }
-    break :b @Type(.{
-        .@"enum" = .{
-            .tag_type = u8,
-            .fields = &enumFields,
-            .decls = &.{},
-            .is_exhaustive = true,
-        },
-    });
-};
+const WidgetType = @Enum(u8, .exhaustive, widget_names, &std.simd.iota(u8, widget_names.len));
 
 pub fn WidgetData(comptime self: WidgetType) type {
     const tag_name = @tagName(self);
