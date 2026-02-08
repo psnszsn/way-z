@@ -24,3 +24,10 @@ pub fn translated(self: Self, point: Self) Self {
 pub fn subtracted(self: Self, point: Self) Self {
     return .{ .x = self.x - point.x, .y = self.y - point.y };
 }
+
+pub fn scaled(self: Self, scale_120: u32) Self {
+    return .{
+        .x = @intCast(@divTrunc(@as(i64, self.x) * scale_120 + 60, 120)),
+        .y = @intCast(@divTrunc(@as(i64, self.y) * scale_120 + 60, 120)),
+    };
+}

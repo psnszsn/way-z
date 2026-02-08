@@ -619,8 +619,10 @@ pub const Buffer = enum(u32) {
     };
     pub const Event = union(enum) {
         /// Sent when this wl_buffer is no longer used by the compositor.
-        /// The client is now free to reuse or destroy this buffer and its
-        /// backing storage.
+        ///
+        /// For more information on when release events may or may not be sent,
+        /// and what consequences it has, please see the description of
+        /// wl_surface.attach.
         ///
         /// If a client receives a release event before the frame callback
         /// requested in the same wl_surface.commit that attaches this
@@ -1831,7 +1833,8 @@ pub const Surface = enum(u32) {
         /// the delivery of wl_buffer.release events becomes undefined. A well
         /// behaved client should not rely on wl_buffer.release events in this
         /// case. Alternatively, a client could create multiple wl_buffer objects
-        /// from the same backing storage or use wp_linux_buffer_release.
+        /// from the same backing storage or use a protocol extension providing
+        /// per-commit release notifications.
         ///
         /// Destroying the wl_buffer after wl_buffer.release does not change
         /// the surface contents. Destroying the wl_buffer before wl_buffer.release
@@ -2093,6 +2096,9 @@ pub const Surface = enum(u32) {
         /// x and y, combined with the new surface size define in which
         /// directions the surface's size changes.
         ///
+        /// The exact semantics of wl_surface.offset are role-specific. Refer to
+        /// the documentation of specific roles for more information.
+        ///
         /// Surface location offset is double-buffered state, see
         /// wl_surface.commit.
         ///
@@ -2132,7 +2138,7 @@ pub const Seat = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "wl_seat",
-        .version = 9,
+        .version = 10,
         .event_signatures = &.{
             &.{.uint},
             &.{.string},
@@ -2158,9 +2164,10 @@ pub const Seat = enum(u32) {
         missing_capability = 0,
     };
     pub const Event = union(enum) {
-        /// This is emitted whenever a seat gains or loses the pointer,
-        /// keyboard or touch capabilities.  The argument is a capability
-        /// enum containing the complete set of capabilities this seat has.
+        /// This is sent on binding to the seat global or whenever a seat gains
+        /// or loses the pointer, keyboard or touch capabilities.
+        /// The argument is a capability enum containing the complete set of
+        /// capabilities this seat has.
         ///
         /// When the pointer capability is added, a client may create a
         /// wl_pointer object using the wl_seat.get_pointer request. This object
@@ -2195,9 +2202,9 @@ pub const Seat = enum(u32) {
         /// The same seat names are used for all clients. Thus, the name can be
         /// shared across processes to refer to a specific wl_seat global.
         ///
-        /// The name event is sent after binding to the seat global. This event is
-        /// only sent once per seat object, and the name does not change over the
-        /// lifetime of the wl_seat global.
+        /// The name event is sent after binding to the seat global, and should be sent
+        /// before announcing capabilities. This event only sent once per seat object,
+        /// and the name does not change over the lifetime of the wl_seat global.
         ///
         /// Compositors may re-use the same seat name if the wl_seat global is
         /// destroyed and re-created later.
@@ -2287,7 +2294,7 @@ pub const Pointer = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "wl_pointer",
-        .version = 9,
+        .version = 10,
         .event_signatures = &.{
             &.{ .uint, .object, .fixed, .fixed },
             &.{ .uint, .object },
@@ -2740,7 +2747,7 @@ pub const Keyboard = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "wl_keyboard",
-        .version = 9,
+        .version = 10,
         .event_signatures = &.{
             &.{ .uint, .fd, .uint },
             &.{ .uint, .object, .array },
@@ -2768,6 +2775,7 @@ pub const Keyboard = enum(u32) {
     pub const KeyState = enum(c_int) {
         released = 0,
         pressed = 1,
+        repeated = 2,
     };
     pub const Event = union(enum) {
         /// This event provides a file descriptor to the client which can be
@@ -2791,6 +2799,9 @@ pub const Keyboard = enum(u32) {
         /// the surface argument and the keys currently logically down to the keys
         /// in the keys argument. The compositor must not send this event if the
         /// wl_keyboard already had an active surface immediately before this event.
+        ///
+        /// Clients should not use the list of pressed keys to emulate key-press
+        /// events. The order of keys in the list is unspecified.
         enter: struct {
             serial: u32, // serial number of the enter event
             surface: ?Surface, // surface gaining keyboard focus
@@ -2828,6 +2839,11 @@ pub const Keyboard = enum(u32) {
         /// compositor must not send this event if state is pressed (resp. released)
         /// and the key was already logically down (resp. was not logically down)
         /// immediately before this event.
+        ///
+        /// Since version 10, compositors may send key events with the "repeated"
+        /// key state when a wl_keyboard.repeat_info event with a rate argument of
+        /// 0 has been received. This allows the compositor to take over the
+        /// responsibility of key repetition.
         key: struct {
             serial: u32, // serial number of the key event
             time: u32, // timestamp with millisecond granularity
@@ -2948,7 +2964,7 @@ pub const Touch = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "wl_touch",
-        .version = 9,
+        .version = 10,
         .event_signatures = &.{
             &.{ .uint, .uint, .object, .int, .fixed, .fixed },
             &.{ .uint, .uint, .int },
@@ -3675,6 +3691,44 @@ pub const Subsurface = enum(u32) {
                 .place_below => void,
                 .set_sync => void,
                 .set_desync => void,
+            };
+        }
+    };
+};
+
+/// This global fixes problems with other core-protocol interfaces that
+/// cannot be fixed in these interfaces themselves.
+pub const Fixes = enum(u32) {
+    _,
+    pub const interface = Interface{
+        .name = "wl_fixes",
+        .version = 1,
+        .request_names = &.{
+            "destroy",
+            "destroy_registry",
+        },
+    };
+    pub const Request = union(enum) {
+        destroy: void,
+        /// This request destroys a wl_registry object.
+        ///
+        /// The client should no longer use the wl_registry after making this
+        /// request.
+        ///
+        /// The compositor will emit a wl_display.delete_id event with the object ID
+        /// of the registry and will no longer emit any events on the registry. The
+        /// client should re-use the object ID once it receives the
+        /// wl_display.delete_id event.
+        destroy_registry: struct {
+            registry: ?Registry, // the registry to destroy
+        },
+
+        pub fn ReturnType(
+            request: std.meta.Tag(Request),
+        ) type {
+            return switch (request) {
+                .destroy => void,
+                .destroy_registry => void,
             };
         }
     };

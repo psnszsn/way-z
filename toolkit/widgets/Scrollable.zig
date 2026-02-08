@@ -53,13 +53,14 @@ pub fn draw(layout: *Layout, idx: WidgetIdx, rect: tk.Rect, paint_ctx: PaintCtx)
 
     std.debug.assert(rect.height != 0);
 
-    const abs_rect = layout.absolute_rect(idx);
+    const scale_120 = paint_ctx.scale_120;
+    const abs_rect = layout.absolute_rect(idx).scaled(scale_120);
+    const scaled_offset: i32 = @intCast((@as(u32, self.offset) * scale_120 + 60) / 120);
     var iter = layout.child_iterator(self.content);
     while (iter.next()) |idxx| {
-        const offset_i32: i32 = @intCast(self.offset);
-        const rectx = layout.absolute_rect(idxx)
+        const rectx = layout.absolute_rect(idxx).scaled(scale_120)
             .translated(abs_rect.x, abs_rect.y)
-            .translated(0, -offset_i32);
+            .translated(0, -scaled_offset);
 
         const clip = rectx.intersected(paint_ctx.clip);
         if (clip.get_size().is_zero()) continue;

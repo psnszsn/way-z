@@ -767,7 +767,8 @@ def main():
         '/usr/share/wayland-protocols/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml',
         '/usr/share/wayland-protocols/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml',
         # "/usr/share/wayland-protocols/stable/presentation-time/presentation-time.xml",
-        # "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml",
+        '/usr/share/wayland-protocols/stable/viewporter/viewporter.xml',
+        '/usr/share/wayland-protocols/staging/fractional-scale/fractional-scale-v1.xml',
     ]
     for p in xml_protocols:
         p = Protocol(Path(p))

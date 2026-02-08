@@ -13,6 +13,7 @@ pub fn PaintCtx(comptime Color: type) type {
         width: u31,
         height: u31,
         clip: Rect,
+        scale_120: u32 = 120,
         clip_overflow: enum {
             top,
             bottom,
@@ -74,20 +75,25 @@ pub fn PaintCtx(comptime Color: type) type {
             }
         }
 
+        pub fn fontScale(self: *const Self) u31 {
+            return if (self.scale_120 >= 180) 2 else 1;
+        }
+
         pub fn char(self: *const Self, code_point: u21, point: Point, opts: DrawCharOpts) Rect {
             const font = opts.font.?;
             const bitmap = font.glyphBitmap(code_point);
+            const scale = if (opts.scale != 1) opts.scale else self.fontScale();
 
             for (0..font.glyph_height) |_y| {
                 const y: u8 = @intCast(_y);
                 for (0..bitmap.width) |_x| {
                     const x: u8 = @intCast(_x);
                     if (bitmap.bitAt(x, y)) {
-                        self.pixel(point.x + x, point.y + y, .{ .color = opts.color, .scale = opts.scale });
+                        self.pixel(point.x + @as(i32, x) * scale, point.y + @as(i32, y) * scale, .{ .color = opts.color, .scale = scale });
                     }
                 }
             }
-            return .{ .width = bitmap.width, .height = bitmap.height };
+            return .{ .width = bitmap.width * scale, .height = bitmap.height * scale };
         }
         pub fn text(self: *const Self, _text: []const u8, rct: Rect, opts: DrawCharOpts) void {
             const s = std.unicode.Utf8View.init(_text) catch unreachable;
@@ -95,16 +101,14 @@ pub fn PaintCtx(comptime Color: type) type {
             var glyph_rect = rct;
 
             const font = opts.font.?;
-            glyph_rect.width = font.glyph_width;
-            glyph_rect.height = font.glyph_height;
+            const scale = if (opts.scale != 1) opts.scale else self.fontScale();
+            glyph_rect.width = font.glyph_width * scale;
+            glyph_rect.height = font.glyph_height * scale;
 
             while (it.nextCodepoint()) |code_point| {
-                // if (code_point == ' ') {
-                //     continue;
-                // }
                 const pos = glyph_rect.pos();
-                const drawn_size = self.char(code_point, pos, .{ .font = font, .color = opts.color, .scale = opts.scale });
-                glyph_rect.translate_by(drawn_size.width + font.glyph_spacing, 0);
+                const drawn_size = self.char(code_point, pos, .{ .font = font, .color = opts.color, .scale = scale });
+                glyph_rect.translate_by(drawn_size.width + @as(i32, font.glyph_spacing) * scale, 0);
             }
         }
 
@@ -242,21 +246,21 @@ pub fn PaintCtx(comptime Color: type) type {
             const rectt = self.clip;
             // background
             self.fill(rectt, .{ .color = color_bg });
-            const offset = opts.depth;
+            const offset: u8 = @intCast((@as(u32, opts.depth) * self.scale_120 + 60) / 120);
 
             //shadow
             self.line(
                 &Point.init(rectt.right() - offset, rectt.top()),
                 &Point.init(rectt.right() - offset, rectt.bottom() - offset),
                 color_shadow,
-                opts.depth,
+                offset,
             );
 
             self.line(
                 &Point.init(rectt.left(), rectt.bottom() - offset),
                 &Point.init(rectt.right() - offset, rectt.bottom() - offset),
                 color_shadow,
-                opts.depth,
+                offset,
             );
 
             // light
@@ -264,14 +268,14 @@ pub fn PaintCtx(comptime Color: type) type {
                 &Point.init(rectt.left(), rectt.top()),
                 &Point.init(rectt.left(), rectt.bottom() - 2 * offset),
                 color_light,
-                opts.depth,
+                offset,
             );
 
             self.line(
                 &Point.init(rectt.left(), rectt.top()),
-                &Point.init(rectt.right() - opts.depth, rectt.top()),
+                &Point.init(rectt.right() - offset, rectt.top()),
                 color_light,
-                opts.depth,
+                offset,
             );
         }
 
@@ -298,7 +302,7 @@ pub fn PaintCtx(comptime Color: type) type {
         }
         pub fn with_clip(self: *const Self, clip: Rect) Self {
             var s = self.*;
-            s.clip = clip;
+            s.clip = clip.intersected(self.clip);
             return s;
         }
     };

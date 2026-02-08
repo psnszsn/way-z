@@ -32,6 +32,9 @@ last_frame: u32,
 frame_done: bool = true,
 initial_draw: bool = false,
 pool: shm.AutoMemPool = undefined,
+scale_120: u32 = 120,
+viewport: ?wp.Viewport = null,
+fractional_scale: ?wp.FractionalScaleV1 = null,
 
 pub const SurfaceRole = enum {
     xdg_toplevel,
@@ -179,6 +182,8 @@ pub fn destroy(self: *Surface) void {
             client.request(x.wl_subsurface, .destroy, {});
         },
     }
+    if (self.fractional_scale) |fs| client.request(fs, .destroy, {});
+    if (self.viewport) |vp| client.request(vp, .destroy, {});
     client.request(self.wl_surface, .destroy, {});
     self.pool.deinit(client);
     _ = self.app.surfaces.remove(self.wl_surface);
@@ -201,15 +206,19 @@ pub fn draw(self: *Surface) void {
     // std.log.info("draw {}", .{std.meta.activeTag(self.role)});
     const client = self.app.client;
     const size = self.app.layout.get(self.root, .rect).get_size();
-    const buf = self.pool.buffer(client, size.width, size.height);
+
+    // Compute physical pixel dimensions from logical size
+    const pixel_w: u31 = @intCast((@as(u32, size.width) * self.scale_120 + 60) / 120);
+    const pixel_h: u31 = @intCast((@as(u32, size.height) * self.scale_120 + 60) / 120);
+
+    const buf = self.pool.buffer(client, pixel_w, pixel_h);
     if (size.contains(self.min_size)) {
         const ctx = PaintCtx{
             .buffer = @ptrCast(buf.mem()),
-            //TODO: use ptrCast directly when implemented in zig
-            // .buffer = @ptrCast(buf.pool.mmap),
             .width = buf.width,
             .height = buf.height,
-            .clip = size.to_rect(),
+            .clip = .{ .x = 0, .y = 0, .width = pixel_w, .height = pixel_h },
+            .scale_120 = self.scale_120,
         };
         @memset(buf.mem(), 155);
         self.draw_root_widget(ctx);
@@ -217,7 +226,12 @@ pub fn draw(self: *Surface) void {
         @memset(buf.mem(), 200);
     }
     client.request(self.wl_surface, .attach, .{ .buffer = buf.wl_buffer, .x = 0, .y = 0 });
-    // client.request(self.wl_surface, .offset, .{ .x = 220, .y = 220 });
+    if (self.viewport) |vp| {
+        client.request(vp, .set_destination, .{
+            .width = @intCast(size.width),
+            .height = @intCast(size.height),
+        });
+    }
     client.request(self.wl_surface, .damage_buffer, .{
         .x = 0,
         .y = 0,
@@ -232,8 +246,9 @@ pub fn draw_root_widget(surf: *Surface, ctx: PaintCtx) void {
     var iter = layout.child_iterator(surf.root);
     while (iter.next()) |idx| {
         const rect = layout.absolute_rect(idx);
-        const ctxx = ctx.with_clip(rect);
-        _ = layout.call(idx, .draw, .{ rect, ctxx });
+        const scaled_rect = rect.scaled(surf.scale_120);
+        const ctxx = ctx.with_clip(scaled_rect);
+        _ = layout.call(idx, .draw, .{ scaled_rect, ctxx });
     }
 }
 
@@ -268,6 +283,17 @@ fn layer_suface_listener(client: *wlnd.Client, layer_suface: zwlr.LayerSurfaceV1
             // self.redraw();
         },
         .closed => {},
+    }
+}
+
+pub fn fractional_scale_listener(_: *wlnd.Client, _: wp.FractionalScaleV1, event: wp.FractionalScaleV1.Event, surf: *Surface) void {
+    switch (event) {
+        .preferred_scale => |data| {
+            if (surf.scale_120 != data.scale) {
+                surf.scale_120 = data.scale;
+                surf.schedule_redraw();
+            }
+        },
     }
 }
 
@@ -356,6 +382,7 @@ const WidgetIdx = w.WidgetIdx;
 
 const wlnd = @import("wayland");
 const wl = wlnd.wl;
+const wp = wlnd.wp;
 const xdg = wlnd.xdg;
 const zwlr = wlnd.zwlr;
 const shm = wlnd.shm;

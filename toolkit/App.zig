@@ -7,9 +7,11 @@ compositor          : ?wl.Compositor            = null,
 wm_base             : ?xdg.WmBase               = null,
 layer_shell         : ?zwlr.LayerShellV1        = null,
 seat                : ?wl.Seat                  = null,
-cursor_shape_manager: ?wp.CursorShapeManagerV1  = null,
-cursor_shape_device : ?wp.CursorShapeDeviceV1   = null,
-decoration_manager  : ?zxdg.DecorationManagerV1 = null,
+cursor_shape_manager    : ?wp.CursorShapeManagerV1      = null,
+cursor_shape_device     : ?wp.CursorShapeDeviceV1       = null,
+decoration_manager      : ?zxdg.DecorationManagerV1     = null,
+fractional_scale_manager: ?wp.FractionalScaleManagerV1   = null,
+viewporter              : ?wp.Viewporter                 = null,
 pointer             : ?wl.Pointer               = null,
 subcompositor       : ?wl.Subcompositor         = null,
 keyboard            : ?wl.Keyboard              = null,
@@ -88,6 +90,16 @@ pub fn new_common(app: *App, root_widget: WidgetIdx) !*Surface {
         .pool = try wlnd.shm.AutoMemPool.init(client, app.shm.?),
     };
 
+    if (app.fractional_scale_manager != null and app.viewporter != null) {
+        surf.fractional_scale = client.request(app.fractional_scale_manager.?, .get_fractional_scale, .{
+            .surface = wl_surface,
+        });
+        surf.viewport = client.request(app.viewporter.?, .get_viewport, .{
+            .surface = wl_surface,
+        });
+        client.set_listener(surf.fractional_scale.?, *Surface, Surface.fractional_scale_listener, surf);
+    }
+
     return surf;
 }
 
@@ -119,6 +131,10 @@ pub fn registry_listener(client: *wlnd.Client, registry: wl.Registry, event: wl.
                 context.decoration_manager = client.bind(registry, global.name, zxdg.DecorationManagerV1, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Subcompositor.interface.name) == .eq) {
                 context.subcompositor = client.bind(registry, global.name, wl.Subcompositor, global.version);
+            } else if (std.mem.orderZ(u8, global.interface, wp.FractionalScaleManagerV1.interface.name) == .eq) {
+                context.fractional_scale_manager = client.bind(registry, global.name, wp.FractionalScaleManagerV1, global.version);
+            } else if (std.mem.orderZ(u8, global.interface, wp.Viewporter.interface.name) == .eq) {
+                context.viewporter = client.bind(registry, global.name, wp.Viewporter, global.version);
             } else if (std.mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
                 context.seat = client.bind(registry, global.name, wl.Seat, global.version);
                 client.set_listener(context.seat.?, *App, seat_listener, context);

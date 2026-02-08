@@ -153,6 +153,15 @@ pub fn get_center(self: Rect) Point {
     return .{ .x = self.x + self.width / 2, .y = self.y + self.height / 2 };
 }
 
+pub fn scaled(self: Rect, scale_120: u32) Rect {
+    return .{
+        .x = @intCast(@divTrunc(@as(i64, self.x) * scale_120 + 60, 120)),
+        .y = @intCast(@divTrunc(@as(i64, self.y) * scale_120 + 60, 120)),
+        .width = @intCast((@as(u32, self.width) * scale_120 + 60) / 120),
+        .height = @intCast((@as(u32, self.height) * scale_120 + 60) / 120),
+    };
+}
+
 const Point = @import("Point.zig");
 const Size = @import("Size.zig");
 

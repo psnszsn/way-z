@@ -33,7 +33,7 @@ pub const WmBase = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "xdg_wm_base",
-        .version = 6,
+        .version = 7,
         .event_signatures = &.{
             &.{.uint},
         },
@@ -161,7 +161,7 @@ pub const Positioner = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "xdg_positioner",
-        .version = 6,
+        .version = 7,
         .request_names = &.{
             "destroy",
             "set_size",
@@ -384,7 +384,7 @@ pub const Surface = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "xdg_surface",
-        .version = 6,
+        .version = 7,
         .event_signatures = &.{
             &.{.uint},
         },
@@ -471,7 +471,10 @@ pub const Surface = enum(u32) {
         /// The window geometry of a surface is its "visible bounds" from the
         /// user's perspective. Client-side decorations often have invisible
         /// portions like drop-shadows which should be ignored for the
-        /// purposes of aligning, placing and constraining windows.
+        /// purposes of aligning, placing and constraining windows. Note that
+        /// in some situations, compositors may clip rendering to the window
+        /// geometry, so the client should avoid putting functional elements
+        /// outside of it.
         ///
         /// The window geometry is double-buffered state, see wl_surface.commit.
         ///
@@ -586,7 +589,7 @@ pub const Toplevel = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "xdg_toplevel",
-        .version = 6,
+        .version = 7,
         .event_signatures = &.{
             &.{ .int, .int, .array },
             &.{},
@@ -642,6 +645,10 @@ pub const Toplevel = enum(u32) {
         tiled_top = 7,
         tiled_bottom = 8,
         suspended = 9,
+        constrained_left = 10,
+        constrained_right = 11,
+        constrained_top = 12,
+        constrained_bottom = 13,
     };
     pub const WmCapabilities = enum(c_int) {
         window_menu = 1,
@@ -1112,7 +1119,7 @@ pub const Popup = enum(u32) {
     _,
     pub const interface = Interface{
         .name = "xdg_popup",
-        .version = 6,
+        .version = 7,
         .event_signatures = &.{
             &.{ .int, .int, .int, .int },
             &.{},
