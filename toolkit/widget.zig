@@ -66,7 +66,7 @@ pub const WidgetFn = enum {
 };
 
 pub const Layout = struct {
-    widgets: std.MultiArrayList(WidgetAttrs) = .{},
+    widgets: std.MultiArrayList(WidgetAttrs) = .empty,
     widget_alloc: std.heap.FixedBufferAllocator = undefined,
 
     pub fn init(self: *Layout, alloc: std.mem.Allocator) !void {

@@ -22,7 +22,7 @@ pointer_enter_serial: u32 = 0,
 cursor_shape: wp.CursorShapeDeviceV1.Shape = .default,
 
 // surfaces: std.ArrayListUnmanaged(Surface) = .{},
-surfaces: std.AutoHashMapUnmanaged(wl.Surface, Surface) = .{},
+surfaces: std.AutoHashMapUnmanaged(wl.Surface, Surface) = .empty,
 active_surface: ?wl.Surface = null,
 
 layout: Layout = .{},

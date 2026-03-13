@@ -6,12 +6,12 @@ const way = @import("lib.zig");
 pub const AutoMemPool = struct {
     pub const FreeItem = struct { offset: u31, len: u31 };
     pool: Pool,
-    free_list: std.ArrayListUnmanaged(FreeItem),
-    buffers: std.AutoHashMapUnmanaged(wl.Buffer, Buffer) = .{},
+    free_list: std.ArrayList(FreeItem),
+    buffers: std.AutoHashMapUnmanaged(wl.Buffer, Buffer) = .empty,
     pub fn init(client: *way.Client, shm: wl.Shm) !AutoMemPool {
-        var fl = try std.ArrayListUnmanaged(FreeItem).initCapacity(client.allocator, 10);
+        var fl: std.ArrayList(FreeItem) = try .initCapacity(client.allocator, 10);
 
-        var buffers = std.AutoHashMapUnmanaged(wl.Buffer, Buffer){};
+        var buffers: std.AutoHashMapUnmanaged(wl.Buffer, Buffer) = .empty;
         try buffers.ensureTotalCapacity(client.allocator, 16);
         const pool = try Pool.init(client, shm, 200, 200);
         fl.appendAssumeCapacity(.{ .offset = 0, .len = @intCast(pool.size) });
@@ -174,7 +174,7 @@ pub const AutoMemPool = struct {
 };
 
 test "free" {
-    const fl = try std.ArrayListUnmanaged(AutoMemPool.FreeItem).initCapacity(std.testing.allocator, 10);
+    const fl: std.ArrayList(AutoMemPool.FreeItem) = try .initCapacity(std.testing.allocator, 10);
     var p = AutoMemPool{ .pool = undefined, .free_list = fl };
     defer p.free_list.clearAndFree(std.testing.allocator);
 

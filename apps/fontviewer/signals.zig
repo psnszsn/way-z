@@ -10,14 +10,14 @@ pub fn Signal(T: type) type {
         inner: T,
         layout: *tk.Layout,
         signals: [t_fields.len]S,
-        data: std.ArrayListUnmanaged(W) = .{},
+        data: std.ArrayList(W) = .empty,
         const State = @This();
         pub fn init(layout: *tk.Layout, alloc: std.mem.Allocator) State {
             return .{
                 .inner = undefined,
                 .layout = layout,
                 .signals = .{S{ .i = 0, .len = 0 }} ** t_fields.len,
-                .data = std.ArrayListUnmanaged(W).initCapacity(alloc, 10) catch @panic("TODO"),
+                .data = std.ArrayList(W).initCapacity(alloc, 10) catch @panic("TODO"),
             };
         }
         pub fn deinit(s: *State, alloc: std.mem.Allocator) void {

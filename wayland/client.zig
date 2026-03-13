@@ -75,8 +75,8 @@ pub const Connection = struct {
 pub const Client = struct {
     wl_display: wl.Display,
     // objects: std.ArrayListUnmanaged(?Proxy) = .{},
-    objects: std.MultiArrayList(ObjectAttrs) = .{},
-    unused_oids: std.ArrayListUnmanaged(u32) = .{},
+    objects: std.MultiArrayList(ObjectAttrs) = .empty,
+    unused_oids: std.ArrayList(u32) = .empty,
     connection: *Connection,
     allocator: std.mem.Allocator,
 
